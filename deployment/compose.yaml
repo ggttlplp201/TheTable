@@ -1,0 +1,43 @@
+name: the-table
+
+services:
+  authority:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: the-table:local
+
+    # This makes `docker compose up --scale authority=2` fail instead of
+    # silently creating two independent room owners.
+    container_name: the-table-authority
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3001
+      STATIC_DIRECTORY: /app/apps/web/dist
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:?Set CLIENT_ORIGIN to the exact public HTTPS origin}
+      VOICE_ENABLED: ${VOICE_ENABLED:-false}
+    ports:
+      - "127.0.0.1:${TABLE_PORT:-3001}:3001"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/health/ready').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    deploy:
+      # Documentation plus a guard for orchestrators that honor Compose deploy.
+      # The container_name constraint above enforces this in Docker Compose.
+      replicas: 1
+      restart_policy:
+        condition: on-failure
