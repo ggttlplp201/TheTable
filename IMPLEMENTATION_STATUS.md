@@ -15,8 +15,8 @@
 | Combat and Downed | COMPLETE | Damage, Armor, Downed rescue windows, loot/help/revive, poison pause, death, and fixed-seat expiry are tested. |
 | Shops and chests | COMPLETE | Seeded Public/Black Markets, resale, shopper order, chest persistence/refresh, finite Artifacts, and Black Key guarantee are implemented. |
 | Objectives, exits, scoring | COMPLETE | All objective predicates, readiness, forced banking, privacy, exit ordering, contingencies, and scores are tested. |
-| Spectator and communication | SERVER COMPLETE / UI PARTIAL | Verified god-view projection, private/global chat routing, and voice signaling boundary exist; complete gameplay/chat/spectator UI and media negotiation remain. |
-| Desktop and mobile visuals | FOUNDATION COMPLETE | Responsive lobby/game shell and reusable Three.js scenes/models/post-FX are integrated; full command HUD and playtest polish remain. |
-| Audio and intro sequence | DATA ONLY | Semantic audio map exists; audio assets, playback, mixing, and intro sequence remain. |
-| Deployment | BLOCKED | Requires a hosting target and credentials after the local build is verified. |
-| Full multi-device playtest | NEEDS PLAYTESTING | Deterministic engine and live Socket.IO integration pass; complete browser command surfaces and Playwright multi-device E2E remain. |
+| Spectator and communication | COMPLETE EXCEPT VOICE MEDIA | Verified god view, read-only enforcement, global/private text, voice signaling boundary, Results, and rematch UI are implemented; microphone/WebRTC peer media remains. |
+| Desktop and mobile visuals | FUNCTIONAL / POLISH ACTIVE | Complete command UI, responsive 390px flow, public/private views, and reusable Three.js table/post-FX are integrated. First-person arrival and public event clips remain. |
+| Audio and intro sequence | FUNCTIONAL / COVERAGE ACTIVE | Gesture-gated procedural audio, privacy-aware event routing, persisted mixing, ambience, and a skippable presentation intro exist. The specified 5–8 second spatial intro and exhaustive cue coverage remain. |
+| Deployment | PACKAGED / NOT PROMOTED | Non-root single-owner Docker/Compose package, health checks, origin policy, and smoke scripts are complete. Docker runtime validation and a real hosting target/credentials remain external release gates. |
+| Full multi-device playtest | LOCAL AUTOMATION COMPLETE | Six real-browser scenarios cover desktop/phone admission, privacy, reconnect, Trade, exact deadlines, death/spectator, Results/scoring, and rematch. A deployed four-device playtest remains a release gate. |

@@ -2,34 +2,34 @@
 
 ## Goal
 
-Complete the player-facing gameplay vertical slice on top of the verified engine/server foundation: every legal command must have a clear desktop/mobile control, every private/public projection must render at the correct audience boundary, and a representative multiplayer match must be executable through browser automation.
+Close the remaining presentation and communication gaps from the production brief: a real first-person table-arrival sequence, exhaustive replaceable audio/event feedback, and browser microphone/WebRTC voice built on the existing authoritative signaling boundary.
 
 ## Relevant rules
 
-- The server projection is the only client-visible authority; never infer hidden or stale state.
-- Exactly one Primary Action per normal turn; Free Actions remain available where legal.
-- Trade, Threat, overflow, Downed interaction, Intermission, exit, Results, spectator, chat, reconnect, and rematch states need explicit UI.
-- Private objectives, Pockets, Black Markets, messages, and inspection results render only for the authorized owner; verified spectators receive god view but no action controls.
-- Phone layouts must preserve every action with large targets and no horizontal overflow.
+- Presentation may react to authoritative events but must never mutate, delay, or gate gameplay.
+- The arrival sequence targets 5–8 seconds, uses the supplied room/table language, and is skippable after first viewing.
+- Public cues/clips go only to authorized observers; private inspection/Pocket information remains owner-only.
+- Voice is global only for connected living players. Spectators and inactive players cannot signal or transmit.
+- Missing TURN credentials must degrade clearly to text/audio UI without weakening server authorization.
 
 ## Likely files
 
-`apps/web`, new `qa/e2e` coverage and Playwright configuration, plus isolated audio/deployment packages and reports. Gameplay legality remains in `packages/game`; transport authority remains in `apps/server`.
+`packages/audio`, `packages/visual`, `apps/web` presentation/voice modules, focused tests, and agent reports. Gameplay legality remains in `packages/game`; identity and signaling authorization remain in `apps/server`.
 
 ## Acceptance criteria
 
-- A 2–4 player match can be played from join through Results/rematch using only browser controls.
-- Desktop and 390px phone layouts expose all legal commands without leaking private state.
-- Multi-context E2E covers admission, reconnect rotation, one representative turn/interaction, private projection isolation, exit/death/spectator flow, scoring, and rematch.
-- Sound mappings are replaceable and audience-aware; deployment remains a single authoritative server owner.
+- Match start presents a short first-person walk/chair/settle sequence without blocking commands or authoritative updates.
+- Every material interaction named by the build brief has a centralized public/private-aware cue or an explicit documented visual-only decision.
+- Authoritative public events drive appropriate table clips without exposing covered/private assets.
+- Opt-in browser voice connects living peers through the existing signal gate, with mute/leave/error states and clean teardown.
 
 ## Tests required
 
-Component/adapter tests for command payloads, Playwright desktop/phone contexts, accessibility checks for primary controls, full workspace tests/typechecks/builds, and privacy sentinels at DOM/network boundaries.
+Audio mapping completeness/privacy tests, intro/clip lifecycle tests, WebRTC adapter tests with injected browser doubles, desktop/phone browser smoke, and full workspace tests/typechecks/builds.
 
 ## Non-goals
 
-Changing gameplay rules, introducing distributed room ownership, or tuning prototype balance without playtest evidence.
+Changing gameplay rules, introducing distributed room ownership, selecting or purchasing a TURN/hosting vendor, or tuning prototype balance without playtest evidence.
 
 ## Risk
 

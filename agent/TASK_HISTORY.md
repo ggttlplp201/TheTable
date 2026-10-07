@@ -19,3 +19,12 @@
 - Implemented responsive create/join/lobby/reconnect plus a dynamically loaded Three.js match shell.
 - Verified 107 package tests, full monorepo typechecks, and full production builds; committed each reviewed checkpoint.
 - Opened the next vertical slice for complete gameplay UI, browser E2E, audio/intro, and deployment packaging.
+
+## 2026-10-06 Player-facing production wave
+
+- Implemented the complete authoritative match UI for every command family, private owner state, read-only spectator god view, chat, Results, and host rematch on desktop and 390px phone layouts.
+- Added gesture-gated procedural audio with persisted mute/volume, owner-only private cue routing, silent history priming, room/shop ambience, and safe lifecycle cleanup.
+- Added a non-root single-owner Docker/Compose package with health checks, exact-origin policy, read-only runtime guidance, and smoke/validation scripts.
+- Added six real-browser scenarios covering multi-context admission, reconnect rotation, privacy at DOM/socket/storage boundaries, Trade, exact injected deadlines, permanent death, automatic spectator promotion, scoring, and rematch.
+- Verified 162 workspace tests, full typechecks/builds, six Playwright tests, and packaging policy checks. Docker itself is not installed locally, so image execution remains a promotion gate.
+- Opened the final local presentation wave for the specified first-person intro, exhaustive audio/public-event clips, and browser WebRTC voice.
