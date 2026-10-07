@@ -28,3 +28,12 @@
 - Added six real-browser scenarios covering multi-context admission, reconnect rotation, privacy at DOM/socket/storage boundaries, Trade, exact injected deadlines, permanent death, automatic spectator promotion, scoring, and rematch.
 - Verified 162 workspace tests, full typechecks/builds, six Playwright tests, and packaging policy checks. Docker itself is not installed locally, so image execution remains a promotion gate.
 - Opened the final local presentation wave for the specified first-person intro, exhaustive audio/public-event clips, and browser WebRTC voice.
+
+## 2026-10-06 Final local production wave
+
+- Implemented a deterministic 7.2-second first-person arrival for every assigned seat with footsteps, chair pull/sit/settle, room glance, rematch-aware skip policy, reduced-motion handling, and cleanup.
+- Added bounded public event clips driven only by structured public facts; exact Knife/Pistol and chest-tool presentation no longer parses event prose.
+- Completed the replaceable procedural audio manifest for every authoritative event and canonical item, then connected pre-match opt-in, lobby feedback, accepted local actions, ambience, private inspection cues, and arrival beats to one shared engine.
+- Added opt-in browser WebRTC voice with authenticated presence/signaling, deterministic negotiation, microphone/mute/leave/reconnect lifecycle, post-auth ICE/TURN delivery, and explicit direct-only degradation.
+- Removed a Black Market event-log leak and made event/item receipts unique across rematches.
+- Verified 194 workspace tests, full workspace/E2E typechecks, production builds, six Playwright scenarios, both real-browser UI/presentation smokes, and static deployment packaging. Docker image execution and the deployed four-device playtest remain external gates.

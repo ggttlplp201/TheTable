@@ -55,3 +55,17 @@
 - Reason: The full v13 section 2 is narrower than the earlier concise summary.
 - Affected systems: public projection, spectator projection, action log.
 - Source: authoritative v13 section 2.
+
+## D009 Public presentation metadata
+
+- Decision: Public events may carry a narrow structured `presentation` object only for facts already public after resolution. Black Market purchases carry no item or market metadata; covered Threat items appear only on resolution.
+- Reason: Exact visual/audio feedback must not parse prose or infer secrets from inventory deltas.
+- Affected systems: game events/projections, visual observer, audio routing, privacy tests.
+- Source: build brief interaction/audio requirements reconciled with the v13 owner-private Black Market and Pocket rules.
+
+## D010 Rematch receipt identity
+
+- Decision: Increment a room-local match serial and include it in generated item/event IDs.
+- Reason: Audio receipts, event deduplication, and item identity must not collide when a room rematches and the per-match deterministic counter restarts.
+- Affected systems: deterministic game IDs, audio replay protection, presentation keys, rematch tests.
+- Source: production lifecycle review.

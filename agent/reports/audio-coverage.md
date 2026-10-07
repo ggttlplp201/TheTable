@@ -17,21 +17,22 @@ The local cue catalog covers all canonical content items: Knife, Pistol, Bullet,
 
 `packages/audio/src/audio.test.ts` asserts that the authoritative-event manifest exactly matches the current engine event list, every listed event produces a public cue and a procedural tone, every canonical item has a local cue, and another player's private payload cannot produce a private cue.
 
-## Engine metadata needed for higher-fidelity public clips
+## Structured public metadata integration
 
-The audio layer intentionally uses generic cues for the following facts because `ActionEvent` exposes only `kind`, public prose, actor, and targets. Parsing prose would be brittle and would weaken the privacy boundary.
+The final hub integration added narrow `ActionEvent.presentation` facts so exact public cues never need to parse prose:
 
-- `WEAPON_USED`: add public `itemId`/`weaponKind` to distinguish Knife from Pistol.
-- `PICKPOCKET`: add public `outcome: 'STOLEN' | 'EMPTY_OR_PROTECTED'` if different public resolution cues are desired.
-- `PURCHASE`/`SOLD`: add a public market/category field only if the game rules permit it; do not expose an item ID for a private Black Market purchase.
-- `CHEST_OPENED`: add a public chest kind if Standard and Black chest clips should differ without reading prose.
+- `WEAPON_USED` carries the resolved public weapon item ID.
+- `CHEST_OPENED` carries public chest kind and the publicly used access item.
+- Public Shop purchases and public sales may carry their public item ID.
+- Covered Threat items appear only on resolution, never while the offer is pending.
+- Black Market purchases intentionally carry no item or market metadata and use a generic public log entry/cue.
 
-Until those fields are authoritative, the generic public cues are deliberate and privacy-safe.
+`PICKPOCKET` remains outcome-generic because success versus an empty/protected Pocket is not a public structured fact. That cue is deliberately privacy-safe.
 
-## Hub follow-up: authoritative privacy and semantic data
+## Authoritative privacy and semantic data
 
-- `packages/game/src/actions.ts` emits `PURCHASE` with the purchased item name for both Public and Black Market buys, and public projection forwards event text. If Black Market purchase identity is meant to remain owner-private, that is an engine/projection privacy leak independent of audio; emit a generic public purchase event plus an owner-private item payload instead.
-- `packages/content`'s exported `AUDIO` object is a legacy subset (it omits most engine events and canonical items). `packages/audio/src/mappings.ts` is now the complete runtime source of cue truth. Consolidation would require a content-package change, which was intentionally left outside this task's ownership.
+- The previously reported Black Market public-text leak is fixed and regression-tested.
+- The obsolete partial `packages/content` audio registry was removed. `packages/audio/src/mappings.ts` and `types.ts` are the single complete runtime source of cue truth.
 
 ## Validation
 

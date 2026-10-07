@@ -4,7 +4,8 @@
 
 The repository is a TypeScript workspace with three deployable concerns:
 
-- `packages/game`: deterministic, framework-free content, validation, state transitions, projections, seeded randomness, and tests.
+- `packages/content`: canonical items, roles, objectives, balance constants, and semantic keys.
+- `packages/game`: deterministic, framework-free validation, state transitions, projections, seeded randomness, and tests.
 - `apps/server`: long-running Node server using HTTP plus Socket.IO. It owns rooms, sessions, timers, commands, persistence adapters, chat routing, and WebRTC signaling.
 - `apps/web`: React/Vite client. It renders public/private projections, the Three.js table, responsive overlays, audio, and input. It never decides whether an action is legal.
 
@@ -36,7 +37,9 @@ The supplied `.dc.html` runtime is not shipped. Its `game-kit.js` geometry/mater
 
 ## Persistence
 
-The initial adapter supports in-memory development and Redis production snapshots with TTL. A room snapshot includes state revision, timer deadlines, processed idempotency keys, session-token hashes, and deterministic RNG state. Event logs are append-only within bounded retention. Redis atomic compare-and-set or a single owner process prevents split-brain room writes; horizontal scale uses sticky routing plus distributed room ownership.
+The shipped runtime is intentionally in-memory. A single process owns room state, absolute deadlines, idempotency receipts, session-token hashes, chat, and deterministic RNG state. Restarting or replacing that process loses active matches, so promotion must use exactly one replica and drain active rooms before maintenance.
+
+Durable snapshots, Redis ownership leases/fencing, and multi-replica handoff are future architecture, not implemented capabilities. Sticky routing alone is insufficient for safe horizontal scale.
 
 No permanent user accounts or personal profiles are stored. Private chat is retained only for the match/reconnect window.
 
@@ -71,7 +74,7 @@ Audio uses centralized event-to-cue mappings. Public event cues follow public ev
 
 ## Deployment
 
-Ship one containerized Node service that serves the built client and owns Socket.IO, plus managed Redis for recovery and scale. Terminate TLS at the hosting platform, enable WebSocket upgrades and sticky routing, and expose `/health/live` and `/health/ready`. CI runs typecheck, unit/integration tests, client build, E2E smoke, and image build before promotion.
+Ship one containerized Node service that serves the built client and owns Socket.IO. Keep exactly one replica, terminate TLS at the hosting platform, preserve WebSocket upgrades, and expose `/health/live` and `/health/ready`. CI runs typecheck, unit/integration tests, client build, E2E smoke, and image build before promotion.
 
 Deployment credentials and the final hosting vendor are external operational inputs; the application remains portable through environment variables and adapters.
 

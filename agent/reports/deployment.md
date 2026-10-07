@@ -24,8 +24,8 @@ port publishing, health gating, and two independent one-replica guards:
   `VITE_SERVER_URL` is baked into the image.
 - `/health/live` checks HTTP process liveness. `/health/ready` reflects the room
   runtime's readiness and is the traffic gate.
-- Voice signaling stays disabled by default; enabling it does not add a TURN
-  service or complete microphone infrastructure.
+- Voice remains disabled by default. Enabling it activates opt-in browser WebRTC;
+  reliable restrictive-network connectivity still requires operator-supplied TURN.
 
 ## Persistence and scale limits
 
@@ -79,13 +79,9 @@ image entry command could import `tsx`, `@the-table/game`, and the server module
 The exact entry command also ran locally and returned `{"ok":true}` from both
 health routes plus the existing built HTML document from `/`.
 
-The web production build passed once during this work, then concurrent client
-changes introduced a reproducible blocker: the current
-`pnpm --filter @the-table/web build` reaches `packages/game/src/room.ts` through
-the game package barrel and Vite rejects its server-only `node:crypto`
-`randomBytes` import. The clean pnpm/Docker-stage emulation fails identically.
-This is outside deployment-owned files and must be corrected in the web/package
-boundary before the Dockerfile can complete a current-checkout image build.
+The final current-checkout web and server production builds pass. The browser
+bundle keeps the Three.js runtime in a lazy 519 kB chunk (136 kB gzip), with the
+expected Vite size warning; entry/lobby paths remain in the smaller main chunk.
 
 Docker and Docker Compose were not installed in the local environment, so image
 construction, Compose rendering, container health, read-only execution, and the

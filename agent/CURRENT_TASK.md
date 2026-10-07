@@ -2,35 +2,34 @@
 
 ## Goal
 
-Close the remaining presentation and communication gaps from the production brief: a real first-person table-arrival sequence, exhaustive replaceable audio/event feedback, and browser microphone/WebRTC voice built on the existing authoritative signaling boundary.
+Promote the locally complete build through the external release gate: build/run the image on a Docker-capable host, configure an exact HTTPS origin and optional TURN service, then complete the specified four-device deployed playtest.
 
 ## Relevant rules
 
-- Presentation may react to authoritative events but must never mutate, delay, or gate gameplay.
-- The arrival sequence targets 5–8 seconds, uses the supplied room/table language, and is skippable after first viewing.
-- Public cues/clips go only to authorized observers; private inspection/Pocket information remains owner-only.
-- Voice is global only for connected living players. Spectators and inactive players cannot signal or transmit.
-- Missing TURN credentials must degrade clearly to text/audio UI without weakening server authorization.
+- Keep exactly one authoritative application replica; the current runtime is intentionally in-memory.
+- Terminate TLS before the service and preserve WebSocket upgrades.
+- Supply TURN credentials only if production voice must work across restrictive networks; credentials are delivered only after room authentication.
+- Do not promote until four independent devices complete a full deployed match and rematch.
 
 ## Likely files
 
-`packages/audio`, `packages/visual`, `apps/web` presentation/voice modules, focused tests, and agent reports. Gameplay legality remains in `packages/game`; identity and signaling authorization remain in `apps/server`.
+`Dockerfile`, `deployment/`, `.env.example`, the selected external host/TURN configuration, and the release evidence log. No local feature code is presently required.
 
 ## Acceptance criteria
 
-- Match start presents a short first-person walk/chair/settle sequence without blocking commands or authoritative updates.
-- Every material interaction named by the build brief has a centralized public/private-aware cue or an explicit documented visual-only decision.
-- Authoritative public events drive appropriate table clips without exposing covered/private assets.
-- Opt-in browser voice connects living peers through the existing signal gate, with mute/leave/error states and clean teardown.
+- `deployment/smoke-image.sh` passes on a Docker-capable machine.
+- The deployed HTTPS URL passes health, WebSocket, reconnect, and exact-origin checks.
+- Four independent devices complete create/join, full match lifecycle, voice/text, spectator transition, Results, and rematch.
+- Any release-only issue is reproduced and added to the deterministic local suite before promotion.
 
 ## Tests required
 
-Audio mapping completeness/privacy tests, intro/clip lifecycle tests, WebRTC adapter tests with injected browser doubles, desktop/phone browser smoke, and full workspace tests/typechecks/builds.
+Docker image/Compose smoke, external Playwright smoke, and a recorded four-device playtest. Retain the passing local workspace, E2E, and packaging gates.
 
 ## Non-goals
 
-Changing gameplay rules, introducing distributed room ownership, selecting or purchasing a TURN/hosting vendor, or tuning prototype balance without playtest evidence.
+Changing gameplay rules, introducing distributed room ownership, or tuning balance without playtest evidence.
 
 ## Risk
 
-HIGH
+MEDIUM / EXTERNAL INPUT REQUIRED

@@ -33,7 +33,7 @@ This matrix is the executable-spec backlog for The Table. Test scenarios use a s
 `pnpm test:e2e` runs Playwright against the local server and Vite client with independent browser contexts: one desktop (`1440x900`) and one touch phone (`390x844`). The runnable suite does not sleep for wall-clock deadlines or share browser storage between identities.
 
 1. Desktop creates, phone joins, both claim distinct roles, ready, start, and complete a Trade/Accept interaction. **Passing.**
-2. A replacement phone context reconnects from its persisted token, receives a rotated token, retains its seat, and revokes the abandoned page. **Passing.**
+2. A replacement phone context reconnects from its persisted token, receives a rotated token, retains its seat, and revokes the abandoned page. Concurrent same-token restores caused by React effect replay are coalesced into one request so the one-use credential cannot be consumed twice by one page. **Passing.**
 3. The phone has no horizontal overflow and all entry/lobby primary controls meet the 56px target. **Passing.** Normal-turn skip and Trade auto-Accept now run through the injected scheduler in Playwright, with assertions at deadline minus 1 ms, the exact deadline, and a duplicate advance. **Passing.**
 4. Distinct private objective sentinels are checked against opposite-player DOM, received Socket.IO `room:view` frames, and saved browser storage. **Passing.**
 5. Three isolated browser contexts (including a touch phone) play seed `5424`: two Pistol shots, Downed rescue window across Intermission, permanent death, automatic read-only spectator promotion while the match continues, a 100-point Executioner exit, Results, host rematch, and a second start. **Passing.**

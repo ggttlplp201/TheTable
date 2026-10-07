@@ -28,25 +28,16 @@ The observer primes its first snapshot, deduplicates revisions/sequences, reject
 | PURCHASE / SOLD / TRADE_ACCEPTED / THREAT_COMPLIED | Neutral brass resolution marker at the actor; no inferred asset or coin quantity |
 | EXIT / DEATH | Public character departure around the table perimeter / slump; public life state applies immediately |
 
-## Integration boundaries for the hub
+## Final hub integration
 
-`GameTableScene` accepts optional `viewerId` and `onArrivalBeat`. Omitting viewer identity gives a safe spectator overview. At the last inspection, the existing MatchView call still supplied only `room.public`, so the production call does not activate an assigned-seat intro. The browser harness supplies an explicit viewer to validate the sequence. This task did not infer identity from local storage or public seat order.
+`MatchView` supplies the authenticated viewer identity to `GameTableScene`; spectators omit it and remain in the safe overview. The application-owned, gesture-gated audio engine receives `footstep`, `chair-pull`, `sit`, `chair-settle`, and `table-creak` arrival beats, so the sequence has synchronized procedural sound without creating a second engine.
 
-`onArrivalBeat` exposes `footstep`, `chair-pull`, `sit`, `chair-settle`, and `table-creak` for the existing opt-in audio owner. It does not create a second audio engine. Until that callback is integrated, arrival is visual with semantic cadence hooks, not audible footsteps/chair sounds.
-
-Exact model selection needs structured **public** metadata that ActionEvent currently lacks:
-
-- WEAPON_USED: a public `itemId` after a weapon is actually used, for Knife versus Pistol.
-- CHEST_OPENED: public `chestKind` and the publicly used `itemId`, for Key/Lockpick/Crowbar/Black Key clips.
-- PURCHASE/SOLD: public resolved `itemId` and `market` if exact item/market feedback is desired; never unpurchased private offers.
-- Covered Threat: explicit publicly revealed item metadata only on resolution, never on the offer. No covered item is animated by this implementation.
-
-The current conservative cues work without those additions. The task's initial request to the hub for a MatchView integration change was rejected by automatic approval review because MatchView was explicitly outside this task's scope. A subsequent boundary-only report was delivered; no cross-scope edit or workaround was performed.
+The authority layer now emits deliberately narrow public `ActionEvent.presentation` metadata for resolved public facts: used weapon, chest kind and tool, Public Shop purchase, sale, and the revealed item after a covered Threat resolves. Black Market purchases expose no item or market metadata, and unresolved or cancelled covered Threats expose no covered item. The observer uses these fields for exact public clips and never parses event prose or infers private state.
 
 ## Verification
 
 - Visual package: 11 tests across 2 files pass, including all-seat path continuity, exact overview restoration, beat deduplication, skip/disposal and existing model/resource coverage.
-- Web package: 67 tests across 7 files passed at the latest run, including 9 presentation tests for privacy, replay/stale snapshots, chest transitions, bounded effects, absolute impact pose and intro/rematch policy. Counts also include concurrent voice-owner tests.
+- Web package: 70 tests across 7 files pass, including 10 presentation tests for privacy, replay/stale snapshots, chest transitions, bounded effects, absolute impact pose and intro/rematch policy. Counts also include voice ownership and reconnect-race coverage.
 - Visual/web typechecks and production builds pass with the corrected intro policy. `git diff --check` passes for all owned files.
 - Presentation browser smoke covers the full cadence, first-view completion, rematch/skip, reload policy, updates during arrival, usable adjacent command control, same-canvas updates, chest/shop/life clips, 390px phone, reduced motion, context-loss fallback and teardown. Existing gameplay browser smoke also passed for real UI command payloads, phone/desktop overflow and spectator controls.
 - Captures inspected: `/tmp/table-arrival-approach.png`, `/tmp/table-arrival-chair.png`, `/tmp/table-presentation-overview.png`, `/tmp/table-presentation-phone.png`.
