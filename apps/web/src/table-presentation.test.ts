@@ -44,6 +44,17 @@ describe('authoritative public presentation boundary', () => {
     view.chests![0]!.availability = 'OPENED'; event(view, 'CHEST_OPENED');
     expect(observer.observe(view, now)).toEqual([{ type: 'chest', kind: 'STANDARD' }]);
   });
+  it('uses only structured public metadata for exact weapon and chest-tool clips', () => {
+    const view = room(), observer = new PublicPresentationObserver(); observer.observe(view, now);
+    event(view, 'WEAPON_USED', { presentation: { itemId: 'pistol' } });
+    view.chests!.push({ kind: 'BLACK', availability: 'OPENED' });
+    event(view, 'CHEST_OPENED', { presentation: { itemId: 'black-key', chestKind: 'BLACK' } });
+    expect(observer.observe(view, now)).toEqual([
+      { type: 'item', itemId: 'pistol', playerId: 'p1' },
+      { type: 'item', itemId: 'blackKey', playerId: 'p1' },
+      { type: 'chest', kind: 'BLACK' },
+    ]);
+  });
   it('maps public health/life/shop cues without inventing an item for an exchange', () => {
     const view = room(), observer = new PublicPresentationObserver(); observer.observe(view, now);
     for (const kind of ['ARMOR_BLOCKED', 'POISON_CURED', 'EXIT', 'DEATH', 'INTERMISSION', 'PURCHASE']) event(view, kind);

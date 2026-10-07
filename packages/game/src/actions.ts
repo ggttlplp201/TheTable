@@ -101,7 +101,8 @@ export function resolveThreat(room: RoomState, comply: boolean, now: number, can
     else if (validWeapon) attack(room, actor, target, committed, now, proposal.useQuickDraw);
     room.match!.history.threats.push({ actorId: actor.id, targetId: target.id, complied: comply, covered: proposal.mode === 'COVERED', validWeapon, assetsReceived: comply && (proposal.demandedItems.length > 0 || proposal.demandedCoins > 0) });
   }
-  event(room, now, cancelled ? 'THREAT_CANCELLED' : comply ? 'THREAT_COMPLIED' : 'THREAT_REFUSED', `${cancelled ? 'Threat cancelled.' : `${target.name} ${comply ? 'complied' : 'refused'}.`}${proposal.mode === 'COVERED' ? ` The covered item was ${ITEM_BY_ID[committed.itemId]!.name}.` : ''}`, actor.id, [target.id]);
+  event(room, now, cancelled ? 'THREAT_CANCELLED' : comply ? 'THREAT_COMPLIED' : 'THREAT_REFUSED', `${cancelled ? 'Threat cancelled.' : `${target.name} ${comply ? 'complied' : 'refused'}.`}${proposal.mode === 'COVERED' ? ` The covered item was ${ITEM_BY_ID[committed.itemId]!.name}.` : ''}`, actor.id, [target.id], undefined,
+    !cancelled && proposal.mode === 'COVERED' ? { itemId: committed.itemId } : undefined);
   delete room.pendingThreat; resumeTurn(room, now);
 }
 
@@ -169,7 +170,7 @@ export function useItem(room: RoomState, actor: PlayerState, command: Extract<Ga
       const contents = chest.loot; chest.loot = []; chest.availability = 'OPENED'; chest.refreshRound = room.round!.number + (kind === 'STANDARD' ? 1 : 2);
       for (const entry of contents) if (entry.kind === 'COINS') actor.inventory.coins += entry.amount; else acquire(room, actor, entry.stack, now);
       room.match!.history.chests.push({ actorId: actor.id, kind });
-      event(room, now, 'CHEST_OPENED', `${actor.name} opened the ${kind === 'STANDARD' ? 'Standard' : 'Black'} Chest.`, actor.id); return;
+      event(room, now, 'CHEST_OPENED', `${actor.name} opened the ${kind === 'STANDARD' ? 'Standard' : 'Black'} Chest.`, actor.id, [], undefined, { itemId: item.itemId, chestKind: kind }); return;
     }
     default: requireRule(false, 'INVALID_COMMAND', 'This item has no normal-turn use.');
   }
@@ -222,7 +223,7 @@ export function shopAction(room: RoomState, actor: PlayerState, command: GameCom
       const purchaseDescription = publicBuy
         ? `${actor.name} purchased ${ITEM_BY_ID[offer.itemId]!.name} from the Public Shop.`
         : `${actor.name} purchased an item.`;
-      event(room, now, 'PURCHASE', purchaseDescription, actor.id); return;
+      event(room, now, 'PURCHASE', purchaseDescription, actor.id, [], undefined, publicBuy ? { itemId: offer.itemId, market: 'PUBLIC' } : undefined); return;
     }
     case 'SELL': {
       requireRule(!shop.boughtBy[actor.id], 'NOT_ELIGIBLE', 'Sell before making purchases.');
@@ -230,7 +231,7 @@ export function shopAction(room: RoomState, actor: PlayerState, command: GameCom
       requireRule(ITEM_BY_ID[item.itemId]!.basePrice !== null, 'NOT_ELIGIBLE', 'Artifacts and Passage Token cannot be sold.');
       actor.inventory.coins += resalePrice(item.itemId, actor.roleId === 'broker') * item.quantity;
       removeItem(actor, item.instanceId); syncEquipment(room, actor, now);
-      event(room, now, 'SOLD', `${actor.name} sold ${ITEM_BY_ID[item.itemId]!.name}.`, actor.id); return;
+      event(room, now, 'SOLD', `${actor.name} sold ${ITEM_BY_ID[item.itemId]!.name}.`, actor.id, [], undefined, { itemId: item.itemId }); return;
     }
     case 'POCKET': {
       const item = owned(actor, command.instanceId, true);

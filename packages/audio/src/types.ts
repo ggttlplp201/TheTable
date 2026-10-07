@@ -116,6 +116,7 @@ export interface ProjectedAudioEvent {
   kind: string;
   actorId?: string;
   targetIds?: readonly string[];
+  presentation?: { itemId?: string; chestKind?: 'STANDARD' | 'BLACK'; market?: 'PUBLIC' };
   privatePayloads?: Readonly<Record<string, unknown>>;
 }
 

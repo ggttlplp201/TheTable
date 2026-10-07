@@ -27,6 +27,11 @@ const ITEM_EVENTS: Readonly<Record<string, PresentationClipId>> = {
   POISON_APPLIED: 'poison', ARMOR_BLOCKED: 'armor', HANDCUFFED: 'handcuffs',
 };
 
+const PUBLIC_ITEM_CLIPS: Readonly<Record<string, PresentationClipId>> = {
+  knife: 'knife', pistol: 'pistol', bullet: 'bullet', poison: 'poison', medicine: 'medicine', antidote: 'antidote', armor: 'armor', cloth: 'cloth', bag: 'bag', safe: 'safe', spyglass: 'spyglass', pickpocket: 'pickpocket', key: 'key', lockpick: 'lockpick', crowbar: 'crowbar', 'black-key': 'blackKey', handcuffs: 'handcuffs', 'passage-token': 'passageToken',
+};
+const STRUCTURED_ITEM_EVENTS = new Set(['WEAPON_USED', 'CHEST_OPENED', 'PURCHASE', 'SOLD', 'THREAT_COMPLIED', 'THREAT_REFUSED']);
+
 export function publicImpactTilt(life: PublicRoomView['players'][number]['life'], seconds: number): number {
   const base = life === 'DOWNED' ? 0.25 : 0;
   return base + Math.sin(Math.PI * Math.max(0, Math.min(0.6, seconds)) / 0.6) * 0.12;
@@ -58,12 +63,16 @@ export class PublicPresentationObserver {
       const target = event.targetIds.find(id => publicIds.has(id));
       const itemId = ITEM_EVENTS[event.kind];
       if (itemId && (actor || target)) cues.push({ type: 'item', itemId, playerId: (event.kind === 'ARMOR_BLOCKED' ? target : actor) ?? actor ?? target! });
+      const structuredItem = event.presentation?.itemId ? PUBLIC_ITEM_CLIPS[event.presentation.itemId] : undefined;
+      if (structuredItem && actor && STRUCTURED_ITEM_EVENTS.has(event.kind)) cues.push({ type: 'item', itemId: structuredItem, playerId: actor });
       if ((event.kind === 'DAMAGE' || event.kind === 'POISON_DAMAGE') && target) cues.push({ type: 'impact', playerId: target });
       if (event.kind === 'EXIT' && actor) cues.push({ type: 'exit', playerId: actor });
       if (event.kind === 'DEATH' && target) cues.push({ type: 'death', playerId: target });
       if (event.kind === 'INTERMISSION') cues.push({ type: 'shop' });
       if (['PURCHASE', 'SOLD', 'TRADE_ACCEPTED', 'THREAT_COMPLIED'].includes(event.kind) && actor) cues.push({ type: 'exchange', playerId: actor });
       if (event.kind === 'CHEST_OPENED') {
+        const structuredKind = event.presentation?.chestKind;
+        if (structuredKind && room.chests?.some(chest => chest.kind === structuredKind && chest.availability === 'OPENED')) cues.push({ type: 'chest', kind: structuredKind });
         for (const chest of room.chests ?? []) {
           if (chest.availability === 'OPENED' && this.chestStates.get(chest.kind) === 'AVAILABLE' && !cues.some(cue => cue.type === 'chest' && cue.kind === chest.kind)) cues.push({ type: 'chest', kind: chest.kind });
         }

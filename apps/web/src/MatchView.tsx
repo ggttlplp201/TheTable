@@ -1,18 +1,55 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { AUDIO_CUE_IDS, createAudioEngine, type AudioEngine } from '@the-table/audio';
+import type { ArrivalBeat } from '@the-table/visual';
 import type { AnyRoomView, ClientError, PlayerCommand, VoiceCapability } from './protocol';
 import { isSpectatorView } from './protocol';
 import type { TableClient } from './socket';
 import { dispatchRequest, type ActionRequest } from './action-request';
-import { canRematch, commandEnvelope, hasCapability, playerName } from './gameplay';
+import { canRematch, commandEnvelope, hasCapability, ownItems, playerName, presentItems } from './gameplay';
 import { GameTableScene } from './GameTableScene';
 import { ChestPanel, EventLog, MatchHeader, OverflowDecision, PendingInteraction, PlayerRoster, PrivateDetail, Results, SpectatorDetails } from './MatchPanels';
 import { Markets, ReadOnlyPublicShop, TurnActions } from './ActionForms';
 import { VoicePanel } from './VoicePanel';
 
 /** Keep an uncertain submission intact until it can be retried with the same receipt key. */
-export function useMatchActions({ client, room, connected, viewerId, onView }: { client: TableClient; room: AnyRoomView; connected: boolean; viewerId: string; onView: (view: AnyRoomView) => void }) {
+export function playAcceptedActionAudio(engine: Pick<AudioEngine, 'play' | 'playItem'>, room: AnyRoomView, request: ActionRequest): void {
+  if (request.kind === 'chat') { engine.play(AUDIO_CUE_IDS.uiConfirm); return; }
+  if (request.kind === 'rematch') { engine.play(AUDIO_CUE_IDS.lobbyMatch); return; }
+  const command = { type: request.payload.type, ...request.payload.payload } as PlayerCommand;
+  if (isSpectatorView(room)) return;
+  const own = ownItems(room);
+  const publicItems = room.public.players.flatMap(player => presentItems(player.visibleInventory));
+  const itemId = (instanceId: string) => own.find(item => item.instanceId === instanceId)?.itemId ?? publicItems.find(item => item.instanceId === instanceId)?.itemId;
+  const playInstance = (instanceId: string) => { const id = itemId(instanceId); if (id) engine.playItem(id); };
+  switch (command.type) {
+    case 'USE_ITEM':
+      playInstance(command.instanceId);
+      if (itemId(command.instanceId) === 'pistol' && own.some(item => item.itemId === 'bullet')) engine.playItem('bullet');
+      return;
+    case 'POCKET': engine.play(AUDIO_CUE_IDS.uiPocket); playInstance(command.instanceId); return;
+    case 'ASSIGN_SAFE': engine.playItem('safe'); return;
+    case 'BUY': {
+      const offers = command.market === 'PUBLIC' ? room.public.shop?.publicOffers : room.private.blackMarket;
+      const offer = offers?.find(candidate => candidate.id === command.offerId);
+      engine.play(AUDIO_CUE_IDS.uiCoins); if (offer) engine.playItem(offer.itemId); return;
+    }
+    case 'SELL': playInstance(command.instanceId); engine.play(AUDIO_CUE_IDS.uiCoins); return;
+    case 'THREAT': if (command.mode === 'COVERED') engine.playItem('cloth'); return;
+    case 'DOWNED_INTERACTION': case 'LOOT_DOWNED': playInstance(command.instanceId); return;
+    case 'OVERFLOW_CHOICE': {
+      const incoming = room.private.overflows?.find(choice => choice.id === command.overflowId)?.incoming;
+      if (incoming) engine.playItem(incoming.itemId); else engine.play(AUDIO_CUE_IDS.uiInventory);
+      return;
+    }
+    case 'REROLL_MARKET': engine.playItem('brass-idol'); return;
+    case 'FINISH_SHOPPING': engine.play(AUDIO_CUE_IDS.shop); return;
+    case 'END_TURN': engine.play(AUDIO_CUE_IDS.uiSetDown); return;
+    default: return;
+  }
+}
+
+export function useMatchActions({ client, room, connected, viewerId, onView, onAccepted }: { client: TableClient; room: AnyRoomView; connected: boolean; viewerId: string; onView: (view: AnyRoomView) => void; onAccepted?: (request: ActionRequest) => void }) {
   const [pending, setPending] = useState(false);
   const [uncertain, setUncertain] = useState<ActionRequest>();
   const [error, setError] = useState<ClientError>();
@@ -42,6 +79,7 @@ export function useMatchActions({ client, room, connected, viewerId, onView }: {
       }
       outstanding.current = undefined;
       setUncertain(undefined);
+      onAccepted?.(request);
       setNotice(request.kind === 'chat' ? 'Message sent.' : request.kind === 'rematch' ? 'Returning to the lobby.' : 'Action confirmed.');
       return true;
     } catch {
@@ -94,7 +132,7 @@ export function ChatPanel({ room, sendChat, busy }: { room: AnyRoomView; sendCha
   </section>;
 }
 
-function AudioControls({ engine, started, onStart, introState, onSkip }: { engine: AudioEngine; started: boolean; onStart: () => void; introState: ReturnType<AudioEngine['intro']['state']>; onSkip: () => void }) {
+function AudioControls({ engine, started, onStart }: { engine: AudioEngine; started: boolean; onStart: () => void }) {
   const [audioState, setAudioState] = useState(engine.state());
   const refresh = () => setAudioState(engine.state());
   return <section className="panel audio-panel" aria-label="Audio">
@@ -104,9 +142,16 @@ function AudioControls({ engine, started, onStart, introState, onSkip }: { engin
       <label className="check-row"><input type="checkbox" checked={audioState.muted} disabled={!started} onChange={event => { engine.setMuted(event.target.checked); refresh(); }} /><span>Mute</span></label>
       <label>Volume<input type="range" min="0" max="1" step="0.01" value={audioState.volume} disabled={!started} onChange={event => { engine.setVolume(Number(event.target.value)); refresh(); }} /></label>
     </div>
-    {started && (introState.phase === 'PLAYING' || introState.phase === 'ARMED') && <div className="intro-notice" role="status"><span>{introState.phase === 'PLAYING' ? 'The table is taking shape…' : 'Intro ready.'}</span><button className="button quiet" type="button" onClick={onSkip}>Skip intro</button></div>}
   </section>;
 }
+
+const ARRIVAL_AUDIO: Record<ArrivalBeat, (typeof AUDIO_CUE_IDS)[keyof typeof AUDIO_CUE_IDS]> = {
+  footstep: AUDIO_CUE_IDS.footstep,
+  'chair-pull': AUDIO_CUE_IDS.chair,
+  sit: AUDIO_CUE_IDS.chair,
+  'chair-settle': AUDIO_CUE_IDS.chair,
+  'table-creak': AUDIO_CUE_IDS.tableSettle,
+};
 
 export function feedNewAudioEvents(
   engine: Pick<AudioEngine, 'handleEvent'>,
@@ -122,25 +167,29 @@ export function feedNewAudioEvents(
     const key = event.id || `sequence:${event.sequence}`;
     if (observed.has(key)) continue;
     observed.add(key);
+    if (observed.size > 512) observed.delete(observed.values().next().value!);
     if (!active || event.kind === 'MATCH_STARTED') continue;
     const payload = privateByEvent.get(event.id);
     engine.handleEvent(payload === undefined ? event : { ...event, privatePayloads: { [viewerId]: payload } }, isSpectatorView(room) ? undefined : viewerId);
   }
 }
 
-function useMatchAudio(room: AnyRoomView, viewerId: string) {
+function useMatchAudio(room: AnyRoomView, viewerId: string, supplied?: { engine: AudioEngine; started: boolean; start: () => void }) {
   const engineRef = useRef<AudioEngine | undefined>(undefined);
-  if (!engineRef.current) engineRef.current = createAudioEngine();
-  const engine = engineRef.current;
-  const [started, setStarted] = useState(false);
-  const [introState, setIntroState] = useState(() => engine.intro.arm());
+  if (!supplied && !engineRef.current) engineRef.current = createAudioEngine();
+  const engine = supplied?.engine ?? engineRef.current!;
+  const ownsEngine = supplied === undefined;
+  const [localStarted, setLocalStarted] = useState(false);
+  const started = supplied?.started ?? localStarted;
   const ambienceRef = useRef<'room' | 'shop' | undefined>(undefined);
   const observedEventsRef = useRef(new Set<string>());
+  const projectionPrimedRef = useRef(false);
 
-  useEffect(() => () => { void engine.dispose(); }, [engine]);
+  useEffect(() => () => { if (ownsEngine) void engine.dispose(); }, [engine, ownsEngine]);
 
   useEffect(() => {
-    feedNewAudioEvents(engine, room, viewerId, observedEventsRef.current, started);
+    feedNewAudioEvents(engine, room, viewerId, observedEventsRef.current, started && projectionPrimedRef.current);
+    projectionPrimedRef.current = true;
   }, [engine, room, viewerId, started]);
 
   useEffect(() => {
@@ -152,27 +201,21 @@ function useMatchAudio(room: AnyRoomView, viewerId: string) {
     if (phase) engine.startAmbience(phase);
   }, [engine, room.public.round?.phase, room.public.status, started]);
 
-  useEffect(() => {
-    if (!started || introState.phase !== 'PLAYING') return;
-    const timer = window.setInterval(() => setIntroState(engine.intro.tick()), 100);
-    return () => window.clearInterval(timer);
-  }, [engine, introState.phase, started]);
-
   const start = () => {
+    if (supplied) { supplied.start(); return; }
     if (started) return;
     void engine.start().then(() => {
-      setStarted(true);
-      setIntroState(engine.intro.start());
-      engine.play(AUDIO_CUE_IDS.intro);
+      setLocalStarted(true);
+      engine.play(AUDIO_CUE_IDS.uiConfirm);
     });
   };
-  const skip = () => setIntroState(engine.intro.skip());
-  return { engine, started, introState, start, skip };
+  return { engine, started, start };
 }
 
-export function MatchView({ room, client, connected, viewerId, voice, onView }: { room: AnyRoomView; client: TableClient; connected: boolean; viewerId: string; voice: VoiceCapability; onView: (view: AnyRoomView) => void }) {
-  const audio = useMatchAudio(room, viewerId);
-  const action = useMatchActions({ client, room, connected, viewerId, onView });
+export function MatchView({ room, client, connected, viewerId, voice, audioEngine, audioStarted, onEnableAudio, onView }: { room: AnyRoomView; client: TableClient; connected: boolean; viewerId: string; voice: VoiceCapability; audioEngine?: AudioEngine; audioStarted?: boolean; onEnableAudio?: () => void; onView: (view: AnyRoomView) => void }) {
+  const suppliedAudio = audioEngine && audioStarted !== undefined && onEnableAudio ? { engine: audioEngine, started: audioStarted, start: onEnableAudio } : undefined;
+  const audio = useMatchAudio(room, viewerId, suppliedAudio);
+  const action = useMatchActions({ client, room, connected, viewerId, onView, onAccepted: request => { if (audio.started) playAcceptedActionAudio(audio.engine, room, request); } });
   const spectator = isSpectatorView(room);
   const results = room.public.status === 'RESULTS';
   const intermission = room.public.round?.phase === 'INTERMISSION';
@@ -185,14 +228,14 @@ export function MatchView({ room, client, connected, viewerId, voice, onView }: 
     <PendingInteraction room={room} send={action.send} busy={action.busy} />
     {!spectator && <OverflowDecision room={room} send={action.send} busy={action.busy} />}
     <div className="match-columns">
-      <div className="table-column"><GameTableScene room={room.public} />
+      <div className="table-column"><GameTableScene room={room.public} viewerId={spectator ? undefined : viewerId} onArrivalBeat={beat => { if (audio.started) audio.engine.play(ARRIVAL_AUDIO[beat]); }} />
         {results ? <Results room={room} /> : <PlayerRoster room={room.public} viewerId={viewerId} />}
         <ChestPanel room={room} />
         {spectator && intermission && <ReadOnlyPublicShop room={room} />}
         <EventLog room={room.public} />
       </div>
       <div className="controls-column">
-        {!spectator && <AudioControls engine={audio.engine} started={audio.started} onStart={audio.start} introState={audio.introState} onSkip={audio.skip} />}
+        {!spectator && <AudioControls engine={audio.engine} started={audio.started} onStart={audio.start} />}
         {!spectator && <VoicePanel room={room} client={client} connected={connected} viewerId={viewerId} capability={voice} />}
         {results && <section className="panel"><h2>Another round?</h2>{canRematch(room, viewerId) ? <><p className="muted">Return everyone to the lobby with the same names and seats. Each player readies up again.</p><button className="button primary full-width" disabled={action.busy} onClick={() => void action.rematch()}>Rematch</button></> : <p className="muted">Waiting for the host to open a rematch.</p>}</section>}
         {spectator ? <SpectatorDetails room={room} /> : <>

@@ -1,6 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { ChatPanel, MatchView, feedNewAudioEvents } from './MatchView';
+import { AUDIO_CUE_IDS } from '@the-table/audio';
+import { ChatPanel, MatchView, feedNewAudioEvents, playAcceptedActionAudio } from './MatchView';
+import { commandEnvelope } from './gameplay';
 import { DownedForm, Markets, ThreatForm, TradeForm, TurnActions, UseItemForm } from './ActionForms';
 import { ChestPanel, OverflowDecision, PendingInteraction, Results, SpectatorDetails } from './MatchPanels';
 import { ownerRoom, spectatorRoom } from './test-fixtures';
@@ -26,6 +28,19 @@ describe('authorized match components', () => {
     feedNewAudioEvents(engine, room, 'p1', observed, true);
     expect(handleEvent).toHaveBeenCalledTimes(1);
     expect(handleEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 'turn-start' }), 'p1');
+  });
+
+  it('routes accepted owner-authorized item, ammunition, Pocket, and market feedback', () => {
+    const room = ownerRoom();
+    room.public.players[0]!.visibleInventory[2] = { instanceId: 'p1-bullet', itemId: 'bullet', quantity: 1 };
+    room.private.blackMarket = [{ id: 'private-offer', itemId: 'safe', price: 5 }];
+    const engine = { play: vi.fn(), playItem: vi.fn() };
+    playAcceptedActionAudio(engine, room, { kind: 'command', payload: commandEnvelope({ type: 'USE_ITEM', instanceId: 'p1-pistol', targetId: 'p2' }, room.public, 'use') });
+    playAcceptedActionAudio(engine, room, { kind: 'command', payload: commandEnvelope({ type: 'POCKET', instanceId: 'p1-cloth', pocketIndex: 0 }, room.public, 'pocket') });
+    playAcceptedActionAudio(engine, room, { kind: 'command', payload: commandEnvelope({ type: 'BUY', market: 'BLACK', offerId: 'private-offer' }, room.public, 'buy') });
+    expect(engine.playItem.mock.calls.map(([cue]) => cue)).toEqual(['pistol', 'bullet', 'cloth', 'safe']);
+    expect(engine.play).toHaveBeenCalledWith(AUDIO_CUE_IDS.uiPocket);
+    expect(engine.play).toHaveBeenCalledWith(AUDIO_CUE_IDS.uiCoins);
   });
 
   it('renders own Pockets, objective, public inventory and authorized chat without inventing secrets', () => {

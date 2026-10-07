@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RoleId } from '@the-table/game';
+import { AUDIO_CUE_IDS, createAudioEngine } from '@the-table/audio';
 import { isSpectatorView, ROLE_COPY, ROLES, type AnyRoomView, type ClientError, type RoomView, type SessionPayload, type SessionSnapshot, type VoiceCapability } from './protocol';
 import { TableClient } from './socket';
 import { MatchView } from './MatchView';
@@ -34,6 +35,9 @@ function saveSession(snapshot: SessionSnapshot) {
 
 export function App() {
   const [client] = useState(() => new TableClient());
+  const [audio] = useState(() => createAudioEngine());
+  const [audioStarted, setAudioStarted] = useState(false);
+  const [audioUnavailable, setAudioUnavailable] = useState(false);
   const restoreGate = useRef(new ConnectionRestoreGate());
   const skipRestore = useRef(false);
   const [sessionReady, setSessionReady] = useState(false);
@@ -49,6 +53,15 @@ export function App() {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<ClientError>();
 
+  useEffect(() => () => { void audio.dispose(); }, [audio]);
+
+  const enableAudio = () => {
+    if (audioStarted || audioUnavailable) return;
+    void audio.start()
+      .then(() => { setAudioStarted(true); audio.play(AUDIO_CUE_IDS.uiConfirm); })
+      .catch(() => setAudioUnavailable(true));
+  };
+
   useEffect(() => {
     let cancelled = false;
     const restore = async (generation: number) => {
@@ -61,6 +74,14 @@ export function App() {
         }
         setScreen('connecting');
         const response = await client.reconnect(session.code, session.reconnectToken);
+        // Persist rotation even if an effect replay superseded this render. The
+        // transport coalesces same-token reconnects, so no accepted credential is
+        // lost between StrictMode cleanup and its replacement effect.
+        if (response.ok) {
+          const next = response.data.view;
+          const id = response.data.playerId ?? next.viewerPlayerId ?? (!isSpectatorView(next) ? next.private.playerId : undefined);
+          if (id) saveSession({ code: next.public.code, reconnectToken: response.data.reconnectToken, playerId: id });
+        }
         if (cancelled || !restoreGate.current.isCurrent(generation)) return;
         if (!response.ok) {
           window.localStorage.removeItem(STORAGE_KEY);
@@ -146,7 +167,7 @@ export function App() {
     setError(undefined);
     const response = entryMode === 'create' ? await client.create(name) : await client.join(joinCode, name);
     setWorking(false);
-    if (response.ok) applySession(response.data);
+    if (response.ok) { applySession(response.data); if (audioStarted) audio.play(AUDIO_CUE_IDS.lobbyJoin); }
     else setError(response.error);
   }
 
@@ -156,7 +177,7 @@ export function App() {
     setError(undefined);
     const response = await client.claimRole(roleId, idempotencyKey(), room?.public.revision);
     setWorking(false);
-    if (!response.ok) setError(response.error);
+    if (!response.ok) setError(response.error); else if (audioStarted) audio.play(AUDIO_CUE_IDS.uiSelect);
   }
 
   async function toggleReady() {
@@ -165,7 +186,7 @@ export function App() {
     setError(undefined);
     const response = await client.ready(!currentPlayer.ready, idempotencyKey(), room.public.revision);
     setWorking(false);
-    if (!response.ok) setError(response.error);
+    if (!response.ok) setError(response.error); else if (audioStarted) audio.play(AUDIO_CUE_IDS.lobbyReady);
   }
 
   async function startMatch() {
@@ -174,14 +195,16 @@ export function App() {
     setError(undefined);
     const response = await client.start(idempotencyKey(), room.public.revision);
     setWorking(false);
-    if (!response.ok) setError(response.error);
+    if (!response.ok) setError(response.error); else if (audioStarted) audio.play(AUDIO_CUE_IDS.lobbyMatch);
   }
 
-  if (screen === 'connecting' && !view) return <LoadingView connected={connected} error={error} onContinue={() => setScreen('entry')} />;
-  if (screen === 'entry') return <EntryView mode={entryMode} setMode={setEntryMode} name={name} setName={setName} joinCode={joinCode} setJoinCode={setJoinCode} error={error} working={working} connected={connected} onSubmit={submitEntry} />;
-  if (view && view.public.status !== 'LOBBY' && playerId) return <Shell connected={connected}><MatchView room={view} client={client} connected={connected && sessionReady} viewerId={playerId} voice={voice} onView={applyView} /></Shell>;
-  if (!room || !currentPlayer) return <LoadingView connected={connected} error={error} onContinue={() => setScreen('entry')} />;
-  return <LobbyView room={room} currentPlayerId={currentPlayer.id} isHost={isHost} canStart={canStart} connected={connected} working={working} error={error} onClaim={claimRole} onReady={toggleReady} onStart={startMatch} />;
+  let content: React.ReactNode;
+  if (screen === 'connecting' && !view) content = <LoadingView connected={connected} error={error} onContinue={() => setScreen('entry')} />;
+  else if (screen === 'entry') content = <EntryView mode={entryMode} setMode={setEntryMode} name={name} setName={setName} joinCode={joinCode} setJoinCode={setJoinCode} error={error} working={working} connected={connected} onSubmit={submitEntry} />;
+  else if (view && view.public.status !== 'LOBBY' && playerId) content = <Shell connected={connected}><MatchView room={view} client={client} connected={connected && sessionReady} viewerId={playerId} voice={voice} audioEngine={audio} audioStarted={audioStarted} onEnableAudio={enableAudio} onView={applyView} /></Shell>;
+  else if (!room || !currentPlayer) content = <LoadingView connected={connected} error={error} onContinue={() => setScreen('entry')} />;
+  else content = <LobbyView room={room} currentPlayerId={currentPlayer.id} isHost={isHost} canStart={canStart} connected={connected} working={working} error={error} onClaim={claimRole} onReady={toggleReady} onStart={startMatch} />;
+  return <>{!audioStarted && <button className="button quiet global-audio" type="button" disabled={audioUnavailable} onClick={enableAudio}>{audioUnavailable ? 'Sound unavailable' : 'Enable sound'}</button>}{content}</>;
 }
 
 function Shell({ children, connected }: { children: React.ReactNode; connected: boolean }) {

@@ -42,7 +42,7 @@ export function attack(room: RoomState, actor: PlayerState, target: PlayerState,
     if (quickDraw || !bullet) actor.abilities!.quickDrawUsed = true;
     else consume(room, actor, bullet, now);
   }
-  event(room, now, 'WEAPON_USED', `${actor.name} used ${ITEM_BY_ID[weapon.itemId]!.name}.`, actor.id, [target.id]);
+  event(room, now, 'WEAPON_USED', `${actor.name} used ${ITEM_BY_ID[weapon.itemId]!.name}.`, actor.id, [target.id], undefined, { itemId: weapon.itemId });
   damage(room, actor, target, Number(ITEM_BY_ID[weapon.itemId]!.effect.damage), now, true);
 }
 export function revive(room: RoomState, actor: PlayerState, target: PlayerState, medicine: ItemStack, now: number): void {

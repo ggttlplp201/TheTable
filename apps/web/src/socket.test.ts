@@ -53,6 +53,24 @@ describe('TableClient', () => {
     expect(transport.socket.emit).toHaveBeenCalledWith('room:spectate', {}, expect.any(Function));
   });
 
+  it('coalesces concurrent reconnects that use the same one-time token', async () => {
+    const client = new TableClient('http://table.test');
+
+    const first = client.reconnect('ABC123', 'single-use-token');
+    const replay = client.reconnect('ABC123', 'single-use-token');
+
+    expect(replay).toBe(first);
+    expect(transport.socket.emit).toHaveBeenCalledTimes(1);
+    expect(transport.socket.emit).toHaveBeenCalledWith('room:reconnect', {
+      code: 'ABC123',
+      reconnectToken: 'single-use-token',
+    }, expect.any(Function));
+    await first;
+
+    await client.reconnect('ABC123', 'single-use-token');
+    expect(transport.socket.emit).toHaveBeenCalledTimes(2);
+  });
+
   it('uses explicit opt-in presence before browser voice signaling', async () => {
     const client = new TableClient('http://table.test');
 

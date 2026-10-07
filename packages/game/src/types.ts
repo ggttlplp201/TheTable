@@ -74,6 +74,8 @@ export interface RoomState {
   players: PlayerState[];
   createdAt: number;
   updatedAt: number;
+  /** Monotonic within a room so receipts and presentation IDs never collide across rematches. */
+  matchSerial?: number;
   round?: RoundState;
   turn?: TurnState;
   pendingTrade?: TradeProposal;
@@ -241,6 +243,12 @@ export interface OverflowChoice {
   incoming: ItemStack;
   deadlineAt: number;
 }
+/** Public, structured facts that presentation/audio may consume without parsing prose. */
+export interface ActionEventPresentation {
+  itemId?: string;
+  chestKind?: ChestState['kind'];
+  market?: 'PUBLIC';
+}
 export interface ActionEvent {
   id: string;
   sequence: number;
@@ -249,6 +257,7 @@ export interface ActionEvent {
   actorId?: string;
   targetIds: string[];
   publicText: string;
+  presentation?: ActionEventPresentation;
   privatePayloads?: Record<string, unknown>;
 }
 export interface GameHistory {

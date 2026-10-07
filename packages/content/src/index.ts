@@ -147,8 +147,6 @@ export const GAME_CONSTANTS = {
 /** Canonical immutable prototype balance data consumed by the rules engine. */
 export const BALANCE = GAME_CONSTANTS;
 
-export const AUDIO = { itemUse: { knife: 'item.knife', pistol: 'item.pistol', poison: 'item.poison', medicine: 'item.medicine', antidote: 'item.antidote', armor: 'item.armor', bag: 'item.bag', chest: 'item.chest' }, roleAbility: { 'quick-draw': 'ability.quick-draw', 'field-dressing': 'ability.field-dressing', 'private-stock': 'ability.private-stock', 'tumbler-sense': 'ability.tumbler-sense', margin: 'ability.margin', salvage: 'ability.salvage' }, event: { trade: 'event.trade', threat: 'event.threat', downed: 'event.downed', death: 'event.death', exit: 'event.exit' } } as const;
-
 export const DECK_EXCLUSIONS_2P = ['guardian', 'kingmaker', 'duelist', 'savior', 'graverobber', 'poisoner', 'extortionist'] as const;
 export const DEATH_OBJECTIVE_TAG = 'death-objective';
 

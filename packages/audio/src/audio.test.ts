@@ -111,6 +111,10 @@ describe('audio routing and lifecycle', () => {
     expect(Object.keys(PRIVATE_EVENT_CUES).sort()).toEqual(['CHEST_INSPECTED', 'POCKET_INSPECTED']);
     const payloadForSomeoneElse = routeEvent({ id: 'private', kind: 'POCKET_INSPECTED', privatePayloads: { owner: { item: 'pistol' } } }, 'observer');
     expect(payloadForSomeoneElse).toEqual([{ cue: 'event.pocket-inspected', audience: 'PUBLIC', eventId: 'private' }]);
+    expect(routeEvent({ id: 'weapon', kind: 'WEAPON_USED', presentation: { itemId: 'pistol' } })).toEqual([
+      { cue: 'event.weapon-used', audience: 'PUBLIC', eventId: 'weapon' },
+      { cue: 'item.pistol', audience: 'PUBLIC', eventId: 'weapon' },
+    ]);
   });
 
   it('suppresses duplicate event IDs but allows events without IDs', () => {

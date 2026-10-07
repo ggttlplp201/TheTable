@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AUDIO, CHEST_DISTRIBUTIONS, DECK_EXCLUSIONS_2P, GAME_CONSTANTS, ITEMS, OBJECTIVES, ROLES, SHOP_WEIGHTS, assignObjectives, validateContent } from './index.js';
+import { CHEST_DISTRIBUTIONS, DECK_EXCLUSIONS_2P, GAME_CONSTANTS, ITEMS, OBJECTIVES, ROLES, SHOP_WEIGHTS, assignObjectives, validateContent } from './index.js';
 
 describe('content', () => {
   it('passes internal validation and excludes removed prototype content', () => {
@@ -45,7 +45,7 @@ describe('content', () => {
     expect(OBJECTIVES.find((objective) => objective.id === 'survivor')?.targetingByPlayerCount).toEqual({ 2: 'ONE_OTHER_PLAYER' });
   });
 
-  it('exposes exact market weights and semantic audio keys', () => {
+  it('exposes exact market weights and core balance constants', () => {
     expect(SHOP_WEIGHTS.publicRarity).toEqual({ COMMON: 50, UNCOMMON: 40, RARE: 10 });
     expect(SHOP_WEIGHTS.blackMarketRarity).toEqual({ COMMON: 15, UNCOMMON: 50, RARE: 30, SPECIAL: 5 });
     expect(SHOP_WEIGHTS.publicSlotPools.supportUtility).toEqual(['medicine', 'antidote', 'key', 'bullet', 'cloth']);
@@ -58,7 +58,7 @@ describe('content', () => {
     expect(SHOP_WEIGHTS.publicSlotPools.supportUtility).toContain('medicine');
     expect(SHOP_WEIGHTS.publicSlotPools.remainingRarePool).toEqual(['pistol', 'bag', 'crowbar']);
     expect(SHOP_WEIGHTS.publicSlotPools.excluded).toEqual(['blackKey', 'brassIdol', 'glassEye', 'redLedger', 'passageToken']);
-    expect(AUDIO.event).toMatchObject({ trade: 'event.trade', threat: 'event.threat', death: 'event.death' });
+    expect(GAME_CONSTANTS).toMatchObject({ maxHp: 5, visibleInventorySlots: 6, normalTurnMs: 60_000 });
     expect(ROLES.medic.ability.id).toBe('field-dressing');
     expect(ROLES.smuggler.ability.id).toBe('private-stock');
     expect(ROLES.locksmith.ability.id).toBe('tumbler-sense');

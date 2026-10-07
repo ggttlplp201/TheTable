@@ -85,6 +85,14 @@ describe('initialization and assignment', () => {
     expect(() => startMatch(input, { seed: 1, now: 1 })).toThrow();
     expect(() => startMatch(lobby(), { seed: NaN, now: 1 })).toThrow();
   });
+  it('keeps event and item receipts unique across rematches in the same room', () => {
+    const first = startMatch(lobby(), { seed: 10, now: 1 });
+    const nextLobby = lobby(); nextLobby.matchSerial = first.matchSerial!;
+    const second = startMatch(nextLobby, { seed: 10, now: 2 });
+    expect(first.matchSerial).toBe(1); expect(second.matchSerial).toBe(2);
+    expect(first.events![0]!.id).not.toBe(second.events![0]!.id);
+    expect(first.players[0]!.inventory.visible[0]!.instanceId).not.toBe(second.players[0]!.inventory.visible[0]!.instanceId);
+  });
 });
 
 describe('normal turns and deadlines', () => {
@@ -92,6 +100,7 @@ describe('normal turns and deadlines', () => {
     let room = game();
     const original = structuredClone(room);
     room = command(room, { type: 'USE_ITEM', instanceId: room.players[0]!.inventory.visible[0]!.instanceId, targetId: 'p1' });
+    expect(projectPublicRoom(room).events!.find(entry => entry.kind === 'WEAPON_USED')?.presentation).toEqual({ itemId: 'pistol' });
     expect(room.turn!.primaryUsed).toBe(true);
     expect(() => command(room, { type: 'USE_ITEM', instanceId: room.players[0]!.inventory.visible[0]!.instanceId, targetId: 'p1' })).toThrow();
     expect(original.players[1]!.hp).toBe(5);
@@ -141,7 +150,17 @@ describe('market privacy', () => {
     const purchase = projectPublicRoom(room).events!.at(-1)!;
     expect(purchase.kind).toBe('PURCHASE');
     expect(purchase.publicText).toBe(`${shopper.name} purchased an item.`);
+    expect(purchase.presentation).toBeUndefined();
     expect(JSON.stringify(purchase)).not.toContain(purchasedItemName);
+  });
+  it('projects only resolved public weapon and chest presentation facts', () => {
+    let room = game();
+    const key = give(room, 0, 'key');
+    const chest = room.chests!.find(entry => entry.kind === 'STANDARD')!;
+    chest.availability = 'AVAILABLE'; chest.loot = [];
+    room = command(room, { type: 'USE_ITEM', instanceId: key.instanceId });
+    const opened = projectPublicRoom(room).events!.find(entry => entry.kind === 'CHEST_OPENED')!;
+    expect(opened.presentation).toEqual({ itemId: 'key', chestKind: 'STANDARD' });
   });
 });
 

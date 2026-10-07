@@ -90,6 +90,10 @@ export const AUDIO_MAP = Object.freeze({ event: EVENT_CUES, item: ITEM_CUES, ids
 export function routeEvent(event: ProjectedAudioEvent, selfId?: string): AudioCueRequest[] {
   const cue = EVENT_CUES[event.kind as AuthoritativeEventKind];
   const result: AudioCueRequest[] = cue === undefined ? [] : [{ cue, audience: 'PUBLIC', ...(event.id === undefined ? {} : { eventId: event.id }) }];
+  const publicItemCue = event.presentation?.itemId === undefined ? undefined : ITEM_CUES[event.presentation.itemId];
+  if (publicItemCue !== undefined && publicItemCue !== cue && ['WEAPON_USED', 'CHEST_OPENED', 'PURCHASE', 'SOLD', 'THREAT_COMPLIED', 'THREAT_REFUSED'].includes(event.kind)) {
+    result.push({ cue: publicItemCue, audience: 'PUBLIC', ...(event.id === undefined ? {} : { eventId: event.id }) });
+  }
   const payload = selfId === undefined ? undefined : event.privatePayloads?.[selfId];
   const privateCue = PRIVATE_EVENT_CUES[event.kind as AuthoritativeEventKind];
   if (payload !== undefined && privateCue !== undefined) result.push({ cue: privateCue, audience: 'PRIVATE', ...(event.id === undefined ? {} : { eventId: event.id }) });

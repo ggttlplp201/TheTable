@@ -202,7 +202,7 @@ export function projectPublicRoom(room: RoomState): PublicRoomView {
     ...(room.chests ? { chests: room.chests.map((chest) => ({ kind: chest.kind, availability: chest.availability, ...(chest.refreshRound === undefined ? {} : { refreshRound: chest.refreshRound }) })) } : {}),
     ...(room.shop ? { shop: { publicOffers: structuredClone(room.shop.publicOffers), publicPurchasedBy: { ...room.shop.publicPurchasedBy }, order: [...room.shop.order], activeShopperIndex: room.shop.activeShopperIndex } } : {}),
     ...(room.overflows ? { overflows: room.overflows.map((choice) => ({ id: choice.id, playerId: choice.playerId, deadlineAt: choice.deadlineAt })) } : {}),
-    ...(room.events ? { events: room.events.map((entry) => ({ id: entry.id, sequence: entry.sequence, at: entry.at, kind: entry.kind, publicText: entry.publicText, targetIds: [...entry.targetIds], ...(entry.actorId ? { actorId: entry.actorId } : {}) })) } : {}),
+    ...(room.events ? { events: room.events.map((entry) => ({ id: entry.id, sequence: entry.sequence, at: entry.at, kind: entry.kind, publicText: entry.publicText, targetIds: [...entry.targetIds], ...(entry.actorId ? { actorId: entry.actorId } : {}), ...(entry.presentation ? { presentation: structuredClone(entry.presentation) } : {}) })) } : {}),
   };
 }
 
@@ -284,7 +284,7 @@ export function projectSpectatorRoom(room: RoomState, requesterId: string): impo
     players: room.players.map((player) => ({ public: projectPublicPlayer(player), private: { ...projectPrivatePlayer(player, room), capabilities: [] } })),
     chests: (room.chests ?? []).map((chest) => ({ kind: chest.kind, availability: chest.availability, loot: structuredClone(chest.loot), ...(chest.refreshRound === undefined ? {} : { refreshRound: chest.refreshRound }) })),
     ...(room.shop ? { shop: structuredClone(room.shop) } : {}),
-    events: (room.events ?? []).map((entry) => ({ id: entry.id, sequence: entry.sequence, at: entry.at, kind: entry.kind, publicText: entry.publicText, targetIds: [...entry.targetIds], ...(entry.actorId ? { actorId: entry.actorId } : {}) })),
+    events: (room.events ?? []).map((entry) => ({ id: entry.id, sequence: entry.sequence, at: entry.at, kind: entry.kind, publicText: entry.publicText, targetIds: [...entry.targetIds], ...(entry.actorId ? { actorId: entry.actorId } : {}), ...(entry.presentation ? { presentation: structuredClone(entry.presentation) } : {}) })),
     capabilities: [],
   };
 }

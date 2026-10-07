@@ -96,6 +96,7 @@ export function startMatch(input: RoomState, options: { seed: number; now: numbe
   const random = new SeededRandom(options.seed);
   const players = [...room.players].sort((a, b) => a.seat - b.seat);
   const objectives = assignCompatibleObjectives(players, random);
+  room.matchSerial = (input.matchSerial ?? 0) + 1;
   room.status = 'PLAYING'; room.events = []; room.overflows = [];
   room.match = {
     seed: options.seed, rngState: random.state, nextId: 1, turnSerial: 0, playerCount: players.length,

@@ -8,6 +8,7 @@ const ACK_TIMEOUT_MS = 10_000;
 
 export class TableClient {
   private readonly socket: Socket;
+  private reconnectInFlight: { key: string; promise: Promise<Result<SessionPayload>> } | undefined;
 
   constructor(serverUrl = import.meta.env.VITE_SERVER_URL ?? window.location.origin.replace(/:5173$/, ':3001')) {
     this.socket = io(serverUrl, { autoConnect: false, transports: ['websocket', 'polling'] });
@@ -82,7 +83,14 @@ export class TableClient {
   }
 
   reconnect(code: string, reconnectToken: string) {
-    return this.emit<SessionPayload>('room:reconnect', { code, reconnectToken });
+    const key = `${code}\u0000${reconnectToken}`;
+    if (this.reconnectInFlight?.key === key) return this.reconnectInFlight.promise;
+    const promise = this.emit<SessionPayload>('room:reconnect', { code, reconnectToken });
+    this.reconnectInFlight = { key, promise };
+    void promise.then(() => {
+      if (this.reconnectInFlight?.promise === promise) this.reconnectInFlight = undefined;
+    });
+    return promise;
   }
 
   claimRole(roleId: RoleId, idempotencyKey: string, expectedRevision?: number) {

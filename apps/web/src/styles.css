@@ -171,6 +171,7 @@ input::placeholder { color: #aaa297; }
 .voice-peers { list-style: none; padding: 0; margin: 1rem 0 0; }
 .voice-peers li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.65rem 0; border-top: 1px solid var(--match-line); font-size: 0.85rem; }
 .voice-remote-audio { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.global-audio { position: fixed; z-index: 30; right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); min-height: 56px; border: 1px solid var(--match-line, #6d604e); background: #17130f; color: #e6d9bf; box-shadow: 0 8px 28px rgb(0 0 0 / 0.35); }
 .panel > :last-child { margin-bottom: 0; }
 .section-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
 .section-heading h2 { margin-bottom: 0.75rem; }
