@@ -161,6 +161,11 @@ input::placeholder { color: #aaa297; }
 .table-column, .controls-column { display: grid; gap: 1.5rem; }
 .match-layout .scene-frame { width: 100%; aspect-ratio: 1.5; box-shadow: none; }
 .panel { background: var(--match-surface); padding: 1.4rem; border: 1px solid var(--match-line); overflow-wrap: anywhere; }
+.audio-panel .section-heading { margin-bottom: 1rem; }
+.audio-controls { display: grid; gap: 0.8rem; }
+.audio-controls input[type="range"] { min-height: 2rem; padding: 0; accent-color: var(--match-accent); }
+.intro-notice { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--match-line); color: var(--match-muted); font-size: 0.85rem; }
+.intro-notice .button { min-height: 44px; padding: 0.5rem 0.75rem; }
 .panel > :last-child { margin-bottom: 0; }
 .section-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
 .section-heading h2 { margin-bottom: 0.75rem; }

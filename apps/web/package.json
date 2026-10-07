@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@the-table/audio": "workspace:*",
     "@the-table/content": "workspace:*",
     "@the-table/game": "workspace:*",
     "@the-table/visual": "workspace:*",

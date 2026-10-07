@@ -60,6 +60,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@the-table/audio':
+        specifier: workspace:*
+        version: link:../../packages/audio
       '@the-table/content':
         specifier: workspace:*
         version: link:../../packages/content

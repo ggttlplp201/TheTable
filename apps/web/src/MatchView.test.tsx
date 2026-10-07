@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { ChatPanel, MatchView } from './MatchView';
+import { ChatPanel, MatchView, feedNewAudioEvents } from './MatchView';
 import { DownedForm, Markets, ThreatForm, TradeForm, TurnActions, UseItemForm } from './ActionForms';
 import { ChestPanel, OverflowDecision, PendingInteraction, Results, SpectatorDetails } from './MatchPanels';
 import { ownerRoom, spectatorRoom } from './test-fixtures';
@@ -12,8 +12,25 @@ function fullView(room = ownerRoom()) {
 }
 
 describe('authorized match components', () => {
+  it('primes existing audio history silently and routes each newly projected event once', () => {
+    const room = ownerRoom();
+    room.public.events = [{ id: 'match-start', sequence: 1, at: 1, kind: 'MATCH_STARTED', targetIds: [], publicText: 'started' }];
+    const handleEvent = vi.fn();
+    const engine = { handleEvent };
+    const observed = new Set<string>();
+    feedNewAudioEvents(engine, room, 'p1', observed, false);
+    feedNewAudioEvents(engine, room, 'p1', observed, true);
+    expect(handleEvent).not.toHaveBeenCalled();
+    room.public.events.push({ id: 'turn-start', sequence: 2, at: 2, kind: 'TURN_STARTED', actorId: 'p1', targetIds: [], publicText: 'turn' });
+    feedNewAudioEvents(engine, room, 'p1', observed, true);
+    feedNewAudioEvents(engine, room, 'p1', observed, true);
+    expect(handleEvent).toHaveBeenCalledTimes(1);
+    expect(handleEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 'turn-start' }), 'p1');
+  });
+
   it('renders own Pockets, objective, public inventory and authorized chat without inventing secrets', () => {
     const html = fullView();
+    expect(html).toContain('Enable sound');
     expect(html).toContain('Arsenal');
     expect(html).toContain('Medicine');
     expect(html).toContain('Pistol');
@@ -25,8 +42,9 @@ describe('authorized match components', () => {
   it('renders no match action controls when capabilities are absent despite it being our turn', () => {
     const room = ownerRoom(); room.private.capabilities = [];
     const html = fullView(room);
-    expect(html).not.toContain('<button');
     expect(html).not.toContain('<form');
+    expect(html).not.toContain('Use an item');
+    expect(html).not.toContain('Trade');
     expect(html).toContain('Watch the table');
   });
   it('shows private god-view detail with zero gameplay or chat action controls', () => {
