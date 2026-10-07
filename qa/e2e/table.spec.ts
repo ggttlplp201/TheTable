@@ -62,6 +62,8 @@ test.describe('table lobby across desktop and phone', () => {
     expect(phoneObjective).toBeTruthy();
     expect(desktopObjective).not.toBe(phoneObjective);
 
+    await desktop.getByRole('button', { name: 'Contract' }).click();
+    await phone.getByRole('button', { name: 'Contract' }).click();
     const desktopObjectiveName = await desktop.getByLabel('Your objective').getByRole('heading', { level: 3 }).first().innerText();
     const phoneObjectiveName = await phone.getByLabel('Your objective').getByRole('heading', { level: 3 }).first().innerText();
     expect(phoneObjectiveName).not.toBe(desktopObjectiveName);

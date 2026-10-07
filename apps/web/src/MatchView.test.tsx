@@ -5,6 +5,7 @@ import { ChatPanel, MatchView, feedNewAudioEvents, playAcceptedActionAudio } fro
 import { commandEnvelope } from './gameplay';
 import { DownedForm, Markets, ThreatForm, TradeForm, TurnActions, UseItemForm } from './ActionForms';
 import { ChestPanel, OverflowDecision, PendingInteraction, Results, SpectatorDetails } from './MatchPanels';
+import { VoicePanel } from './VoicePanel';
 import { ownerRoom, spectatorRoom } from './test-fixtures';
 import type { TableClient } from './socket';
 const send = vi.fn(async () => true);
@@ -43,19 +44,23 @@ describe('authorized match components', () => {
     expect(engine.play).toHaveBeenCalledWith(AUDIO_CUE_IDS.uiCoins);
   });
 
-  it('renders own Pockets, objective, public inventory and authorized chat without inventing secrets', () => {
+  it('renders the physical hand and keeps private panels closed until requested', () => {
     const html = fullView();
-    expect(html).toContain('Enable sound');
-    expect(html).toContain('Arsenal');
-    expect(html).toContain('Medicine');
+    expect(html).toContain('First person table view');
+    expect(html).toContain('Contract');
+    expect(html).toContain('Settings');
+    expect(html).toContain('Pocket 1');
     expect(html).toContain('Pistol');
-    expect(html).toContain('Owner private message sentinel');
+    expect(html).not.toContain('Arsenal');
+    expect(html).not.toContain('Medicine');
+    expect(html).not.toContain('Owner private message sentinel');
     expect(html).not.toContain('Martyr');
     expect(html).not.toContain('Brass Idol');
     expect(html).not.toContain('other-private-offer');
   });
-  it('shows opt-in voice controls, peer state, and an explicit no-relay warning', () => {
-    const html = renderToStaticMarkup(<MatchView room={ownerRoom()} client={{} as TableClient} connected viewerId="p1" voice={{ enabled: true, iceServers: [], relayConfigured: false }} onView={() => {}} />);
+  it('keeps opt-in voice controls available to the temporary settings surface', () => {
+    const room = ownerRoom();
+    const html = renderToStaticMarkup(<VoicePanel room={room} client={{} as TableClient} connected viewerId="p1" capability={{ enabled: true, iceServers: [], relayConfigured: false }} />);
     expect(html).toContain('Join table voice');
     expect(html).toContain('Direct connections only');
     expect(html).toContain('Bruno');
@@ -73,7 +78,7 @@ describe('authorized match components', () => {
     const room = spectatorRoom();
     const html = renderToStaticMarkup(<MatchView room={room} client={{} as TableClient} connected viewerId="p1" voice={{ enabled: false, iceServers: [], relayConfigured: false }} onView={() => {}} />);
     expect(html).toContain('Martyr'); expect(html).toContain('Poison'); expect(html).toContain('Black Key'); expect(html).toContain('Brass Idol');
-    expect(html).not.toContain('<button'); expect(html).not.toContain('<form');
+    expect(html).not.toContain('aria-label="Your actions"'); expect(html).not.toContain('<form');
   });
   it('renders public chest availability without contents and spectator contents only when present', () => {
     expect(renderToStaticMarkup(<ChestPanel room={ownerRoom()} />)).not.toContain('Brass Idol');

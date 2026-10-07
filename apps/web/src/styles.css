@@ -128,6 +128,182 @@ input:focus { border-color: #d7c995; box-shadow: 0 0 0 3px rgb(215 201 149 / 0.1
   .private-panel { background: rgb(246 243 237 / 0.82); }.objective-name { color: #211d18; }.objective-status { color: #625d55; }
 }
 
+/* Production match: the scene is the application shell, everything else floats over it. */
+body:has(.match-viewport) { height: 100dvh; overflow: hidden; background: #050404; }
+body:has(.match-viewport) .global-audio { display: none; }
+.app-shell:has(.match-viewport) { width: 100vw; height: 100dvh; min-height: 0; padding: 0; overflow: hidden; background: #050404; }
+.app-shell:has(.match-viewport) > .masthead { display: none; }
+.match-layout.match-viewport {
+  --match-ink: #ded4be;
+  --match-muted: #9c927f;
+  --match-surface: #12100d;
+  --match-input: #080706;
+  --match-line: #6f6048;
+  --match-accent: #d6a24d;
+  --match-alert: #e8705c;
+  position: relative;
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  color: var(--match-ink);
+  background: #050404;
+  font-family: "VT323", ui-monospace, SFMono-Regular, Menlo, monospace;
+  isolation: isolate;
+}
+.match-viewport::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: .18;
+  background: repeating-linear-gradient(0deg, rgb(255 255 255 / .025) 0 1px, transparent 1px 3px), radial-gradient(circle at center, transparent 48%, rgb(0 0 0 / .62));
+  mix-blend-mode: overlay;
+}
+.match-scene-shell, .match-scene-shell .scene-frame, .match-scene-shell .table-presentation { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; aspect-ratio: auto; }
+.match-scene-shell { z-index: 0; background: radial-gradient(circle at 50% 42%, #211b12, #060504 62%); }
+.match-scene-shell canvas { width: 100% !important; height: 100% !important; }
+.match-viewport button { font-family: inherit; }
+.match-viewport button:not(:disabled) { cursor: pointer; }
+
+.match-hud-top { position: absolute; z-index: 4; top: max(10px, env(safe-area-inset-top)); left: 50%; width: min(760px, calc(100vw - 330px)); transform: translateX(-50%); pointer-events: none; }
+.match-hud-top .match-heading { display: grid; grid-template-columns: 1fr auto; padding: 9px 12px; border: 2px solid #68583f; background: rgb(7 6 5 / .78); box-shadow: 0 8px 30px rgb(0 0 0 / .48); backdrop-filter: blur(5px); }
+.match-hud-top .match-heading > div:first-child { min-width: 0; }
+.match-hud-top .match-room { margin: 0; color: #d6a24d; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+.match-hud-top .match-heading h1 { margin: 1px 0 0; font-family: "IM Fell English SC", Georgia, serif; font-size: clamp(18px, 2vw, 25px); line-height: 1; letter-spacing: .02em; }
+.match-hud-top .match-heading .muted { margin: 2px 0 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.match-hud-top .turn-clock { align-self: center; }
+.match-hud-top .turn-clock .countdown, .match-hud-top .turn-clock strong { font-size: 24px; }
+.match-hud-top .turn-order { display: none; }
+
+.seat-ribbon { position: absolute; z-index: 4; top: max(12px, env(safe-area-inset-top)); left: 12px; width: min(205px, 18vw); margin: 0; padding: 0; display: grid; gap: 6px; list-style: none; }
+.seat-ribbon li { border-left: 3px solid #504535; background: rgb(8 7 6 / .78); box-shadow: 0 6px 18px rgb(0 0 0 / .35); }
+.seat-ribbon li.current { border-color: #d6a24d; }
+.seat-ribbon li.self { background: rgb(38 29 18 / .88); }
+.seat-ribbon button { width: 100%; min-height: 56px; padding: 7px 9px; display: grid; gap: 1px; border: 0; color: #cfc3ac; background: transparent; text-align: left; }
+.seat-ribbon button > span { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.seat-ribbon button > strong { color: #f0e4cc; font-size: 14px; font-weight: 400; }
+.seat-ribbon button > small { color: #968c7b; font-size: 11px; }
+
+.match-tools { position: absolute; z-index: 5; top: max(12px, env(safe-area-inset-top)); right: 12px; width: min(142px, 15vw); display: grid; gap: 5px; }
+.match-tools button, .action-dock button { min-height: 44px; border: 2px solid #68583f; border-radius: 0; color: #d8ccb0; background: rgb(10 8 7 / .84); letter-spacing: .04em; box-shadow: 0 5px 16px rgb(0 0 0 / .35); }
+.match-tools button:hover, .action-dock button:hover { color: #ffe8ba; border-color: #d6a24d; background: rgb(31 24 17 / .94); }
+
+.self-hand { position: absolute; z-index: 5; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom)); width: min(780px, calc(100vw - 340px)); transform: translateX(-50%); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: 8px; pointer-events: none; }
+.self-vitals, .pocket-indicators { padding: 7px; border: 2px solid #6d5c42; background: rgb(8 7 6 / .84); box-shadow: 0 8px 25px rgb(0 0 0 / .5); }
+.self-vitals { min-width: 68px; display: grid; grid-template-columns: auto auto; gap: 1px 6px; align-items: baseline; }
+.self-vitals strong { color: #e2b35c; font-size: 22px; }
+.self-vitals span { color: #9f937d; font-size: 11px; text-transform: uppercase; }
+.hand-items { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; pointer-events: auto; }
+.hand-items button, .hand-items .empty-slot { min-height: 62px; padding: 5px; border: 2px solid #7a684a; display: grid; place-content: center; color: #e2d5bb; background: linear-gradient(#282017, #100d0a); text-align: center; box-shadow: 0 7px 20px rgb(0 0 0 / .52); }
+.hand-items button { transition: transform 120ms ease, border-color 120ms ease; }
+.hand-items button:hover { z-index: 1; border-color: #e0a040; transform: translateY(-9px); }
+.hand-items button span { font-family: "IM Fell English SC", Georgia, serif; font-size: 13px; }
+.hand-items button small { color: #c69c59; font-size: 10px; text-transform: uppercase; }
+.hand-items .empty-slot { color: #655b4d; background: rgb(8 7 6 / .6); font-size: 11px; }
+.pocket-indicators { min-width: 78px; display: grid; gap: 3px; }
+.pocket-indicators span { padding: 3px 5px; border: 1px solid #4d4438; color: #786f60; font-size: 10px; text-transform: uppercase; }
+.pocket-indicators span.occupied { color: #d6a24d; border-color: #9a733b; }
+
+.action-dock { position: absolute; z-index: 5; left: 50%; bottom: max(10px, env(safe-area-inset-bottom)); width: min(750px, calc(100vw - 330px)); transform: translateX(-50%); display: flex; justify-content: center; gap: 6px; }
+.action-dock button { flex: 1 1 90px; max-width: 150px; min-height: 52px; color: #eee1c6; font-family: "IM Fell English SC", Georgia, serif; font-size: 14px; text-transform: uppercase; }
+.action-dock button.threat { color: #ff9b89; border-color: #9f4037; background: rgb(45 10 8 / .88); }
+.action-dock button.exit { color: #cfe08d; border-color: #85934e; }
+.action-dock button.end-turn { color: #a99f8d; border-color: #50483c; }
+.action-dock .watch-table { min-height: 48px; padding: 10px 18px; display: grid; place-items: center; border: 1px solid #50483c; color: #aaa08d; background: rgb(8 7 6 / .76); text-transform: uppercase; }
+.market-dock button { max-width: 250px; }
+
+.match-toast { position: absolute; z-index: 20; left: 50%; top: 82px; width: min(520px, calc(100vw - 40px)); transform: translateX(-50%); margin: 0; padding: 8px 12px; border: 1px solid #8f7246; background: rgb(10 8 6 / .94); box-shadow: 0 9px 28px rgb(0 0 0 / .46); text-align: center; }
+.match-toast:has(> p:empty) { display: none; }
+.match-toast p { margin: 0; }
+
+.match-overlay-backdrop, .forced-decision, .results-stage { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: clamp(12px, 3vw, 34px); background: rgb(2 2 2 / .52); backdrop-filter: blur(3px); }
+.match-overlay { width: min(900px, 94vw); max-height: min(82dvh, 800px); display: grid; grid-template-rows: auto minmax(0, 1fr); border: 2px solid #756448; background: #0d0b09; box-shadow: 0 28px 90px #000; }
+.match-overlay > header { min-height: 72px; padding: 11px 14px; display: grid; grid-template-columns: 1fr auto; align-items: center; border-bottom: 2px solid #756448; background: linear-gradient(90deg, #17130f, #0b0908); }
+.match-overlay > header p { grid-column: 1; margin: 0; color: #a28d6b; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; }
+.match-overlay > header h2 { grid-column: 1; margin: 0; color: #e1d5bc; font-family: "IM Fell English SC", Georgia, serif; font-size: clamp(23px, 3vw, 34px); font-weight: 400; letter-spacing: .02em; }
+.match-overlay > header button { grid-column: 2; grid-row: 1 / span 2; min-width: 70px; min-height: 44px; border: 1px solid #6b5c47; color: #cfc2aa; background: #090806; }
+.match-overlay-body { min-height: 0; padding: clamp(14px, 2.5vw, 28px); overflow: auto; overscroll-behavior: contain; }
+.match-overlay-body > .panel, .match-overlay-body > .panel + .panel, .match-overlay-body .panel { border: 0; padding: 0; background: transparent; }
+.match-overlay.danger { border-color: #9f4037; background: radial-gradient(circle at 50% 10%, #31110e, #0b0605 52%); }
+.match-overlay.danger > header { border-color: #9f4037; background: linear-gradient(90deg, #35110d, #100605); }
+.match-overlay.danger > header p, .match-overlay.danger > header h2 { color: #ef7967; }
+.match-overlay.paper { color: #241d14; border-color: #9d8353; background: #cbbd9e; box-shadow: 0 28px 90px #000, inset 0 0 80px rgb(80 49 23 / .26); }
+.match-overlay.paper > header { border-color: #776342; background: #b8a984; }
+.match-overlay.paper > header p, .match-overlay.paper > header h2 { color: #332719; }
+.match-overlay.paper > header button { color: #332719; border-color: #675438; background: #c6b995; }
+.match-overlay.paper .match-overlay-body, .match-overlay.paper .match-overlay-body .muted, .match-overlay.paper .match-overlay-body label { color: #2e261c; }
+.match-overlay.paper .private-info > h2, .match-overlay.paper .facts dt { color: #5a4932; }
+.match-overlay.paper .status-tag { border-color: #6c5b40; }
+.match-overlay.paper .pocket-list { padding: 10px; color: #d8ccb0; background: #17120e; }
+.exit-contract { margin-top: 18px; padding: 16px; border: 2px solid #6d5a38; color: #302719; background: rgb(255 244 205 / .22); }
+.exit-contract h3 { margin-top: 0; font-family: "IM Fell English SC", Georgia, serif; font-size: 24px; }
+.match-overlay-body .action-form fieldset { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.match-overlay-body .action-form legend, .match-overlay-body .action-form button, .match-overlay-body .action-form > fieldset > p { grid-column: 1 / -1; }
+.match-overlay-body .asset-picker { border: 2px solid #574a39; padding: 12px; }
+.match-overlay-body .asset-picker legend { grid-column: auto; }
+.match-overlay-body .visual-choice { grid-column: 1 / -1; padding: 10px; border: 2px solid #574a39; }
+.match-overlay-body .visual-choice > legend { grid-column: auto; padding: 0 6px; color: #d8c8ac; }
+.choice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px; }
+.choice-grid button { min-height: 72px; padding: 9px; display: grid; align-content: center; gap: 4px; border: 2px solid #514535; color: #cfc2aa; background: #0b0907; text-align: left; }
+.choice-grid button strong { font-family: "IM Fell English SC", Georgia, serif; font-size: 15px; font-weight: 400; }
+.choice-grid button small { color: #968b78; font-size: 11px; line-height: 1.25; }
+.choice-grid button.selected { border-color: #d6a24d; color: #ffe2aa; background: #2a1d10; box-shadow: inset 0 0 0 1px #6f4d24; }
+.match-overlay.danger .choice-grid button.selected { border-color: #e8705c; color: #ffad9e; background: #35100d; box-shadow: inset 0 0 0 1px #7a2b24; }
+.match-overlay-body .market-offers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.match-overlay-body .market-offer { min-height: 180px; padding: 12px; display: grid; align-content: space-between; border: 2px solid #594b38; background: linear-gradient(#211a12, #0c0a08); }
+.match-overlay.danger .market-offer { border-color: #71322d; background: linear-gradient(#32110e, #100605); }
+.forced-decision { z-index: 45; }
+.forced-decision .decision-panel { width: min(720px, 94vw); max-height: 86dvh; margin: 0; overflow: auto; border: 2px solid #b85b4f; background: radial-gradient(circle at 50% 0, #35110d, #0c0706 60%); box-shadow: 0 28px 90px #000; }
+.results-stage { z-index: 50; grid-template-columns: minmax(0, 720px) minmax(240px, 320px); gap: 12px; background: radial-gradient(circle at 50% 20%, rgb(103 70 30 / .3), rgb(0 0 0 / .9)); }
+.results-stage > .panel { width: 100%; max-height: 85dvh; overflow: auto; border: 2px solid #8b744e; background: #100d09; }
+.results-stage .results h2 { color: #e0a040; font-family: "IM Fell English SC", Georgia, serif; font-size: 40px; }
+.debug-dashboard { position: absolute; z-index: 80; inset: 20px; overflow: auto; padding: 12px; color: #eee; background: #111; }
+.debug-dashboard > summary { min-height: 44px; cursor: pointer; }
+.handbook h3 { margin: 22px 0 4px; color: #d6a24d; font-family: "IM Fell English SC", Georgia, serif; font-size: 23px; }
+
+@media (max-width: 760px) {
+  .match-hud-top { top: max(6px, env(safe-area-inset-top)); width: calc(100vw - 118px); transform: none; left: 6px; }
+  .match-hud-top .match-heading { min-height: 60px; padding: 7px 9px; }
+  .match-hud-top .match-heading h1 { font-size: 17px; }
+  .match-hud-top .match-heading .muted { display: none; }
+  .match-hud-top .turn-clock .countdown, .match-hud-top .turn-clock strong { font-size: 19px; }
+  .seat-ribbon { top: 124px; left: 6px; width: 136px; gap: 3px; }
+  .seat-ribbon button { min-height: 44px; padding: 4px 6px; }
+  .seat-ribbon button > span { font-size: 10px; }
+  .seat-ribbon button > strong { font-size: 11px; }
+  .seat-ribbon button > small { display: none; }
+  .match-tools { top: calc(70px + env(safe-area-inset-top)); left: 6px; right: 6px; width: auto; display: flex; gap: 3px; overflow-x: auto; scrollbar-width: none; }
+  .match-tools button { flex: 0 0 auto; min-width: 74px; min-height: 44px; padding: 4px 8px; font-size: 10px; white-space: nowrap; overflow-wrap: normal; }
+  .match-toast { top: calc(122px + env(safe-area-inset-top)); right: 6px; left: auto; width: min(230px, calc(100vw - 154px)); transform: none; text-align: left; }
+  .self-hand { left: 6px; right: 6px; bottom: calc(64px + env(safe-area-inset-bottom)); width: auto; transform: none; grid-template-columns: 1fr; }
+  .self-vitals { position: absolute; left: 0; bottom: 67px; min-width: 80px; grid-template-columns: repeat(4, auto); }
+  .hand-items { gap: 2px; }
+  .hand-items button, .hand-items .empty-slot { min-height: 56px; padding: 3px; }
+  .hand-items button span { font-size: 10px; }
+  .pocket-indicators { position: absolute; right: 0; bottom: 67px; min-width: 72px; padding: 4px; }
+  .action-dock { left: 6px; right: 6px; bottom: max(6px, env(safe-area-inset-bottom)); width: auto; transform: none; gap: 3px; overflow-x: auto; justify-content: start; scrollbar-width: none; }
+  .action-dock button { flex: 0 0 auto; min-width: 94px; min-height: 56px; padding: 5px; font-size: 11px; white-space: nowrap; overflow-wrap: normal; }
+  .match-overlay-backdrop, .forced-decision, .results-stage { padding: 0; place-items: end stretch; }
+  .match-overlay { width: 100%; max-height: 78dvh; border-width: 2px 0 0; }
+  .match-overlay > header { min-height: 62px; }
+  .match-overlay-body { padding: 14px; }
+  .match-overlay-body .action-form fieldset { grid-template-columns: 1fr; }
+  .match-overlay-body .action-form legend, .match-overlay-body .action-form button, .match-overlay-body .action-form > fieldset > p { grid-column: 1; }
+  .match-overlay-body .market-offers { grid-template-columns: 1fr; }
+  .forced-decision .decision-panel { width: 100%; max-height: 78dvh; border-width: 2px 0 0; }
+  .results-stage { display: flex; flex-direction: column; justify-content: flex-end; overflow: auto; }
+  .results-stage > .panel { max-height: none; border-width: 2px 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hand-items button { transition: none; }
+  .hand-items button:hover { transform: none; }
+}
+
 /* Match surfaces inherit the supplied warm metal palette. */
 :root { --match-ink: #ede7dd; --match-muted: #bdb5aa; --match-surface: #1a1715; --match-input: #12100f; --match-line: #51483f; --match-accent: #d7c995; --match-alert: #f1b3a9; }
 :focus-visible { outline: 2px solid #d7c995; outline-offset: 4px; }

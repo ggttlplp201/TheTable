@@ -48,8 +48,8 @@ export async function startTwoPlayerLobby(desktop: Page, phone: Page) {
   await expect(desktop.getByText('Phone Player', { exact: true })).toBeVisible();
   await expect(phone.getByText('Phone Player (you)')).toBeVisible();
   await desktop.getByRole('button', { name: 'Start match' }).click();
-  await expect(desktop.getByLabel('Your objective')).toBeVisible();
-  await expect(phone.getByLabel('Your objective')).toBeVisible();
+  await expect(desktop.getByLabel('First person table view')).toBeVisible();
+  await expect(phone.getByLabel('First person table view')).toBeVisible();
   return host;
 }
 
@@ -72,4 +72,3 @@ export function lastPrivateObjectiveId(frames: string[]): string | undefined {
   }
   return undefined;
 }
-

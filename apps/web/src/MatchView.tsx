@@ -3,13 +3,13 @@ import type { FormEvent } from 'react';
 import { AUDIO_CUE_IDS, createAudioEngine, type AudioEngine } from '@the-table/audio';
 import type { ArrivalBeat } from '@the-table/visual';
 import type { AnyRoomView, ClientError, PlayerCommand, VoiceCapability } from './protocol';
-import { isSpectatorView } from './protocol';
+import { isSpectatorView, ROLE_COPY } from './protocol';
 import type { TableClient } from './socket';
 import { dispatchRequest, type ActionRequest } from './action-request';
-import { canRematch, commandEnvelope, hasCapability, ownItems, playerName, presentItems } from './gameplay';
-import { GameTableScene } from './GameTableScene';
+import { canRematch, commandEnvelope, hasCapability, ownItems, playerName, presentItems, stackName, words } from './gameplay';
+import { GameTableScene, type SceneIntent } from './GameTableScene';
 import { ChestPanel, EventLog, MatchHeader, OverflowDecision, PendingInteraction, PlayerRoster, PrivateDetail, Results, SpectatorDetails } from './MatchPanels';
-import { Markets, ReadOnlyPublicShop, TurnActions } from './ActionForms';
+import { DownedForm, Markets, ReadOnlyPublicShop, ThreatForm, TradeForm, TurnActions, UseItemForm } from './ActionForms';
 import { VoicePanel } from './VoicePanel';
 
 /** Keep an uncertain submission intact until it can be retried with the same receipt key. */
@@ -219,31 +219,123 @@ export function MatchView({ room, client, connected, viewerId, voice, audioEngin
   const spectator = isSpectatorView(room);
   const results = room.public.status === 'RESULTS';
   const intermission = room.public.round?.phase === 'INTERMISSION';
-  return <div className="match-layout" data-viewer={spectator ? 'spectator' : 'player'}>
-    <MatchHeader room={room} viewerId={viewerId} />
-    {!connected && <p className="connection-banner" role="status">Reconnecting to your seat. The table continues while you are away; controls return with your authorized state.</p>}
-    <div className="action-feedback" aria-live="polite">{action.error ? <p className="form-error" role="alert">{action.error.message}</p> : <p>{action.pending ? 'Waiting for the table…' : action.notice}</p>}
+  const [panel, setPanel] = useState<MatchPanel>(intermission ? 'MARKETS' : spectator ? 'SPECTATOR' : null);
+  useEffect(() => {
+    if (results) setPanel(null);
+    else if (spectator) setPanel('SPECTATOR');
+    else if (intermission && !spectator) setPanel(current => current ?? 'MARKETS');
+    else if (!intermission) setPanel(current => current === 'MARKETS' ? null : current);
+  }, [intermission, results, spectator]);
+  const me = room.public.players.find(player => player.id === viewerId);
+  const forcedDecision = Boolean(room.public.pendingTrade || room.public.pendingThreat || (!spectator && hasCapability(room, 'OVERFLOW_CHOICE')));
+  const debug = import.meta.env.DEV && typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
+  const openIntent = (intent: SceneIntent) => {
+    if (intent.kind === 'ITEM') setPanel(intent.ownerId === viewerId && hasCapability(room, 'USE_ITEM') ? 'USE_ITEM' : hasCapability(room, 'TRADE') ? 'TRADE' : 'PLAYERS');
+    if (intent.kind === 'PLAYER') {
+      const target = room.public.players.find(player => player.id === intent.playerId);
+      setPanel(target?.life === 'DOWNED' && hasCapability(room, 'DOWNED_INTERACTION') ? 'DOWNED' : hasCapability(room, 'TRADE') ? 'TRADE' : 'PLAYERS');
+    }
+    if (intent.kind === 'CHEST') setPanel(intent.chestKind === 'BLACK' && intermission ? 'MARKETS' : 'CHESTS');
+    if (intent.kind === 'EXIT') setPanel('OBJECTIVE');
+  };
+  const closePanel = () => setPanel(null);
+  const overlaySend = async (command: PlayerCommand) => {
+    const accepted = await action.send(command);
+    if (accepted) closePanel();
+    return accepted;
+  };
+  const actionProps = !spectator ? { room, send: overlaySend, busy: action.busy } : undefined;
+
+  return <div className="match-layout match-viewport" data-viewer={spectator ? 'spectator' : 'player'}>
+    <div className="match-scene-shell" aria-label={spectator ? 'Spectator table view' : 'First person table view'}>
+      <GameTableScene room={room.public} viewerId={spectator ? undefined : viewerId} onIntent={openIntent} interactionsEnabled={!panel && !forcedDecision && !results} onArrivalBeat={beat => { if (audio.started) audio.engine.play(ARRIVAL_AUDIO[beat]); }} />
+    </div>
+
+    <div className="match-hud-top"><MatchHeader room={room} viewerId={viewerId} /></div>
+    <ol className="seat-ribbon" aria-label="At the table">
+      {room.public.players.map(player => <li key={player.id} className={`${player.seat === room.public.turn?.activeSeat ? 'current' : ''} ${player.id === viewerId ? 'self' : ''}`}>
+        <button type="button" onClick={() => openIntent({ kind: 'PLAYER', playerId: player.id })} disabled={results}>
+          <span>{player.name}{player.id === viewerId ? ' · You' : ''}</span><strong>{player.roleId ? ROLE_COPY[player.roleId].name : 'Unknown'} · {words(player.life)}</strong>
+          <small>{player.hp}/5 HP · {player.coins}¢ · {presentItems(player.visibleInventory).length} shown</small>
+        </button>
+      </li>)}
+    </ol>
+
+    {!spectator && me && <aside className="self-hand" aria-label="Your hand">
+      <div className="self-vitals"><strong>{me.hp}/5</strong><span>HP</span><strong>{me.coins}</strong><span>Coins</span></div>
+      <div className="hand-items" aria-label="Visible inventory">
+        {presentItems(me.visibleInventory).map(item => <button type="button" key={item.instanceId} onClick={() => openIntent({ kind: 'ITEM', instanceId: item.instanceId, ownerId: viewerId, itemId: item.itemId })}><span>{stackName(item)}</span><small>Use</small></button>)}
+        {Array.from({ length: Math.max(0, 6 - presentItems(me.visibleInventory).length) }, (_, index) => <span className="empty-slot" key={index} aria-hidden="true">Empty</span>)}
+      </div>
+      <div className="pocket-indicators" aria-label="Pockets">{me.pocketOccupancy.map((occupied, index) => <span key={index} className={occupied ? 'occupied' : ''}>Pocket {index + 1}</span>)}</div>
+    </aside>}
+
+    <nav className="match-tools" aria-label="Table tools">
+      {!spectator && <button type="button" onClick={() => setPanel('OBJECTIVE')}>Contract</button>}
+      <button type="button" onClick={() => setPanel('PLAYERS')}>Seats</button>
+      <button type="button" onClick={() => setPanel('CHESTS')}>Chests</button>
+      <button type="button" onClick={() => setPanel('HISTORY')}>History</button>
+      <button type="button" onClick={() => setPanel('CHAT')}>Chat</button>
+      {!spectator && <button type="button" onClick={() => setPanel('SETTINGS')}>Settings</button>}
+      <button type="button" onClick={() => setPanel(spectator ? 'SPECTATOR' : 'HANDBOOK')}>{spectator ? 'God view' : 'Handbook'}</button>
+    </nav>
+
+    {!spectator && !results && !intermission && <nav className="action-dock" aria-label="Your actions">
+      {hasCapability(room, 'USE_ITEM') && <button type="button" onClick={() => setPanel('USE_ITEM')}>Use item</button>}
+      {hasCapability(room, 'TRADE') && <button type="button" onClick={() => setPanel('TRADE')}>Trade</button>}
+      {hasCapability(room, 'THREAT') && <button type="button" className="threat" onClick={() => setPanel('THREAT')}>Threat</button>}
+      {hasCapability(room, 'DOWNED_INTERACTION') && <button type="button" onClick={() => setPanel('DOWNED')}>Help / loot</button>}
+      {hasCapability(room, 'INSPECT_CHEST') && <button type="button" onClick={() => setPanel('CHESTS')}>Inspect chest</button>}
+      {hasCapability(room, 'LEAVE_TABLE') && <button type="button" className="exit" onClick={() => setPanel('OBJECTIVE')}>Exit ready</button>}
+      {hasCapability(room, 'END_TURN') && <button type="button" className="end-turn" disabled={action.busy} onClick={() => void action.send({ type: 'END_TURN' })}>{room.public.turn?.primaryUsed ? 'End turn' : 'Pass turn'}</button>}
+      {!['USE_ITEM', 'TRADE', 'THREAT', 'DOWNED_INTERACTION', 'INSPECT_CHEST', 'LEAVE_TABLE', 'END_TURN'].some(capability => hasCapability(room, capability as PlayerCommand['type'])) && <span className="watch-table">Watch the table</span>}
+    </nav>}
+    {!spectator && !results && intermission && <nav className="action-dock market-dock" aria-label="Your actions"><button type="button" onClick={() => setPanel('MARKETS')}>Public Shop</button><button type="button" className="threat" onClick={() => setPanel('MARKETS')}>Black Market</button></nav>}
+
+    {!connected && <p className="connection-banner match-toast" role="status">Reconnecting to your seat. The table continues while you are away; controls return with your authorized state.</p>}
+    <div className="action-feedback match-toast" aria-live="polite">{action.error ? <p className="form-error" role="alert">{action.error.message}</p> : <p>{action.pending ? 'Waiting for the table…' : action.notice}</p>}
       {action.uncertain && <button className="button secondary" disabled={action.pending || !connected} onClick={() => void action.retry()}>Retry last action safely</button>}
     </div>
-    <PendingInteraction room={room} send={action.send} busy={action.busy} />
-    {!spectator && <OverflowDecision room={room} send={action.send} busy={action.busy} />}
-    <div className="match-columns">
-      <div className="table-column"><GameTableScene room={room.public} viewerId={spectator ? undefined : viewerId} onArrivalBeat={beat => { if (audio.started) audio.engine.play(ARRIVAL_AUDIO[beat]); }} />
-        {results ? <Results room={room} /> : <PlayerRoster room={room.public} viewerId={viewerId} />}
-        <ChestPanel room={room} />
-        {spectator && intermission && <ReadOnlyPublicShop room={room} />}
-        <EventLog room={room.public} />
-      </div>
-      <div className="controls-column">
-        {!spectator && <AudioControls engine={audio.engine} started={audio.started} onStart={audio.start} />}
-        {!spectator && <VoicePanel room={room} client={client} connected={connected} viewerId={viewerId} capability={voice} />}
-        {results && <section className="panel"><h2>Another round?</h2>{canRematch(room, viewerId) ? <><p className="muted">Return everyone to the lobby with the same names and seats. Each player readies up again.</p><button className="button primary full-width" disabled={action.busy} onClick={() => void action.rematch()}>Rematch</button></> : <p className="muted">Waiting for the host to open a rematch.</p>}</section>}
-        {spectator ? <SpectatorDetails room={room} /> : <>
-          {!results && (intermission ? <Markets room={room} send={action.send} busy={action.busy} /> : <TurnActions room={room} send={action.send} busy={action.busy} />)}
-          <PrivateDetail detail={room.private} room={room.public} />
-        </>}
-        <ChatPanel room={room} sendChat={action.chat} busy={action.busy} />
-      </div>
-    </div>
+
+    {panel && !results && <MatchOverlay tone={panel === 'THREAT' || panel === 'MARKETS' ? 'danger' : panel === 'OBJECTIVE' ? 'paper' : 'neutral'} title={panelTitle(panel)} onClose={closePanel}>
+      {!spectator && actionProps && panel === 'USE_ITEM' && <UseItemForm {...actionProps} />}
+      {!spectator && actionProps && panel === 'TRADE' && <TradeForm {...actionProps} />}
+      {!spectator && actionProps && panel === 'THREAT' && <ThreatForm {...actionProps} />}
+      {!spectator && actionProps && panel === 'DOWNED' && <DownedForm {...actionProps} />}
+      {!spectator && panel === 'MARKETS' && <Markets room={room} send={action.send} busy={action.busy} />}
+      {!spectator && panel === 'OBJECTIVE' && <>{hasCapability(room, 'LEAVE_TABLE') && <section className="exit-contract"><h3>Your exit is ready</h3><p>Leave now to bank your objective. Staying defers this chance to your next normal turn.</p><div className="button-row"><button className="button primary" disabled={action.busy} onClick={() => void overlaySend({ type: 'LEAVE_TABLE' })}>Leave Table</button>{hasCapability(room, 'STAY') && <button className="button secondary" disabled={action.busy} onClick={() => void overlaySend({ type: 'STAY' })}>Stay at Table</button>}</div></section>}<PrivateDetail detail={room.private} room={room.public} /></>}
+      {panel === 'PLAYERS' && <PlayerRoster room={room.public} viewerId={viewerId} />}
+      {panel === 'CHESTS' && <><ChestPanel room={room} />{!spectator && hasCapability(room, 'INSPECT_CHEST') && <button className="button primary full-width" disabled={action.busy} onClick={() => void action.send({ type: 'INSPECT_CHEST' })}>Inspect Standard Chest</button>}</>}
+      {panel === 'HISTORY' && <EventLog room={room.public} />}
+      {panel === 'CHAT' && <ChatPanel room={room} sendChat={action.chat} busy={action.busy} />}
+      {!spectator && panel === 'SETTINGS' && <><AudioControls engine={audio.engine} started={audio.started} onStart={audio.start} /><VoicePanel room={room} client={client} connected={connected} viewerId={viewerId} capability={voice} /></>}
+      {panel === 'HANDBOOK' && <Handbook />}
+      {spectator && panel === 'SPECTATOR' && <><SpectatorDetails room={room} /><ChestPanel room={room} /></>}
+      {spectator && panel === 'MARKETS' && <ReadOnlyPublicShop room={room} />}
+    </MatchOverlay>}
+
+    {(room.public.pendingTrade || room.public.pendingThreat) && <div className="forced-decision"><PendingInteraction room={room} send={action.send} busy={action.busy} /></div>}
+    {!spectator && hasCapability(room, 'OVERFLOW_CHOICE') && <div className="forced-decision"><OverflowDecision room={room} send={action.send} busy={action.busy} /></div>}
+    {results && <div className="results-stage"><Results room={room} /><section className="panel rematch-card"><h2>Another round?</h2>{canRematch(room, viewerId) ? <><p>Return everyone to the lobby with the same seats.</p><button className="button primary full-width" disabled={action.busy} onClick={() => void action.rematch()}>Rematch</button></> : <p>Waiting for the host to open a rematch.</p>}</section></div>}
+
+    {debug && <details className="debug-dashboard"><summary>Development dashboard</summary><div className="match-columns"><div className="table-column"><PlayerRoster room={room.public} viewerId={viewerId} /><ChestPanel room={room} /><EventLog room={room.public} /></div><div className="controls-column">{!spectator && !results && (intermission ? <Markets room={room} send={action.send} busy={action.busy} /> : <TurnActions room={room} send={action.send} busy={action.busy} />)}</div></div></details>}
   </div>;
+}
+
+type MatchPanel = null | 'USE_ITEM' | 'TRADE' | 'THREAT' | 'DOWNED' | 'MARKETS' | 'OBJECTIVE' | 'PLAYERS' | 'CHESTS' | 'HISTORY' | 'CHAT' | 'SETTINGS' | 'HANDBOOK' | 'SPECTATOR';
+
+const PANEL_TITLES: Record<Exclude<MatchPanel, null>, string> = {
+  USE_ITEM: 'Use item', TRADE: 'Trade', THREAT: 'Threat', DOWNED: 'Downed player', MARKETS: 'Intermission markets', OBJECTIVE: 'Private contract', PLAYERS: 'At the table', CHESTS: 'Table chests', HISTORY: 'Table history', CHAT: 'Table chat', SETTINGS: 'Settings', HANDBOOK: 'Handbook', SPECTATOR: 'Spectator god view',
+};
+function panelTitle(panel: Exclude<MatchPanel, null>) { return PANEL_TITLES[panel]; }
+
+function MatchOverlay({ title, tone, onClose, children }: { title: string; tone: 'neutral' | 'danger' | 'paper'; onClose: () => void; children: React.ReactNode }) {
+  return <div className="match-overlay-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section className={`match-overlay ${tone}`} role="dialog" aria-modal="true" aria-label={title}>
+    <header><p>{tone === 'paper' ? 'Eyes only' : tone === 'danger' ? 'Business under the table' : 'The table'}</p><h2>{title}</h2><button type="button" aria-label={`Close ${title}`} onClick={onClose}>Close</button></header>
+    <div className="match-overlay-body">{children}</div>
+  </section></div>;
+}
+
+function Handbook() {
+  return <section className="handbook"><p className="kicker">Field notes</p><h3>One primary action per turn</h3><p>Use an item, trade, threaten, or interact with a Downed player when the table permits it. Communication and review remain free.</p><h3>Keep private things private</h3><p>Your contract, Pocket contents, Black Market offers, and private inspections appear only in authorized overlays.</p><h3>Leave on your terms</h3><p>Complete your objective, wait for an eligible normal turn, then choose whether to leave or stay.</p></section>;
 }

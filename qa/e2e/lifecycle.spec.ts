@@ -32,28 +32,27 @@ async function start(players: Player[]) {
   for (const [index, person] of players.entries()) await chooseRoleAndReady(person.page, roles[index]!);
   await expect(players[0]!.page.getByRole('button', { name: 'Start match' })).toBeEnabled();
   await action(players, players[0]!, players[0]!.page.getByRole('button', { name: 'Start match' }));
-  for (const person of players) await expect(person.page.getByLabel('Your objective', { exact: true })).toBeVisible();
+  for (const person of players) await expect(person.page.getByLabel('First person table view', { exact: true })).toBeVisible();
   return host;
 }
 async function returnToHost(players: Player[]) {
-  await action(players, players[0]!, players[0]!.page.getByRole('button', { name: /end turn/i }));
   for (let step = 0; step < 12; step += 1) {
     const room = players[0]!.wire.latest().public;
     expect(room.status).toBe('PLAYING');
-    if (room.turn?.activeSeat === 0) return;
+    if (room.round?.phase !== 'INTERMISSION' && room.turn?.activeSeat === 0 && !room.turn.primaryUsed) return;
     const seat = room.round?.phase === 'INTERMISSION'
       ? room.players.find(person => person.id === room.shop!.order[room.shop!.activeShopperIndex])!.seat
       : room.turn!.activeSeat;
     const person = players[seat]!;
     await action(players, person, person.page.getByRole('button', {
-      name: room.round?.phase === 'INTERMISSION' ? 'Finish shopping' : /end turn/i,
+      name: room.round?.phase === 'INTERMISSION' ? 'Finish shopping' : /end turn|pass turn/i,
     }));
   }
   throw new Error('The scripted round did not return to the host.');
 }
 async function shoot(players: Player[], quickDraw = false) {
   const host = players[0]!;
-  await host.page.getByRole('combobox', { name: /Item target/ }).selectOption(host.wire.latest().public.players[1]!.id);
+  await host.page.getByRole('button', { name: 'Use item', exact: true }).click();
   if (quickDraw) await host.page.getByLabel('Use Quick Draw (once per match)', { exact: true }).check();
   await action(players, host, host.page.getByRole('button', { name: 'Use Pistol', exact: true }));
 }
@@ -73,9 +72,11 @@ test.describe('deterministic lifecycle', () => {
       const admission = await start(players);
       const identities = await Promise.all(players.map(person => session(person.page)));
       expect(tableServer!.game.read(admission.code)!.match!.seed).toBe(LIFECYCLE_SEED);
+      for (const person of players) await person.page.getByRole('button', { name: 'Contract', exact: true }).click();
       await expect(host.page.getByLabel('Your objective', { exact: true })).toContainText('Executioner');
       await expect(victim.page.getByLabel('Your objective', { exact: true })).toContainText('Collector');
       await expect(witness.page.getByLabel('Your objective', { exact: true })).toContainText('Tycoon');
+      for (const person of players) await person.page.getByRole('button', { name: 'Close Private contract', exact: true }).click();
       expect((await probe(victim.page, 'room:spectate')).error?.code).toBe('SPECTATOR_FORBIDDEN');
 
       await shoot(players);
@@ -115,6 +116,7 @@ test.describe('deterministic lifecycle', () => {
       expect(witness.wire.frames.join('\n')).not.toContain('collector');
       await expect(witness.page.locator('body')).not.toContainText('Collector');
 
+      await host.page.getByRole('button', { name: 'Exit ready', exact: true }).click();
       await action(players, host, host.page.getByRole('button', { name: 'Leave Table', exact: true }));
       for (const person of players) {
         await expect(person.page.getByRole('heading', { name: 'Results', exact: true })).toBeVisible();
@@ -156,7 +158,7 @@ test.describe('deterministic lifecycle', () => {
       // Prove the retained identities can actually play again, not just render a lobby.
       for (const person of players) await person.page.getByRole('button', { name: 'Ready up', exact: true }).click();
       await action(players, host, host.page.getByRole('button', { name: 'Start match', exact: true }));
-      for (const person of players) await expect(person.page.getByLabel('Your objective', { exact: true })).toBeVisible();
+      for (const person of players) await expect(person.page.getByLabel('First person table view', { exact: true })).toBeVisible();
       expect(host.wire.latest().public.players.map(person => person.hp)).toEqual([5, 5, 5]);
     } finally { await Promise.all(players.map(person => person.context.close())); }
   });

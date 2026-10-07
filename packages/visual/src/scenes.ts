@@ -204,6 +204,7 @@ function createDoor(kit: VisualKit): Group {
   hinge.add(panel);
   door.add(hinge);
   door.position.set(2.4, 0, -5.9);
+  door.name = 'exitDoor';
   door.userData.label = 'EXIT';
   return door;
 }

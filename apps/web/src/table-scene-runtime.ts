@@ -1,10 +1,11 @@
-import { Group, TorusGeometry, Vector3, WebGLRenderer, type Object3D } from 'three';
+import { Group, Raycaster, TorusGeometry, Vector2, Vector3, WebGLRenderer, type Object3D } from 'three';
 import {
   ARRIVAL_DURATION, ITEM_MODEL_IDS, ITEM_PRESENTATION, PRESENTATION_CLIPS, TABLE_TOP_Y,
   TableArrival, VisualKit, createCamera, createPostPipeline, createTableScene,
   type ArrivalBeat, type ArrivalPhase, type ItemModelId,
 } from '@the-table/visual';
 import type { PublicRoomView } from '@the-table/game';
+import type { SceneIntent } from './GameTableScene';
 import { PublicPresentationObserver, arrivalEligible, hasSeenArrival, hasStartedArrival, publicImpactTilt, publicSeats, rememberArrival, rememberArrivalStart, type TableCue } from './table-presentation';
 
 export interface TablePresentationOptions {
@@ -12,8 +13,10 @@ export interface TablePresentationOptions {
   onIntroChange: (phase: ArrivalPhase | null, canSkip: boolean) => void;
   onBeat?: (beat: ArrivalBeat) => void;
   onError?: () => void;
+  onIntent?: ((intent: SceneIntent) => void) | undefined;
+  interactionsEnabled?: boolean;
 }
-export interface TablePresentation { update(room: PublicRoomView): void; skipIntro(): void; dispose(): void }
+export interface TablePresentation { update(room: PublicRoomView): void; setInteractionsEnabled(value: boolean): void; skipIntro(): void; dispose(): void }
 interface Effect { start: number; duration: number; apply(time: number): void; finish(): void }
 const ease = (n: number) => { const t = Math.max(0, Math.min(1, n)); return t * t * (3 - 2 * t); };
 const modelId = (id: string): ItemModelId | undefined => {
@@ -48,16 +51,25 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     cleanups.push(() => kit.dispose());
     const seats = publicSeats(initialRoom);
     const bundle = createTableScene(kit, { aspect: width / height, seats, includeChests: false });
-    const camera = createCamera('spectator', width / height);
+    const interactiveTargets: Object3D[] = [...bundle.interactive];
+    const exitDoor = bundle.scene.getObjectByName('exitDoor');
+    if (exitDoor) exitDoor.userData.semantic = { kind: 'EXIT' };
+    const camera = createCamera(options.viewerId === undefined ? 'spectator' : 'seat', width / height);
+    const lamp = bundle.scene.getObjectByName('tableLamp');
     const post = createPostPipeline(renderer, Math.ceil(width / 2), Math.ceil(height / 2), { grain: 0.09, saturation: 0.7 });
     cleanups.push(() => post.dispose());
     cleanups.push(() => bundle.scene.traverse(object => { if ('shadow' in object) (object.shadow as { dispose?: () => void }).dispose?.(); }));
-    const characters = new Map(seats.map((seat, index) => [seat.id, bundle.characters[index]!]));
+    const characters = new Map(seats.map((seat, index) => {
+      const character = bundle.characters[index]!;
+      character.userData.semantic = { kind: 'PLAYER', playerId: seat.id };
+      return [seat.id, character] as const;
+    }));
     const chests = new Map((['STANDARD', 'BLACK'] as const).map(kind => {
       const chest = kit.createChest(kind === 'STANDARD' ? 'standard' : 'black');
       chest.position.set(kind === 'STANDARD' ? -1.15 : 1.2, TABLE_TOP_Y, -0.6);
       chest.rotation.y = kind === 'STANDARD' ? 0.3 : -0.3;
-      chest.scale.setScalar(1.1); chest.visible = false; bundle.scene.add(chest);
+      chest.scale.setScalar(1.1); chest.visible = false; chest.userData.semantic = { kind: 'CHEST', chestKind: kind };
+      bundle.scene.add(chest); interactiveTargets.push(chest);
       return [kind, chest] as const;
     }));
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -65,6 +77,8 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     const observer = new PublicPresentationObserver();
     const effects = new Map<string, Effect>();
     const itemModels = new Map<string, { anchor: Group; pivot: Group; model: Group }>();
+    const inventoryModels = new Map<string, { anchor: Group; ownerId: string; itemId: string }>();
+    const pocketModels = new Map<string, Group>();
     const departing = new Map<string, Group>();
     const markers = new Map<string, Object3D>();
     let shopKit: VisualKit | undefined;
@@ -76,7 +90,106 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     const sessionStorage = () => { try { return window.sessionStorage; } catch { return undefined; } };
     const canSkipIntro = hasSeenArrival(storage());
     const setPhase = (value: ArrivalPhase | null) => { if (value !== introPhase) { introPhase = value; options.onIntroChange(value, canSkipIntro); } };
+    const raycaster = new Raycaster();
+    const pointer = new Vector2();
+    let interactionsEnabled = options.interactionsEnabled ?? true;
+    let lookX = 0, lookY = 0, dragX = 0, dragY = 0, dragging = false, moved = false;
+    const syncCamera = () => {
+      if (options.viewerId === undefined) {
+        camera.position.set(lookX * 1.2, 4.1 - lookY * .3, 3.1);
+        camera.lookAt(0, .85, -.15);
+      } else {
+        camera.position.set(lookX * .14, 1.58 - lookY * .05, 2.4);
+        camera.lookAt(lookX * .9, .74 - lookY * .45, -.6);
+      }
+    };
+    const semanticHit = (event: PointerEvent): SceneIntent | undefined => {
+      if (!interactionsEnabled || options.viewerId === undefined || (arrival && !arrival.finished)) return undefined;
+      const bounds = renderer.domElement.getBoundingClientRect();
+      pointer.set(((event.clientX - bounds.left) / bounds.width) * 2 - 1, -((event.clientY - bounds.top) / bounds.height) * 2 + 1);
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects(interactiveTargets, true).find(value => {
+        for (let node: Object3D | null = value.object; node; node = node.parent) if (!node.visible) return false;
+        return true;
+      });
+      let node: Object3D | null = hit?.object ?? null;
+      while (node && !node.userData.semantic) node = node.parent;
+      return node?.userData.semantic as SceneIntent | undefined;
+    };
+    const pointerMove = (event: PointerEvent) => {
+      if (options.viewerId === undefined || !interactionsEnabled || (arrival && !arrival.finished)) return;
+      const bounds = renderer.domElement.getBoundingClientRect();
+      if (dragging) {
+        lookX = Math.max(-1, Math.min(1, lookX - (event.clientX - dragX) / Math.max(1, bounds.width) * 1.7));
+        lookY = Math.max(-1, Math.min(1, lookY + (event.clientY - dragY) / Math.max(1, bounds.height) * 1.3));
+        dragX = event.clientX; dragY = event.clientY; moved = true;
+      } else if (event.pointerType === 'mouse') {
+        lookX = Math.max(-1, Math.min(1, ((event.clientX - bounds.left) / bounds.width) * 2 - 1));
+        lookY = Math.max(-1, Math.min(1, ((event.clientY - bounds.top) / bounds.height) * 2 - 1));
+      }
+    };
+    const pointerDown = (event: PointerEvent) => {
+      if (options.viewerId === undefined || !interactionsEnabled || (arrival && !arrival.finished)) return;
+      dragging = true; moved = false; dragX = event.clientX; dragY = event.clientY;
+      renderer.domElement.setPointerCapture?.(event.pointerId);
+    };
+    const pointerUp = (event: PointerEvent) => {
+      if (options.viewerId === undefined || !interactionsEnabled || (arrival && !arrival.finished)) return;
+      dragging = false; renderer.domElement.releasePointerCapture?.(event.pointerId);
+      if (!moved) { const intent = semanticHit(event); if (intent) options.onIntent?.(intent); }
+    };
+    renderer.domElement.addEventListener('pointermove', pointerMove);
+    renderer.domElement.addEventListener('pointerdown', pointerDown);
+    renderer.domElement.addEventListener('pointerup', pointerUp);
+    renderer.domElement.addEventListener('pointercancel', () => { dragging = false; });
+    cleanups.push(() => {
+      renderer.domElement.removeEventListener('pointermove', pointerMove);
+      renderer.domElement.removeEventListener('pointerdown', pointerDown);
+      renderer.domElement.removeEventListener('pointerup', pointerUp);
+    });
     const clearEffects = () => { for (const effect of effects.values()) effect.finish(); effects.clear(); };
+    const seatPlacement = (seatId: string, slot: number) => {
+      const seat = seats.find(value => value.id === seatId);
+      if (!seat) return new Vector3(0, TABLE_TOP_Y + .02, 0);
+      const outward = new Vector3(seat.position[0], 0, seat.position[2]).normalize();
+      const right = new Vector3(outward.z, 0, -outward.x);
+      return new Vector3(...seat.position).multiplyScalar(.53).addScaledVector(right, (slot - 2.5) * .28).setY(TABLE_TOP_Y + .025);
+    };
+    const syncInventory = () => {
+      const live = new Set<string>();
+      const removeInteractive = (object: Object3D) => {
+        const index = interactiveTargets.indexOf(object);
+        if (index >= 0) interactiveTargets.splice(index, 1);
+        object.removeFromParent();
+      };
+      for (const player of room.players) {
+        player.visibleInventory.forEach((item, slot) => {
+          if (!item) return;
+          const id = modelId(item.itemId);
+          if (!id) return;
+          live.add(item.instanceId);
+          let entry = inventoryModels.get(item.instanceId);
+          if (!entry || entry.itemId !== item.itemId || entry.ownerId !== player.id) {
+            if (entry) removeInteractive(entry.anchor);
+            const anchor = new Group();
+            const model = kit.createItem(id, { label: item.itemId });
+            anchor.add(model); anchor.scale.setScalar(.72); anchor.userData.semantic = { kind: 'ITEM', instanceId: item.instanceId, ownerId: player.id, itemId: item.itemId };
+            bundle.scene.add(anchor); interactiveTargets.push(anchor);
+            entry = { anchor, ownerId: player.id, itemId: item.itemId }; inventoryModels.set(item.instanceId, entry);
+          }
+          entry.anchor.position.copy(seatPlacement(player.id, slot));
+          entry.anchor.rotation.y = seats.find(value => value.id === player.id)?.rotationY ?? 0;
+        });
+        player.pocketOccupancy.forEach((occupied, index) => {
+          const key = `${player.id}:${index}`;
+          if (!occupied) { pocketModels.get(key)?.removeFromParent(); pocketModels.delete(key); return; }
+          let model = pocketModels.get(key);
+          if (!model) { model = kit.createPocket(false); model.scale.setScalar(.8); bundle.scene.add(model); pocketModels.set(key, model); }
+          model.position.copy(seatPlacement(player.id, index + 2.5)).add(new Vector3(0, .01, .2));
+        });
+      }
+      for (const [id, entry] of inventoryModels) if (!live.has(id)) { removeInteractive(entry.anchor); inventoryModels.delete(id); }
+    };
     const syncPlayers = () => {
       for (const player of room.players) {
         const upper = characters.get(player.id)?.getObjectByName('upper'); if (!upper) continue;
@@ -106,6 +219,8 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       }
       target.dataset.presentationEffects = String(effects.size);
       target.dataset.presentationIntro = introPhase ?? 'none';
+      if (!arrival || arrival.finished) syncCamera();
+      if (lamp && !motion.matches) { lamp.rotation.z = Math.sin(now / 1000 * .7) * .035; lamp.rotation.x = Math.cos(now / 1000 * .5) * .02; }
       post.render(bundle.scene, camera, motion.matches ? 0 : now / 1000);
     };
     const render = (now: number) => { try { draw(now); } catch { fail(); } };
@@ -203,6 +318,7 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
         if (!effects.has(`chest:${kind}`)) model.getObjectByName('lid')!.rotation.x = state === 'OPENED' ? -1.9 : 0;
       }
       syncShop();
+      syncInventory();
       const cues = observer.observe(room);
       if (!motion.matches && document.visibilityState !== 'hidden') for (const value of cues) cue(value);
       if (arrival && !arrival.finished && (room.status !== 'PLAYING' || room.players.find(player => player.id === options.viewerId)?.life !== 'ACTIVE')) finishArrival();
@@ -233,6 +349,6 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     }
     target.dataset.arrivalDuration = String(ARRIVAL_DURATION);
     redraw();
-    return { update(next) { try { update(next); } catch { fail(); } }, skipIntro() { if (canSkipIntro) { finishArrival(); redraw(); } }, dispose };
+    return { update(next) { try { update(next); } catch { fail(); } }, setInteractionsEnabled(value) { interactionsEnabled = value; }, skipIntro() { if (canSkipIntro) { finishArrival(); redraw(); } }, dispose };
   } catch (error) { dispose(); throw error; }
 }

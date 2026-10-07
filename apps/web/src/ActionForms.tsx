@@ -12,16 +12,20 @@ const selected = (data: FormData, key: string) => data.getAll(key).map(String);
 const me = (room: RoomView) => room.public.players.find(player => player.id === room.private.playerId)!;
 
 export function ItemSelect({ items, label, name, value: selection, onChange }: { items: ItemStack[]; label: string; name: string; value?: string; onChange?: (id: string) => void }) {
-  return <label>{label}<select name={name} required {...(selection !== undefined ? { value: selection } : {})} onChange={event => onChange?.(event.target.value)}>
-    {!items.length && <option value="">No items available</option>}{items.map(item => <option key={item.instanceId} value={item.instanceId}>{stackName(item)}</option>)}
-  </select></label>;
+  const [draft, setDraft] = useState(items[0]?.instanceId ?? '');
+  const current = selection ?? (items.some(item => item.instanceId === draft) ? draft : items[0]?.instanceId ?? '');
+  const choose = (id: string) => { setDraft(id); onChange?.(id); };
+  return <fieldset className="visual-choice"><legend>{label}</legend><div className="choice-grid item-choice-grid">
+    {items.map(item => <button type="button" className={item.instanceId === current ? 'selected' : ''} aria-pressed={item.instanceId === current} key={item.instanceId} onClick={() => choose(item.instanceId)}><strong>{stackName(item)}</strong><small>{ITEM_HELP[item.itemId]}</small></button>)}
+    {!items.length && <p className="muted">No items available</p>}
+  </div><label className="sr-only">{label}<select name={name} required value={current} onChange={event => choose(event.target.value)}>{!items.length && <option value="">No items available</option>}{items.map(item => <option key={item.instanceId} value={item.instanceId}>{stackName(item)}</option>)}</select></label></fieldset>;
 }
 function TargetSelect({ players, value: selection, onChange, label = 'Player', includeSelf }: { players: PublicPlayerView[]; value: string; onChange: (id: string) => void; label?: string; includeSelf?: boolean }) {
-  return <label>{label}<select name="targetId" required value={selection} onChange={event => onChange(event.target.value)}>
-    {includeSelf && <option value="self">Self / table</option>}
-    {!players.length && !includeSelf && <option value="">No players available</option>}
-    {players.map(player => <option key={player.id} value={player.id}>{player.name} · {words(player.life)}{player.connection === 'DISCONNECTED' ? ' · Offline' : ''}</option>)}
-  </select></label>;
+  return <fieldset className="visual-choice target-choice"><legend>{label}</legend><div className="choice-grid">
+    {includeSelf && <button type="button" className={selection === 'self' ? 'selected' : ''} aria-pressed={selection === 'self'} onClick={() => onChange('self')}>Self / table</button>}
+    {players.map(player => <button type="button" className={selection === player.id ? 'selected' : ''} aria-pressed={selection === player.id} key={player.id} onClick={() => onChange(player.id)}><strong>{player.name}</strong><small>{words(player.life)}{player.connection === 'DISCONNECTED' ? ' · Offline' : ''}</small></button>)}
+    {!players.length && !includeSelf && <p className="muted">No players available</p>}
+  </div><label className="sr-only">{label}<select name="targetId" required value={selection} onChange={event => onChange(event.target.value)}>{includeSelf && <option value="self">Self / table</option>}{!players.length && !includeSelf && <option value="">No players available</option>}{players.map(player => <option key={player.id} value={player.id}>{player.name} · {words(player.life)}</option>)}</select></label></fieldset>;
 }
 function Check({ name, children }: { name: string; children: React.ReactNode }) {
   return <label className="check-row"><input type="checkbox" name={name} /><span>{children}</span></label>;
@@ -96,7 +100,7 @@ export function ThreatForm({ room, send, busy }: ActionProps) {
   };
   return <form className="action-form" onSubmit={submit} aria-label="Compose Threat"><fieldset disabled={busy}><legend>Make a Threat</legend>
     <TargetSelect players={others} value={targetId} onChange={setTarget} label="Threaten" />
-    <label>Threat mode<select name="mode" value={mode} onChange={event => setMode(event.target.value as 'OPEN' | 'COVERED')}><option value="OPEN">Open · present a valid weapon</option><option value="COVERED">Covered · commit one item and consume Cloth</option></select></label>
+    <fieldset className="visual-choice threat-mode"><legend>Threat mode</legend><div className="choice-grid"><button type="button" className={mode === 'OPEN' ? 'selected' : ''} aria-pressed={mode === 'OPEN'} onClick={() => setMode('OPEN')}><strong>Open</strong><small>Present a valid weapon</small></button><button type="button" className={mode === 'COVERED' ? 'selected' : ''} aria-pressed={mode === 'COVERED'} onClick={() => setMode('COVERED')}><strong>Under cloth</strong><small>Commit an unknown item and consume Cloth</small></button></div><label className="sr-only">Threat mode<select name="mode" value={mode} onChange={event => setMode(event.target.value as 'OPEN' | 'COVERED')}><option value="OPEN">Open</option><option value="COVERED">Covered</option></select></label></fieldset>
     <ItemSelect items={visible} label={mode === 'OPEN' ? 'Visible weapon' : 'Visible item to cover'} name="committedItemId" />
     {mode === 'COVERED' && <ItemSelect items={cloth} label="Cloth to consume" name="clothItemId" />}
     {me(room).roleId === 'enforcer' && <Check name="quickDraw">Commit Quick Draw if a Pistol is refused</Check>}
@@ -122,7 +126,7 @@ export function DownedForm({ room, send, busy, immediate = false }: ActionProps 
   };
   return <form className="action-form" onSubmit={submit} aria-label={immediate ? 'Immediate loot' : 'Downed interaction'}><fieldset disabled={busy}><legend>{immediate ? 'Immediate attacker loot' : 'Help or loot a Downed player'}</legend>
     <TargetSelect players={targets} value={target?.id ?? ''} onChange={setTarget} label="Downed player" />
-    {!immediate && <label>Interaction<select value={kind} onChange={event => setKind(event.target.value as typeof kind)}><option value="LOOT">Loot one visible item</option><option value="REVIVE">Revive with Medicine</option><option value="HELP">Help with Medicine or Antidote</option></select></label>}
+    {!immediate && <fieldset className="visual-choice"><legend>Interaction</legend><div className="choice-grid"><button type="button" className={kind === 'LOOT' ? 'selected' : ''} aria-pressed={kind === 'LOOT'} onClick={() => setKind('LOOT')}>Loot</button><button type="button" className={kind === 'REVIVE' ? 'selected' : ''} aria-pressed={kind === 'REVIVE'} onClick={() => setKind('REVIVE')}>Revive</button><button type="button" className={kind === 'HELP' ? 'selected' : ''} aria-pressed={kind === 'HELP'} onClick={() => setKind('HELP')}>Help</button></div><label className="sr-only">Interaction<select value={kind} onChange={event => setKind(event.target.value as typeof kind)}><option value="LOOT">Loot one visible item</option><option value="REVIVE">Revive with Medicine</option><option value="HELP">Help with Medicine or Antidote</option></select></label></fieldset>}
     <ItemSelect key={`${target?.id}-${actionKind}`} items={items} label={actionKind === 'LOOT' ? 'Their visible item' : 'Your help item'} name="instanceId" />
     <p className="muted">{immediate ? 'You may loot one visible item immediately after Downing this player.' : 'One extra Downed interaction during the rescue window. This does not consume your normal Primary Action.'}</p>
     <button className="button primary" disabled={!items.length}>{actionKind === 'LOOT' ? 'Loot item' : actionKind === 'REVIVE' ? 'Revive player' : 'Help player'}</button>

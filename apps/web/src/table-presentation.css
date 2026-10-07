@@ -1,5 +1,5 @@
 .table-presentation { position: relative; }
-.table-presentation-canvas { position: absolute; inset: 0; }
+.table-presentation-canvas { position: absolute; inset: 0; touch-action: none; cursor: crosshair; }
 .table-arrival { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr auto; align-content: end; align-items: end; gap: 10px 16px; padding: clamp(12px, 3vw, 24px); pointer-events: none; background: linear-gradient(transparent 60%, rgb(9 7 5 / 0.9)); color: #e0d2b6; }
 .table-arrival-copy .eyebrow { color: #bfa475; }
 .table-arrival-copy p { font-family: "IM Fell English", Georgia, serif; font-size: clamp(20px, 3vw, 28px); line-height: 1.1; margin: 4px 0 0; }
