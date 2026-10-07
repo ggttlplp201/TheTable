@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@the-table/content": "workspace:*",
     "@the-table/game": "workspace:*",
     "@the-table/visual": "workspace:*",
     "react": "^19.1.1",

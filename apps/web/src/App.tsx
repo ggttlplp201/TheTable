@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { RoleId } from '@the-table/game';
-import { isSpectatorView, ROLE_COPY, ROLES, type ClientError, type RoomView, type SessionPayload, type SessionSnapshot, type SpectatorRoomView } from './protocol';
+import { isSpectatorView, ROLE_COPY, ROLES, type AnyRoomView, type ClientError, type RoomView, type SessionPayload, type SessionSnapshot } from './protocol';
 import { TableClient } from './socket';
-import { GameTableScene } from './GameTableScene';
+import { MatchView } from './MatchView';
 import { ConnectionRestoreGate } from './reconnect';
 
 const STORAGE_KEY = 'the-table/session-v1';
@@ -29,18 +29,21 @@ function loadSession(): SessionSnapshot | undefined {
 }
 
 function saveSession(snapshot: SessionSnapshot) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); } catch { /* Storage restrictions must not hide an admitted seat. */ }
 }
 
 export function App() {
   const [client] = useState(() => new TableClient());
   const restoreGate = useRef(new ConnectionRestoreGate());
+  const skipRestore = useRef(false);
+  const [sessionReady, setSessionReady] = useState(false);
   const [screen, setScreen] = useState<Screen>('connecting');
   const [entryMode, setEntryMode] = useState<EntryMode>('create');
   const [name, setName] = useState('');
   const [joinCode, setJoinCode] = useState('');
-  const [room, setRoom] = useState<RoomView>();
-  const [spectatorView, setSpectatorView] = useState<SpectatorRoomView>();
+  const [view, setView] = useState<AnyRoomView>();
+  const room = view && !isSpectatorView(view) ? view : undefined;
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [playerId, setPlayerId] = useState<string>();
   const [connected, setConnected] = useState(false);
   const [working, setWorking] = useState(false);
@@ -72,26 +75,34 @@ export function App() {
     };
     const removeConnection = client.onConnection(isConnected => {
       setConnected(isConnected);
-      if (isConnected) void restore(restoreGate.current.nextConnection());
+      if (!isConnected) setSessionReady(false);
+      if (isConnected && skipRestore.current) { skipRestore.current = false; setScreen('entry'); }
+      else if (isConnected) void restore(restoreGate.current.nextConnection());
     });
     const removeConnectionError = client.onConnectionError(message => {
       if (cancelled) return;
       setError({ code: 'CONNECTION_FAILED', message });
       setScreen(current => current === 'connecting' ? 'entry' : current);
     });
-    const removeView = client.onView(view => {
-      if (isSpectatorView(view)) {
-        setSpectatorView(view);
-        setRoom(undefined);
-        setScreen('playing');
-        return;
-      }
-      setRoom(view);
-      setSpectatorView(undefined);
-      setScreen(view.public.status === 'LOBBY' ? 'lobby' : 'playing');
-    });
-    const removePublic = client.onPublic(publicView => {
-      setRoom(previous => previous && previous.public.code === publicView.code ? { ...previous, public: publicView } : previous);
+    const removeView = client.onView(applyView);
+    const removeCapabilities = client.onCapabilities(value => setVoiceEnabled(value.voiceEnabled));
+    const clearRoom = (reason: string) => {
+      window.localStorage.removeItem(STORAGE_KEY);
+      setView(undefined);
+      setPlayerId(undefined);
+      setError({ code: 'SESSION_ENDED', message: reason });
+      setScreen('entry');
+    };
+    const removeClosed = client.onClosed(value => clearRoom(`This room has closed: ${value.reason.toLowerCase().replaceAll('_', ' ')}.`));
+    const removeReplaced = client.onReplaced(() => {
+      // Another tab may already have persisted its rotated credential. Do not erase it.
+      setView(undefined);
+      setPlayerId(undefined);
+      setError({ code: 'SESSION_REPLACED', message: 'Your seat was reconnected in another browser. This session has ended.' });
+      setScreen('entry');
+      skipRestore.current = true;
+      client.disconnect();
+      client.connect();
     });
     client.connect();
     return () => {
@@ -99,7 +110,9 @@ export function App() {
       removeConnection();
       removeConnectionError();
       removeView();
-      removePublic();
+      removeCapabilities();
+      removeClosed();
+      removeReplaced();
       client.disconnect();
     };
   }, [client]);
@@ -108,23 +121,22 @@ export function App() {
   const isHost = Boolean(room && playerId === room.public.hostPlayerId);
   const canStart = Boolean(isHost && room && room.public.players.length >= 2 && room.public.players.every(player => player.roleId && player.ready));
 
+  function applyView(next: AnyRoomView) {
+    setView(previous => previous?.public.id === next.public.id && previous.public.revision > next.public.revision ? previous : next);
+    setScreen(next.public.status === 'LOBBY' ? 'lobby' : 'playing');
+  }
+
   function applySession(data: SessionPayload) {
-    const { view } = data;
-    const id = data.playerId ?? view.viewerPlayerId ?? (!isSpectatorView(view) ? view.private.playerId : undefined);
+    const { view: next } = data;
+    const id = data.playerId ?? next.viewerPlayerId ?? (!isSpectatorView(next) ? next.private.playerId : undefined);
     if (id) {
-      saveSession({ code: view.public.code, reconnectToken: data.reconnectToken, playerId: id });
+      saveSession({ code: next.public.code, reconnectToken: data.reconnectToken, playerId: id });
       setPlayerId(id);
     }
+    setSessionReady(true);
+    setVoiceEnabled(data.voiceEnabled ?? false);
     setError(undefined);
-    if (isSpectatorView(view)) {
-      setSpectatorView(view);
-      setRoom(undefined);
-      setScreen('playing');
-      return;
-    }
-    setRoom(view);
-    setSpectatorView(undefined);
-    setScreen(view.public.status === 'LOBBY' ? 'lobby' : 'playing');
+    applyView(next);
   }
 
   async function submitEntry(event: React.FormEvent<HTMLFormElement>) {
@@ -165,11 +177,10 @@ export function App() {
     if (!response.ok) setError(response.error);
   }
 
-  if (screen === 'connecting') return <LoadingView connected={connected} error={error} onContinue={() => setScreen('entry')} />;
+  if (screen === 'connecting' && !view) return <LoadingView connected={connected} error={error} onContinue={() => setScreen('entry')} />;
   if (screen === 'entry') return <EntryView mode={entryMode} setMode={setEntryMode} name={name} setName={setName} joinCode={joinCode} setJoinCode={setJoinCode} error={error} working={working} connected={connected} onSubmit={submitEntry} />;
-  if (screen === 'playing' && spectatorView) return <SpectatorPlayingView room={spectatorView} connected={connected} />;
+  if (view && view.public.status !== 'LOBBY' && playerId) return <Shell connected={connected}><MatchView room={view} client={client} connected={connected && sessionReady} viewerId={playerId} voiceEnabled={voiceEnabled} onView={applyView} /></Shell>;
   if (!room || !currentPlayer) return <LoadingView connected={connected} error={error} onContinue={() => setScreen('entry')} />;
-  if (screen === 'playing') return <PlayingView room={room} connected={connected} error={error} />;
   return <LobbyView room={room} currentPlayerId={currentPlayer.id} isHost={isHost} canStart={canStart} connected={connected} working={working} error={error} onClaim={claimRole} onReady={toggleReady} onStart={startMatch} />;
 }
 
@@ -246,7 +257,7 @@ function LobbyView(props: {
             const selected = currentPlayer.roleId === roleId;
             const unavailable = Boolean(owner && owner.id !== currentPlayerId);
             const detail = ROLE_COPY[roleId];
-            return <button className={`role-card ${selected ? 'selected' : ''}`} type="button" key={roleId} onClick={() => onClaim(roleId)} disabled={working || unavailable} aria-pressed={selected}>
+            return <button className={`role-card ${selected ? 'selected' : ''}`} type="button" key={roleId} onClick={() => onClaim(roleId)} disabled={working || !connected || unavailable} aria-pressed={selected}>
               <span className="role-name">{detail.name}</span>
               <span className="role-kit">{detail.kit}</span>
               <span className="role-ability">{unavailable ? `Chosen by ${owner?.name}` : detail.ability}</span>
@@ -264,42 +275,10 @@ function LobbyView(props: {
         </div>
         <div className="lobby-actions">
           {error && <p className="form-error" role="alert">{error.message}</p>}
-          <button className="button primary" type="button" disabled={working || !currentPlayer.roleId} onClick={onReady}>{currentPlayer.ready ? 'Not ready' : 'Ready up'}</button>
-          <button className="button secondary" type="button" disabled={working || !canStart} onClick={onStart}>{startCopy}</button>
+          <button className="button primary" type="button" disabled={working || !connected || !currentPlayer.roleId} onClick={onReady}>{currentPlayer.ready ? 'Not ready' : 'Ready up'}</button>
+          <button className="button secondary" type="button" disabled={working || !connected || !canStart} onClick={onStart}>{startCopy}</button>
           <p className="host-note">{isHost ? 'You can start once at least two players have selected a unique role and are ready.' : 'The host starts the match after all seated players are ready.'}</p>
         </div>
-      </aside>
-    </section>
-  </Shell>;
-}
-
-function PlayingView({ room, connected, error }: { room: RoomView; connected: boolean; error?: ClientError | undefined }) {
-  const objective = room.private.objective;
-  const player = room.public.players.find(candidate => candidate.id === room.private.playerId);
-  const playerName = player?.name ?? 'You';
-  const summary = useMemo(() => objective ? objective.status.replace('_', ' ').toLowerCase() : 'pending', [objective]);
-  return <Shell connected={connected}>
-    <section className="playing-layout">
-      <GameTableScene room={room.public} />
-      <aside className="private-panel">
-        <p className="kicker">Private to {playerName}</p>
-        <h2>{objective ? 'Your objective' : 'Objective incoming'}</h2>
-        <p className="objective-name">{objective?.objectiveId ?? 'The server has not assigned an objective yet.'}</p>
-        <p className="objective-status">Status: {summary}</p>
-        {error && <p className="form-error" role="alert">{error.message}</p>}
-      </aside>
-    </section>
-  </Shell>;
-}
-
-function SpectatorPlayingView({ room, connected }: { room: SpectatorRoomView; connected: boolean }) {
-  return <Shell connected={connected}>
-    <section className="playing-layout">
-      <GameTableScene room={room.public} />
-      <aside className="private-panel">
-        <p className="kicker">Spectator view</p>
-        <h2>Watching the table</h2>
-        <p className="objective-status">{room.public.players.length} players remain in room {room.public.code}.</p>
       </aside>
     </section>
   </Shell>;

@@ -1,4 +1,4 @@
-import type { AuthorizedRoomView, PlayerPrivateView, PublicPlayerView, PublicRoomView, RoleId } from '@the-table/game';
+import type { AuthorizedRoomView, GameCommand, RoleId, SpectatorView } from '@the-table/game';
 
 export interface ChatMessage {
   id: string;
@@ -15,17 +15,11 @@ export interface RevisionAck {
   revision: number;
 }
 
-export interface SpectatorRoomView {
-  public: PublicRoomView;
-  players: Array<{ public: PublicPlayerView; private: PlayerPrivateView }>;
-  chests: unknown[];
-  shop?: unknown;
-  events: unknown[];
-  capabilities: [];
+export type SpectatorRoomView = SpectatorView & {
   spectator: true;
   viewerPlayerId?: string;
   messages?: ChatMessage[];
-}
+};
 
 export type AnyRoomView = RoomView | SpectatorRoomView;
 
@@ -36,6 +30,7 @@ export function isSpectatorView(view: AnyRoomView): view is SpectatorRoomView {
 export interface ClientError {
   code: string;
   message: string;
+  revision?: number;
 }
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: ClientError };
@@ -44,15 +39,19 @@ export interface SessionPayload {
   reconnectToken: string;
   playerId?: string;
   view: AnyRoomView;
+  voiceEnabled?: boolean;
 }
 
-export interface CommandPayload {
+/** Seed, actor, clock and timeout fields never belong to client input. */
+export type PlayerCommand = Exclude<GameCommand, { type: 'START_MATCH' }>;
+type Envelope<C extends PlayerCommand> = C extends PlayerCommand ? {
   idempotencyKey: string;
-  expectedRevision?: number;
-  roomId?: string;
-  type: string;
-  payload?: Record<string, unknown>;
-}
+  expectedRevision: number;
+  roomId: string;
+  type: C['type'];
+  payload: Omit<C, 'type'>;
+} : never;
+export type CommandPayload = Envelope<PlayerCommand>;
 
 export interface SessionSnapshot {
   code: string;

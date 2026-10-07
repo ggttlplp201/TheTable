@@ -22,11 +22,13 @@ export class TableClient {
   }
 
   onConnection(listener: (connected: boolean) => void) {
-    this.socket.on('connect', () => listener(true));
-    this.socket.on('disconnect', () => listener(false));
+    const onConnect = () => listener(true);
+    const onDisconnect = () => listener(false);
+    this.socket.on('connect', onConnect);
+    this.socket.on('disconnect', onDisconnect);
     return () => {
-      this.socket.off('connect');
-      this.socket.off('disconnect');
+      this.socket.off('connect', onConnect);
+      this.socket.off('disconnect', onDisconnect);
     };
   }
 
@@ -44,6 +46,21 @@ export class TableClient {
   onPublic(listener: (view: RoomView['public']) => void): () => void {
     this.socket.on('room:public', listener);
     return () => this.socket.off('room:public', listener);
+  }
+
+  onCapabilities(listener: (value: { voiceEnabled: boolean }) => void): () => void {
+    this.socket.on('server:capabilities', listener);
+    return () => { this.socket.off('server:capabilities', listener); };
+  }
+
+  onClosed(listener: (value: { code: string; reason: string }) => void): () => void {
+    this.socket.on('room:closed', listener);
+    return () => { this.socket.off('room:closed', listener); };
+  }
+
+  onReplaced(listener: () => void): () => void {
+    this.socket.on('session:replaced', listener);
+    return () => { this.socket.off('session:replaced', listener); };
   }
 
   create(name: string) {
@@ -71,7 +88,7 @@ export class TableClient {
   }
 
   sync() {
-    return this.emit<{ view: AnyRoomView }>('room:sync', {});
+    return this.emit<{ view: AnyRoomView; voiceEnabled?: boolean }>('room:sync', {});
   }
 
   spectate() {
