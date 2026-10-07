@@ -14,12 +14,12 @@ This is the concise implementation reference derived from `multiplayer_game_desi
 ## Objectives, exits, and score
 
 - Each player receives one secret objective, independent of Role and unique within a match.
-- States are `ACTIVE`, `EXIT_READY`, `BANKED`, or `FAILED`. `BANKED` and `FAILED` count as resolved.
+- States are `ACTIVE`, `EXIT_READY`, `BANKED`, or `FAILED`. `BANKED` and `FAILED` count as resolved. For forced match closure, the all-objectives condition is reached when no assigned objective remains `ACTIVE`; living `EXIT_READY` players are then auto-banked.
 - Historical/action objectives latch once completed. Escapist, Collector, Tycoon, and Arsenal are sustained and must still be true when Leave Table is chosen.
 - First readiness grants 3 Coins; contingency readiness grants 2. The reward cannot repeat.
 - Leave Table first becomes available on the player's next normal turn after readiness. Choosing to stay defers the chance to their next normal turn. A chosen exit is final.
-- Successful exit/death resolution reveals the objective. A ready player who later dies scores zero unless their objective explicitly banks through death.
-- The match ends when one active player remains or every assigned objective is resolved. Exit-ready living players forced out by the resolved-objective condition auto-bank by completion timestamp, then seat order.
+- A successful exit or qualifying death-objective resolution reveals the objective. An ordinary failed death does not reveal that objective to living players; verified spectators still receive god view. A ready player who later dies scores zero unless their objective explicitly banks through death.
+- The match ends when one active player remains or no assigned objective remains `ACTIVE`. Exit-ready living players forced out by either condition auto-bank by completion timestamp, then seat order.
 - Exit scores: 4P `100/70/45/25`; 3P `100/65/35`; 2P `100/50`. Death/unresolved is zero. Contingency gets 80%, nearest whole number.
 
 ## Objective assignment
