@@ -30,14 +30,15 @@ This matrix is the executable-spec backlog for The Table. Test scenarios use a s
 
 ## Browser and mobile E2E gate
 
-The web package now exists, but it has no browser E2E runner or complete-match surface. Use independent browser contexts, one desktop (`1440x900`) and one phone (`390x844`), attached to the same local server and fixed seed when that surface is ready.
+`pnpm test:e2e` runs Playwright against the local server and Vite client with independent browser contexts: one desktop (`1440x900`) and one touch phone (`390x844`). The runnable suite does not sleep for wall-clock deadlines or share browser storage between identities.
 
-1. Desktop creates, phone joins, both claim distinct roles, and each sees the same public roster but only its own private objective/pocket data.
-2. Reload the phone, reconnect from persisted token, and verify its original seat plus a fresh private snapshot; the abandoned page cannot submit a command.
-3. Complete one representative turn and a timed interaction with fake server time; the phone can perform every primary control with a 56px target and no horizontal overflow.
-4. Capture public/private sentinel leakage on DOM, network events, saved storage, and screenshot-visible overlays.
+1. Desktop creates, phone joins, both claim distinct roles, ready, start, and complete a Trade/Accept interaction. **Passing.**
+2. A replacement phone context reconnects from its persisted token, receives a rotated token, retains its seat, and revokes the abandoned page. **Passing.**
+3. The phone has no horizontal overflow and all entry/lobby primary controls meet the 56px target. **Passing.** Timer-expiry interactions remain server-integration coverage because the production CLI does not expose a fake clock.
+4. Distinct private objective sentinels are checked against opposite-player DOM, received Socket.IO `room:view` frames, and saved browser storage. **Passing.**
+5. Spectator routing and Results/rematch are covered by server integration and web component tests. Browser E2E needs a fixed-seed/injected-clock fixture that can deterministically produce death and Results without sleeping.
 
 ## Remaining harness requirements
 
-- Add Playwright with independent browser contexts once every game command has an accessible UI control.
+- Add a seeded server browser fixture with an injected deadline scheduler, then promote spectator, Results/rematch, and timeout-expiry coverage to Playwright.
 - Run deployed multi-device checks against the chosen single-owner hosting topology before release.
