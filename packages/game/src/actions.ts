@@ -219,7 +219,10 @@ export function shopAction(room: RoomState, actor: PlayerState, command: GameCom
       offer.purchasedBy = actor.id;
       if (publicBuy) shop.publicOffers = shop.publicOffers.filter((entry) => entry.id !== offer.id);
       acquire(room, actor, stackForOffer(room, offer.itemId), now);
-      event(room, now, 'PURCHASE', `${actor.name} purchased ${ITEM_BY_ID[offer.itemId]!.name}.`, actor.id); return;
+      const purchaseDescription = publicBuy
+        ? `${actor.name} purchased ${ITEM_BY_ID[offer.itemId]!.name} from the Public Shop.`
+        : `${actor.name} purchased an item.`;
+      event(room, now, 'PURCHASE', purchaseDescription, actor.id); return;
     }
     case 'SELL': {
       requireRule(!shop.boughtBy[actor.id], 'NOT_ELIGIBLE', 'Sell before making purchases.');

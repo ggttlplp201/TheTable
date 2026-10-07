@@ -127,6 +127,24 @@ describe('normal turns and deadlines', () => {
   });
 });
 
+describe('market privacy', () => {
+  it('does not reveal a private Black Market purchase in the public event log', () => {
+    let room = until(game(), state => state.round!.phase === 'INTERMISSION');
+    const shopperId = room.shop!.order[room.shop!.activeShopperIndex]!;
+    const shopper = room.players.find(player => player.id === shopperId)!;
+    const privateOffer = room.shop!.privateOffers[shopperId]![0]!;
+    const purchasedItemName = privateOffer.itemId;
+    shopper.inventory.coins = 100;
+
+    room = command(room, { type: 'BUY', market: 'BLACK', offerId: privateOffer.id }, shopperId);
+
+    const purchase = projectPublicRoom(room).events!.at(-1)!;
+    expect(purchase.kind).toBe('PURCHASE');
+    expect(purchase.publicText).toBe(`${shopper.name} purchased an item.`);
+    expect(JSON.stringify(purchase)).not.toContain(purchasedItemName);
+  });
+});
+
 describe('Trade, Threat, and response locks', () => {
   it('pauses and restores the remaining turn time and defaults connected Trade to Accept', () => {
     let room = game();
