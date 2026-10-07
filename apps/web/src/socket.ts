@@ -1,0 +1,110 @@
+import { io, type Socket } from 'socket.io-client';
+import type { RoleId } from '@the-table/game';
+import type { AnyRoomView, CommandPayload, Result, RevisionAck, RoomView, SessionPayload, SpectatorRoomView } from './protocol';
+
+type Acknowledgement<T> = (result: Result<T>) => void;
+
+const ACK_TIMEOUT_MS = 10_000;
+
+export class TableClient {
+  private readonly socket: Socket;
+
+  constructor(serverUrl = import.meta.env.VITE_SERVER_URL ?? window.location.origin.replace(/:5173$/, ':3001')) {
+    this.socket = io(serverUrl, { autoConnect: false, transports: ['websocket', 'polling'] });
+  }
+
+  connect() {
+    this.socket.connect();
+  }
+
+  disconnect() {
+    this.socket.disconnect();
+  }
+
+  onConnection(listener: (connected: boolean) => void) {
+    this.socket.on('connect', () => listener(true));
+    this.socket.on('disconnect', () => listener(false));
+    return () => {
+      this.socket.off('connect');
+      this.socket.off('disconnect');
+    };
+  }
+
+  onConnectionError(listener: (message: string) => void): () => void {
+    const handleError = (error: Error) => listener(error.message || 'Unable to reach the table.');
+    this.socket.on('connect_error', handleError);
+    return () => this.socket.off('connect_error', handleError);
+  }
+
+  onView(listener: (view: AnyRoomView) => void): () => void {
+    this.socket.on('room:view', listener);
+    return () => this.socket.off('room:view', listener);
+  }
+
+  onPublic(listener: (view: RoomView['public']) => void): () => void {
+    this.socket.on('room:public', listener);
+    return () => this.socket.off('room:public', listener);
+  }
+
+  create(name: string) {
+    return this.emit<SessionPayload>('room:create', { name });
+  }
+
+  join(code: string, name: string) {
+    return this.emit<SessionPayload>('room:join', { code, name });
+  }
+
+  reconnect(code: string, reconnectToken: string) {
+    return this.emit<SessionPayload>('room:reconnect', { code, reconnectToken });
+  }
+
+  claimRole(roleId: RoleId, idempotencyKey: string, expectedRevision?: number) {
+    return this.emit<RevisionAck>('lobby:claim-role', { roleId, idempotencyKey, expectedRevision });
+  }
+
+  ready(ready: boolean, idempotencyKey: string, expectedRevision?: number) {
+    return this.emit<RevisionAck>('lobby:ready', { ready, idempotencyKey, expectedRevision });
+  }
+
+  start(idempotencyKey: string, expectedRevision?: number) {
+    return this.emit<RevisionAck>('match:start', { idempotencyKey, expectedRevision });
+  }
+
+  sync() {
+    return this.emit<{ view: AnyRoomView }>('room:sync', {});
+  }
+
+  spectate() {
+    return this.emit<{ view: SpectatorRoomView }>('room:spectate', {});
+  }
+
+  rematch(idempotencyKey: string, expectedRevision?: number) {
+    return this.emit<RevisionAck>('room:rematch', { idempotencyKey, expectedRevision });
+  }
+
+  command(command: CommandPayload) {
+    return this.emit<RevisionAck>('room:command', command);
+  }
+
+  sendChat(payload: { text: string; idempotencyKey: string; expectedRevision?: number; roomId?: string; toPlayerId?: string }) {
+    return this.emit<RevisionAck>('chat:send', payload);
+  }
+
+  signalVoice(payload: { toPlayerId: string; signal: unknown }) {
+    return this.emit('voice:signal', payload);
+  }
+
+  private emit<T>(event: string, payload: object): Promise<Result<T>> {
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = (result: Result<T>) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve(result);
+      };
+      const timeout = setTimeout(() => finish({ ok: false, error: { code: 'TIMEOUT', message: 'The table did not answer. Check your connection and try again.' } }), ACK_TIMEOUT_MS);
+      this.socket.emit(event, payload, finish as Acknowledgement<T>);
+    });
+  }
+}
