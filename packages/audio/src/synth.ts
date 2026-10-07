@@ -1,6 +1,8 @@
 import type { AudioContextLike, AudioCueId, GainNodeLike, BufferSourceLike } from './types.js';
 
-const TONES: Readonly<Record<AudioCueId, readonly [number, number, number]>> = {
+/** Deliberately small authored palette. Other semantic IDs receive a stable
+ * deterministic variant below, so adding a replaceable cue never becomes silence. */
+const TONES: Readonly<Partial<Record<AudioCueId, readonly [number, number, number]>>> = {
   'ui.select': [420, 0.035, 0.08],
   'ui.set-down': [110, 0.07, 0.12],
   'ui.confirm': [560, 0.09, 0.14],
@@ -13,8 +15,6 @@ const TONES: Readonly<Record<AudioCueId, readonly [number, number, number]>> = {
   'item.armor': [95, 0.12, 0.17],
   'item.bag': [130, 0.15, 0.15],
   'item.chest': [240, 0.28, 0.22],
-  'event.trade': [300, 0.12, 0.15],
-  'event.threat': [74, 0.25, 0.25],
   'event.downed': [62, 0.3, 0.3],
   'event.death': [45, 0.55, 0.32],
   'event.exit': [740, 0.3, 0.2],
@@ -28,8 +28,22 @@ const TONES: Readonly<Record<AudioCueId, readonly [number, number, number]>> = {
   'intro.sting': [196, 0.8, 0.16],
 };
 
+export function toneForCue(cue: AudioCueId): readonly [number, number, number] {
+  const explicit = TONES[cue];
+  if (explicit) return explicit;
+  let hash = 17;
+  for (let index = 0; index < cue.length; index += 1) hash = (hash * 31 + cue.charCodeAt(index)) >>> 0;
+  const frequency = cue.startsWith('event.threat') || cue.includes('damage') ? 70 + hash % 110
+    : cue.startsWith('private.') ? 620 + hash % 280
+      : cue.startsWith('item.') ? 160 + hash % 520
+        : cue.startsWith('world.') ? 55 + hash % 100
+          : 240 + hash % 560;
+  const duration = cue.includes('death') || cue.includes('match') ? 0.34 : 0.07 + (hash % 14) / 100;
+  return [frequency, duration, cue.startsWith('world.') ? 0.06 : 0.11];
+}
+
 export function playProcedural(context: AudioContextLike, cue: AudioCueId, master: GainNodeLike): void {
-  const [frequency, duration, amplitude] = TONES[cue];
+  const [frequency, duration, amplitude] = toneForCue(cue);
   const oscillator = context.createOscillator();
   const gain = context.createGain();
   oscillator.type = cue.includes('pistol') || cue.includes('death') ? 'sawtooth' : 'triangle';

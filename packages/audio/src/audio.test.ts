@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { createAudioEngine } from './index.js';
 import { createIntroController } from './intro.js';
-import { routeEvent } from './mappings.js';
+import { AUTHORITATIVE_EVENT_KINDS, EVENT_COVERAGE, ITEM_CUES, PRIVATE_EVENT_CUES, routeEvent } from './mappings.js';
+import { toneForCue } from './synth.js';
+import { AUDIO_CUE_IDS } from './types.js';
 import type { AudioContextLike, AudioStorage, GainNodeLike, OscillatorLike } from './types.js';
 
 function fakeContext() {
@@ -72,8 +75,42 @@ function storage(): AudioStorage {
 describe('audio routing and lifecycle', () => {
   it('routes owner-only private cues', () => {
     const event = { id: 'e1', kind: 'POCKET_INSPECTED', privatePayloads: { p1: 'secret' } };
-    expect(routeEvent(event, 'p1')).toEqual([{ cue: 'ui.confirm', audience: 'PRIVATE', eventId: 'e1' }]);
-    expect(routeEvent(event, 'p2')).toEqual([]);
+    expect(routeEvent(event, 'p1')).toEqual([
+      { cue: 'event.pocket-inspected', audience: 'PUBLIC', eventId: 'e1' },
+      { cue: 'private.inspection', audience: 'PRIVATE', eventId: 'e1' },
+    ]);
+    expect(routeEvent(event, 'p2')).toEqual([{ cue: 'event.pocket-inspected', audience: 'PUBLIC', eventId: 'e1' }]);
+  });
+
+  it('has a machine-checkable cue and procedural voice for every engine event', () => {
+    const emittedByEngine = [
+      'MATCH_STARTED', 'MATCH_ENDED', 'TURN_STARTED', 'TURN_ENDED', 'INTERMISSION', 'SHOPPER_SKIPPED',
+      'TRADE_OFFERED', 'TRADE_ACCEPTED', 'TRADE_DECLINED', 'TRADE_CANCELLED',
+      'THREAT_OFFERED', 'THREAT_COMPLIED', 'THREAT_REFUSED', 'THREAT_CANCELLED',
+      'WEAPON_USED', 'DAMAGE', 'POISON_DAMAGE', 'POISON_APPLIED', 'POISON_CURED', 'HEALED', 'ARMOR_BLOCKED', 'HANDCUFFED',
+      'DOWNED', 'REVIVED', 'LOOTED', 'DEATH', 'CHEST_REFRESHED', 'CHEST_OPENED', 'CHEST_INSPECTED',
+      'PURCHASE', 'SOLD', 'POCKET_FILLED', 'MARKET_REROLLED', 'POCKET_INSPECTED', 'PICKPOCKET',
+      'OBJECTIVE_READY', 'OBJECTIVE_LOCKED', 'DEATH_OBJECTIVE_BANKED', 'EXIT', 'OVERFLOW', 'OVERFLOW_RESOLVED',
+    ];
+    expect(AUTHORITATIVE_EVENT_KINDS).toEqual(emittedByEngine);
+    expect(Object.keys(EVENT_COVERAGE).sort()).toEqual([...emittedByEngine].sort());
+    const gameFiles = ['actions.ts', 'combat.ts', 'economy.ts', 'engine.ts', 'inventory.ts', 'objectives.ts'];
+    const literalEvents = gameFiles.flatMap((file) => [...readFileSync(new URL(`../../game/src/${file}`, import.meta.url), 'utf8').matchAll(/event\(room, now, '([A-Z_]+)'/g)].map((match) => match[1]!));
+    expect(literalEvents.every((kind) => AUTHORITATIVE_EVENT_KINDS.includes(kind as typeof AUTHORITATIVE_EVENT_KINDS[number]))).toBe(true);
+    for (const kind of AUTHORITATIVE_EVENT_KINDS) {
+      const requests = routeEvent({ id: kind, kind });
+      expect(requests).toEqual([{ cue: EVENT_COVERAGE[kind].cue, audience: 'PUBLIC', eventId: kind }]);
+      expect(toneForCue(EVENT_COVERAGE[kind].cue)).toHaveLength(3);
+    }
+  });
+
+  it('covers every canonical item and keeps private detail cues owner-authorized', () => {
+    const canonicalItemIds = ['knife', 'pistol', 'bullet', 'poison', 'antidote', 'medicine', 'armor', 'cloth', 'bag', 'safe', 'spyglass', 'pickpocket', 'key', 'lockpick', 'crowbar', 'black-key', 'handcuffs', 'brass-idol', 'glass-eye', 'red-ledger', 'passage-token'];
+    for (const itemId of canonicalItemIds) expect(ITEM_CUES[itemId]).toBeDefined();
+    for (const cue of Object.values(AUDIO_CUE_IDS)) expect(toneForCue(cue)).toHaveLength(3);
+    expect(Object.keys(PRIVATE_EVENT_CUES).sort()).toEqual(['CHEST_INSPECTED', 'POCKET_INSPECTED']);
+    const payloadForSomeoneElse = routeEvent({ id: 'private', kind: 'POCKET_INSPECTED', privatePayloads: { owner: { item: 'pistol' } } }, 'observer');
+    expect(payloadForSomeoneElse).toEqual([{ cue: 'event.pocket-inspected', audience: 'PUBLIC', eventId: 'private' }]);
   });
 
   it('suppresses duplicate event IDs but allows events without IDs', () => {
