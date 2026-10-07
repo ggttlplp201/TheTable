@@ -34,11 +34,14 @@ This matrix is the executable-spec backlog for The Table. Test scenarios use a s
 
 1. Desktop creates, phone joins, both claim distinct roles, ready, start, and complete a Trade/Accept interaction. **Passing.**
 2. A replacement phone context reconnects from its persisted token, receives a rotated token, retains its seat, and revokes the abandoned page. **Passing.**
-3. The phone has no horizontal overflow and all entry/lobby primary controls meet the 56px target. **Passing.** Timer-expiry interactions remain server-integration coverage because the production CLI does not expose a fake clock.
+3. The phone has no horizontal overflow and all entry/lobby primary controls meet the 56px target. **Passing.** Normal-turn skip and Trade auto-Accept now run through the injected scheduler in Playwright, with assertions at deadline minus 1 ms, the exact deadline, and a duplicate advance. **Passing.**
 4. Distinct private objective sentinels are checked against opposite-player DOM, received Socket.IO `room:view` frames, and saved browser storage. **Passing.**
-5. Spectator routing and Results/rematch are covered by server integration and web component tests. Browser E2E needs a fixed-seed/injected-clock fixture that can deterministically produce death and Results without sleeping.
+5. Three isolated browser contexts (including a touch phone) play seed `5424`: two Pistol shots, Downed rescue window across Intermission, permanent death, automatic read-only spectator promotion while the match continues, a 100-point Executioner exit, Results, host rematch, and a second start. **Passing.**
+6. Active/Downed spectator probes reject; DEAD gameplay/chat probes reject; spectators receive all objectives and chest loot with empty capabilities. A living Results viewer receives the banked objective while the failed Collector objective stays absent from DOM, socket frames, and storage. A non-host rematch rejects, and an exited spectator host can rematch. **Passing.**
 
-## Remaining harness requirements
+## Harness and remaining release checks
 
-- Add a seeded server browser fixture with an injected deadline scheduler, then promote spectator, Results/rematch, and timeout-expiry coverage to Playwright.
+- `qa/e2e/fixtures.ts` creates and closes a real Socket.IO server for each test, using `apps/server/test/browser-harness.ts` for seed and clock injection. The Playwright process owns clock control; no HTTP/socket test route or production seam exists. Default local ports are web `4173` and server `3101`; one worker is required.
+- Typecheck E2E with `pnpm exec tsc -p qa/e2e/tsconfig.json --noEmit` in addition to `pnpm typecheck`. The test config reuses the server package’s existing Node types; no root dependency is needed.
+- `E2E_EXTERNAL_SERVER=1` retains the existing external smoke mode and explicitly skips the two lifecycle tests, since deployed servers cannot accept fake-clock control. It is not the full local lifecycle gate.
 - Run deployed multi-device checks against the chosen single-owner hosting topology before release.
