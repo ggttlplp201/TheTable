@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { AUDIO_CUE_IDS, createAudioEngine, type AudioEngine } from '@the-table/audio';
-import type { AnyRoomView, ClientError, PlayerCommand } from './protocol';
+import type { AnyRoomView, ClientError, PlayerCommand, VoiceCapability } from './protocol';
 import { isSpectatorView } from './protocol';
 import type { TableClient } from './socket';
 import { dispatchRequest, type ActionRequest } from './action-request';
@@ -9,6 +9,7 @@ import { canRematch, commandEnvelope, hasCapability, playerName } from './gamepl
 import { GameTableScene } from './GameTableScene';
 import { ChestPanel, EventLog, MatchHeader, OverflowDecision, PendingInteraction, PlayerRoster, PrivateDetail, Results, SpectatorDetails } from './MatchPanels';
 import { Markets, ReadOnlyPublicShop, TurnActions } from './ActionForms';
+import { VoicePanel } from './VoicePanel';
 
 /** Keep an uncertain submission intact until it can be retried with the same receipt key. */
 export function useMatchActions({ client, room, connected, viewerId, onView }: { client: TableClient; room: AnyRoomView; connected: boolean; viewerId: string; onView: (view: AnyRoomView) => void }) {
@@ -69,7 +70,7 @@ export function useMatchActions({ client, room, connected, viewerId, onView }: {
   return { send, chat, rematch, retry: () => outstanding.current ? run(outstanding.current) : Promise.resolve(false), busy: pending || !!uncertain || !connected, pending, uncertain: !!uncertain, error, notice };
 }
 
-export function ChatPanel({ room, sendChat, busy, voiceEnabled }: { room: AnyRoomView; sendChat: (text: string, toPlayerId?: string) => Promise<boolean>; busy: boolean; voiceEnabled: boolean }) {
+export function ChatPanel({ room, sendChat, busy }: { room: AnyRoomView; sendChat: (text: string, toPlayerId?: string) => Promise<boolean>; busy: boolean }) {
   const [text, setText] = useState('');
   const [recipient, setRecipient] = useState('GLOBAL');
   const viewerId = room.viewerPlayerId ?? (!isSpectatorView(room) ? room.private.playerId : undefined);
@@ -81,7 +82,6 @@ export function ChatPanel({ room, sendChat, busy, voiceEnabled }: { room: AnyRoo
     if (sent) setText('');
   }
   return <section className="panel chat-panel" aria-label="Table chat"><h2>Table chat</h2>
-    <p className="muted voice-state">{voiceEnabled ? 'Text chat is ready. Voice calling is not connected in this client.' : 'Voice is disabled for this table. Global and private text are available.'}</p>
     <ol className="chat-messages" role="log" aria-label="Messages" aria-relevant="additions text">{(room.messages ?? []).map(message => <li key={message.id} className={message.channel === 'PRIVATE' ? 'private-message' : ''}>
       <p className="message-meta"><strong>{playerName(room.public, message.fromPlayerId)}</strong><span>{message.channel === 'PRIVATE' ? `Private → ${playerName(room.public, message.toPlayerId)}` : 'Table'} · {new Date(message.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></p><p>{message.text}</p>
     </li>)}</ol>
@@ -170,7 +170,7 @@ function useMatchAudio(room: AnyRoomView, viewerId: string) {
   return { engine, started, introState, start, skip };
 }
 
-export function MatchView({ room, client, connected, viewerId, voiceEnabled, onView }: { room: AnyRoomView; client: TableClient; connected: boolean; viewerId: string; voiceEnabled: boolean; onView: (view: AnyRoomView) => void }) {
+export function MatchView({ room, client, connected, viewerId, voice, onView }: { room: AnyRoomView; client: TableClient; connected: boolean; viewerId: string; voice: VoiceCapability; onView: (view: AnyRoomView) => void }) {
   const audio = useMatchAudio(room, viewerId);
   const action = useMatchActions({ client, room, connected, viewerId, onView });
   const spectator = isSpectatorView(room);
@@ -193,12 +193,13 @@ export function MatchView({ room, client, connected, viewerId, voiceEnabled, onV
       </div>
       <div className="controls-column">
         {!spectator && <AudioControls engine={audio.engine} started={audio.started} onStart={audio.start} introState={audio.introState} onSkip={audio.skip} />}
+        {!spectator && <VoicePanel room={room} client={client} connected={connected} viewerId={viewerId} capability={voice} />}
         {results && <section className="panel"><h2>Another round?</h2>{canRematch(room, viewerId) ? <><p className="muted">Return everyone to the lobby with the same names and seats. Each player readies up again.</p><button className="button primary full-width" disabled={action.busy} onClick={() => void action.rematch()}>Rematch</button></> : <p className="muted">Waiting for the host to open a rematch.</p>}</section>}
         {spectator ? <SpectatorDetails room={room} /> : <>
           {!results && (intermission ? <Markets room={room} send={action.send} busy={action.busy} /> : <TurnActions room={room} send={action.send} busy={action.busy} />)}
           <PrivateDetail detail={room.private} room={room.public} />
         </>}
-        <ChatPanel room={room} sendChat={action.chat} busy={action.busy} voiceEnabled={voiceEnabled} />
+        <ChatPanel room={room} sendChat={action.chat} busy={action.busy} />
       </div>
     </div>
   </div>;

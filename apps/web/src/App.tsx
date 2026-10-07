@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RoleId } from '@the-table/game';
-import { isSpectatorView, ROLE_COPY, ROLES, type AnyRoomView, type ClientError, type RoomView, type SessionPayload, type SessionSnapshot } from './protocol';
+import { isSpectatorView, ROLE_COPY, ROLES, type AnyRoomView, type ClientError, type RoomView, type SessionPayload, type SessionSnapshot, type VoiceCapability } from './protocol';
 import { TableClient } from './socket';
 import { MatchView } from './MatchView';
 import { ConnectionRestoreGate } from './reconnect';
@@ -43,7 +43,7 @@ export function App() {
   const [joinCode, setJoinCode] = useState('');
   const [view, setView] = useState<AnyRoomView>();
   const room = view && !isSpectatorView(view) ? view : undefined;
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [voice, setVoice] = useState<VoiceCapability>({ enabled: false, iceServers: [], relayConfigured: false });
   const [playerId, setPlayerId] = useState<string>();
   const [connected, setConnected] = useState(false);
   const [working, setWorking] = useState(false);
@@ -85,7 +85,7 @@ export function App() {
       setScreen(current => current === 'connecting' ? 'entry' : current);
     });
     const removeView = client.onView(applyView);
-    const removeCapabilities = client.onCapabilities(value => setVoiceEnabled(value.voiceEnabled));
+    const removeCapabilities = client.onCapabilities(value => setVoice(value.voice));
     const clearRoom = (reason: string) => {
       window.localStorage.removeItem(STORAGE_KEY);
       setView(undefined);
@@ -134,7 +134,7 @@ export function App() {
       setPlayerId(id);
     }
     setSessionReady(true);
-    setVoiceEnabled(data.voiceEnabled ?? false);
+    setVoice(data.voice ?? { enabled: false, iceServers: [], relayConfigured: false });
     setError(undefined);
     applyView(next);
   }
@@ -179,7 +179,7 @@ export function App() {
 
   if (screen === 'connecting' && !view) return <LoadingView connected={connected} error={error} onContinue={() => setScreen('entry')} />;
   if (screen === 'entry') return <EntryView mode={entryMode} setMode={setEntryMode} name={name} setName={setName} joinCode={joinCode} setJoinCode={setJoinCode} error={error} working={working} connected={connected} onSubmit={submitEntry} />;
-  if (view && view.public.status !== 'LOBBY' && playerId) return <Shell connected={connected}><MatchView room={view} client={client} connected={connected && sessionReady} viewerId={playerId} voiceEnabled={voiceEnabled} onView={applyView} /></Shell>;
+  if (view && view.public.status !== 'LOBBY' && playerId) return <Shell connected={connected}><MatchView room={view} client={client} connected={connected && sessionReady} viewerId={playerId} voice={voice} onView={applyView} /></Shell>;
   if (!room || !currentPlayer) return <LoadingView connected={connected} error={error} onContinue={() => setScreen('entry')} />;
   return <LobbyView room={room} currentPlayerId={currentPlayer.id} isHost={isHost} canStart={canStart} connected={connected} working={working} error={error} onClaim={claimRole} onReady={toggleReady} onStart={startMatch} />;
 }

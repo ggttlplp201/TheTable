@@ -104,7 +104,8 @@ is an architectural direction, not a capability of this image today.
 | Variable | Required | Meaning |
 | --- | --- | --- |
 | `CLIENT_ORIGIN` | yes | Exact comma-separated browser origin allowlist. |
-| `VOICE_ENABLED` | no | `true` enables signaling; default `false`. This does not provide TURN. |
+| `VOICE_ENABLED` | no | `true` enables opt-in microphone/WebRTC voice; default `false`. |
+| `VOICE_ICE_SERVERS` | no | JSON array of validated STUN/TURN entries passed only to authenticated room clients; default `[]`. |
 | `TABLE_PORT` | no | Loopback host port used by Compose; default `3001`. |
 | `HOST` | image default | Container bind address; keep `0.0.0.0`. |
 | `PORT` | image default | Internal HTTP/Socket.IO port; default `3001`. |
@@ -113,3 +114,31 @@ is an architectural direction, not a capability of this image today.
 Secrets do not belong in the image or `.env.example`. At present the server has
 no database credentials because it has no production persistence adapter.
 
+## Voice connectivity
+
+Voice is an opt-in WebRTC mesh for the two to four players at a table. Media is
+encrypted by WebRTC and travels peer-to-peer; the server authorizes presence and
+forwards negotiation messages but does not receive audio. Microphone capture
+requires the public site to use HTTPS (localhost is the normal development
+exception).
+
+Set `VOICE_ENABLED=true` only after deciding the expected connectivity level.
+With an empty `VOICE_ICE_SERVERS`, browsers can try host/direct candidates and
+the client prominently reports that no relay is available. That mode can fail
+between mobile networks, corporate firewalls, or symmetric NATs while text chat
+continues to work. Reliable production connectivity normally needs operator-
+supplied TURN service credentials; no vendor or paid service is hardcoded.
+
+`VOICE_ICE_SERVERS` is a JSON array in the standard browser shape. URLs must use
+`stun:`, `stuns:`, `turn:`, or `turns:`. TURN entries require both `username` and
+`credential`; malformed configuration fails server startup rather than silently
+weakening voice. Example (replace every host and credential):
+
+```dotenv
+VOICE_ENABLED=true
+VOICE_ICE_SERVERS=[{"urls":"stun:stun.example.net:3478"},{"urls":["turn:relay.example.net:3478?transport=udp","turns:relay.example.net:5349?transport=tcp"],"username":"short-lived-user","credential":"short-lived-secret"}]
+```
+
+TURN credentials are necessarily delivered to authenticated browser clients.
+Use scoped, short-lived credentials where the selected TURN service supports
+them, rotate them operationally, and never bake them into the image or source.

@@ -52,4 +52,16 @@ describe('TableClient', () => {
 
     expect(transport.socket.emit).toHaveBeenCalledWith('room:spectate', {}, expect.any(Function));
   });
+
+  it('uses explicit opt-in presence before browser voice signaling', async () => {
+    const client = new TableClient('http://table.test');
+
+    await client.joinVoice();
+    await client.signalVoice({ toPlayerId: 'p2', signal: { type: 'offer', sdp: 'offer' } });
+    await client.leaveVoice();
+
+    expect(transport.socket.emit).toHaveBeenNthCalledWith(1, 'voice:join', {}, expect.any(Function));
+    expect(transport.socket.emit).toHaveBeenNthCalledWith(2, 'voice:signal', { toPlayerId: 'p2', signal: { type: 'offer', sdp: 'offer' } }, expect.any(Function));
+    expect(transport.socket.emit).toHaveBeenNthCalledWith(3, 'voice:leave', {}, expect.any(Function));
+  });
 });

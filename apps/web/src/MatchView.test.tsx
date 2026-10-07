@@ -8,7 +8,7 @@ import type { TableClient } from './socket';
 const send = vi.fn(async () => true);
 
 function fullView(room = ownerRoom()) {
-  return renderToStaticMarkup(<MatchView room={room} client={{} as TableClient} connected viewerId="p1" voiceEnabled={false} onView={() => {}} />);
+  return renderToStaticMarkup(<MatchView room={room} client={{} as TableClient} connected viewerId="p1" voice={{ enabled: false, iceServers: [], relayConfigured: false }} onView={() => {}} />);
 }
 
 describe('authorized match components', () => {
@@ -39,6 +39,13 @@ describe('authorized match components', () => {
     expect(html).not.toContain('Brass Idol');
     expect(html).not.toContain('other-private-offer');
   });
+  it('shows opt-in voice controls, peer state, and an explicit no-relay warning', () => {
+    const html = renderToStaticMarkup(<MatchView room={ownerRoom()} client={{} as TableClient} connected viewerId="p1" voice={{ enabled: true, iceServers: [], relayConfigured: false }} onView={() => {}} />);
+    expect(html).toContain('Join table voice');
+    expect(html).toContain('Direct connections only');
+    expect(html).toContain('Bruno');
+    expect(html).toContain('Not in voice');
+  });
   it('renders no match action controls when capabilities are absent despite it being our turn', () => {
     const room = ownerRoom(); room.private.capabilities = [];
     const html = fullView(room);
@@ -49,7 +56,7 @@ describe('authorized match components', () => {
   });
   it('shows private god-view detail with zero gameplay or chat action controls', () => {
     const room = spectatorRoom();
-    const html = renderToStaticMarkup(<MatchView room={room} client={{} as TableClient} connected viewerId="p1" voiceEnabled={false} onView={() => {}} />);
+    const html = renderToStaticMarkup(<MatchView room={room} client={{} as TableClient} connected viewerId="p1" voice={{ enabled: false, iceServers: [], relayConfigured: false }} onView={() => {}} />);
     expect(html).toContain('Martyr'); expect(html).toContain('Poison'); expect(html).toContain('Black Key'); expect(html).toContain('Brass Idol');
     expect(html).not.toContain('<button'); expect(html).not.toContain('<form');
   });
@@ -115,9 +122,9 @@ describe('authorized match components', () => {
   });
   it('escapes chat content and omits the composer for a spectator', () => {
     const room = ownerRoom(); room.messages![0]!.text = '<img src=x onerror=alert(1)>';
-    const html = renderToStaticMarkup(<ChatPanel room={room} sendChat={send} busy={false} voiceEnabled={false} />);
+    const html = renderToStaticMarkup(<ChatPanel room={room} sendChat={send} busy={false} />);
     expect(html).toContain('&lt;img'); expect(html).not.toContain('<img');
-    expect(renderToStaticMarkup(<ChatPanel room={spectatorRoom()} sendChat={send} busy={false} voiceEnabled={false} />)).not.toContain('<form');
+    expect(renderToStaticMarkup(<ChatPanel room={spectatorRoom()} sendChat={send} busy={false} />)).not.toContain('<form');
   });
   it('renders all private spectator panels without nested action forms', () => {
     const html = renderToStaticMarkup(<SpectatorDetails room={spectatorRoom()} />);

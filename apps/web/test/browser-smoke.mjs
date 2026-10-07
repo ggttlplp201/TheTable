@@ -22,6 +22,11 @@ try {
     const client = {
       command: async payload => { window.sentCommands.push(payload); return { ok: true, data: { revision: 8 } }; },
       sendChat: async payload => { window.sentCommands.push(payload); return { ok: true, data: { revision: 8 } }; },
+      onVoicePeers: () => () => {},
+      onVoiceSignal: () => () => {},
+      joinVoice: async () => ({ ok: true, data: { playerIds: [] } }),
+      leaveVoice: async () => ({ ok: true, data: { left: true } }),
+      signalVoice: async () => ({ ok: true, data: { delivered: true } }),
     };
     window.preview = mode => {
       const room = mode === 'spectator' ? spectatorRoom() : ownerRoom();
@@ -39,7 +44,7 @@ try {
         room.private.capabilities = ['OVERFLOW_CHOICE'];
         room.private.overflows = [{ id: 'overflow', playerId: 'p1', incoming: { instanceId: 'incoming', itemId: 'bag', quantity: 1 }, deadlineAt: Date.now() + 15000 }];
       }
-      root.render(React.createElement('main', { className: 'app-shell' }, React.createElement(MatchView, { key: mode, room, client, connected: true, viewerId: 'p1', voiceEnabled: false, onView: () => {} })));
+      root.render(React.createElement('main', { className: 'app-shell' }, React.createElement(MatchView, { key: mode, room, client, connected: true, viewerId: 'p1', voice: { enabled: false, iceServers: [], relayConfigured: false }, onView: () => {} })));
     };
     window.preview('turn');
   });

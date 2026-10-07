@@ -23,6 +23,7 @@ services:
       STATIC_DIRECTORY: /app/apps/web/dist
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:?Set CLIENT_ORIGIN to the exact public HTTPS origin}
       VOICE_ENABLED: ${VOICE_ENABLED:-false}
+      VOICE_ICE_SERVERS: "${VOICE_ICE_SERVERS:-[]}"
     ports:
       - "127.0.0.1:${TABLE_PORT:-3001}:3001"
     healthcheck:

@@ -121,6 +121,26 @@ async function eventually(assertion: () => void) {
 
 // These exercise actual Socket.IO handshakes, packets, acks, disconnects and rebinding.
 describe('realtime privacy and session authority', () => {
+  it('does not disclose TURN credentials before room authentication', async () => {
+    const f = await fixture({
+      voiceEnabled: true,
+      voiceIceServers: [{ urls: 'turns:relay.example.test:5349', username: 'scoped-user', credential: 'secret' }],
+    });
+    const socket = io(f.url, { transports: ['websocket'], reconnection: false, forceNew: true, autoConnect: false });
+    clients.push(socket);
+    const capabilities: unknown[] = [];
+    socket.on('server:capabilities', value => capabilities.push(value));
+    const connected = new Promise<void>((resolve, reject) => { socket.once('connect', resolve); socket.once('connect_error', reject); });
+    socket.connect();
+    await connected;
+    await new Promise(resolve => setImmediate(resolve));
+    expect(capabilities).toEqual([]);
+
+    const admitted = await success(socket, 'room:create', { name: 'Alice' });
+    expect(admitted.voice.iceServers[0].credential).toBe('secret');
+    await eventually(() => expect(capabilities).toEqual([{ voice: admitted.voice }]));
+  });
+
   it('isolates every private projection, public event, inspection and private message', async () => {
     const f = await pair();
     const room = f.game.read(f.code)!;
@@ -162,6 +182,7 @@ describe('realtime privacy and session authority', () => {
     expect(view.capabilities).toEqual([]);
     expect((await command(f.b, 'spectator-action')).error.code).toBe('SPECTATOR_READ_ONLY');
     expect((await request(f.b, 'chat:send', { idempotencyKey: 'spectator-chat', text: 'hello' })).error.code).toBe('SPECTATOR_READ_ONLY');
+    expect((await request(f.b, 'voice:join')).error.code).toBe('VOICE_FORBIDDEN');
     expect((await request(f.b, 'voice:signal', { toPlayerId: f.host.view.private.playerId, signal: { type: 'offer', sdp: 'hi' } })).error.code).toBe('VOICE_FORBIDDEN');
   });
 
@@ -341,9 +362,15 @@ describe('serialized mutations, idempotency and lifecycle', () => {
     f.b.on('voice:signal', value => signals.push(value));
     c.on('voice:signal', value => outsiderSignals.push(value));
     const signal = { type: 'offer', sdp: 'private peer SDP' };
+    expect(f.host.voice).toEqual({ enabled: true, iceServers: [], relayConfigured: false });
+    expect((await request(f.a, 'voice:signal', { toPlayerId: f.guest.view.private.playerId, signal })).error.code).toBe('VOICE_FORBIDDEN');
+    expect((await request(f.a, 'voice:join')).ok).toBe(true);
+    expect((await request(f.b, 'voice:join')).ok).toBe(true);
     expect((await request(f.a, 'voice:signal', { toPlayerId: f.guest.view.private.playerId, signal })).ok).toBe(true);
     await eventually(() => expect(signals).toHaveLength(1));
     expect(signals[0]).toEqual({ fromPlayerId: f.host.view.private.playerId, signal });
+    expect((await request(f.b, 'voice:leave')).ok).toBe(true);
+    expect((await request(f.a, 'voice:signal', { toPlayerId: f.guest.view.private.playerId, signal })).error.code).toBe('VOICE_FORBIDDEN');
     expect((await request(f.a, 'voice:signal', { toPlayerId: outsider.view.private.playerId, signal })).error.code).toBe('VOICE_FORBIDDEN');
     expect(outsiderSignals).toEqual([]);
   });

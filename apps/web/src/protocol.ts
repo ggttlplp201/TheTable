@@ -33,13 +33,29 @@ export interface ClientError {
   revision?: number;
 }
 
+export interface VoiceIceServer {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
+export interface VoiceCapability {
+  enabled: boolean;
+  iceServers: VoiceIceServer[];
+  relayConfigured: boolean;
+}
+
+export type VoiceSignal =
+  | { type: 'offer' | 'answer'; sdp: string }
+  | { type: 'candidate'; candidate: string; sdpMid?: string | null; sdpMLineIndex?: number | null };
+
 export type Result<T> = { ok: true; data: T } | { ok: false; error: ClientError };
 
 export interface SessionPayload {
   reconnectToken: string;
   playerId?: string;
   view: AnyRoomView;
-  voiceEnabled?: boolean;
+  voice?: VoiceCapability;
 }
 
 /** Seed, actor, clock and timeout fields never belong to client input. */

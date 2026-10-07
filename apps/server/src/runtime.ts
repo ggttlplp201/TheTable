@@ -9,6 +9,7 @@ import {
   metadataInput, ProtocolError, readyInput, reconnectInput, rejection, roleInput,
   signalInput, type CommandInput, type Reply,
 } from './protocol.js';
+import { voiceCapability, type VoiceCapability, type VoiceIceServer } from './voice-config.js';
 
 type Timer = ReturnType<typeof setTimeout>;
 export interface Clock {
@@ -26,6 +27,7 @@ interface RoomRuntime {
   queue: Promise<void>;
   queued: number;
   members: Map<string, { socket: Socket; generation: string }>;
+  voiceMembers: Set<string>;
   receipts: Map<string, Receipt>;
   messages: ChatMessage[];
   expiresAt: number;
@@ -41,6 +43,7 @@ export interface RuntimeOptions {
   maxCommandsPerRoom?: number;
   rateLimit?: { windowMs: number; requests: number };
   voiceEnabled?: boolean;
+  voiceIceServers?: VoiceIceServer[];
   onError?: (error: unknown) => void;
 }
 
@@ -50,7 +53,8 @@ export class RoomRuntimeService {
   private readonly bindings = new Map<string, Binding>();
   private readonly sessions = new Sessions();
   private readonly clock: Clock;
-  private readonly options: Required<Omit<RuntimeOptions, 'clock'>>;
+  private readonly options: Required<Omit<RuntimeOptions, 'clock' | 'voiceIceServers'>> & { voiceIceServers: VoiceIceServer[] };
+  private readonly voice: VoiceCapability;
   private stopping = false;
 
   constructor(private readonly io: Server, readonly game: GameAdapter, options: RuntimeOptions = {}) {
@@ -63,8 +67,10 @@ export class RoomRuntimeService {
       maxCommandsPerRoom: options.maxCommandsPerRoom ?? 20_000,
       rateLimit: options.rateLimit ?? { windowMs: 10_000, requests: 80 },
       voiceEnabled: options.voiceEnabled ?? false,
+      voiceIceServers: options.voiceIceServers ?? [],
       onError: options.onError ?? (error => console.error(error)),
     };
+    this.voice = voiceCapability(this.options.voiceEnabled, this.options.voiceIceServers);
     io.on('connection', socket => this.connect(socket));
   }
 
@@ -118,7 +124,8 @@ export class RoomRuntimeService {
       const reconnectToken = this.sessions.issue(context.code, admitted.playerId);
       this.refreshExpiry(context);
       this.publish(context);
-      return { playerId: admitted.playerId, reconnectToken, view: this.view(context, admitted.playerId), voiceEnabled: this.options.voiceEnabled };
+      socket.emit('server:capabilities', { voice: this.voice });
+      return { playerId: admitted.playerId, reconnectToken, view: this.view(context, admitted.playerId), voice: this.voice };
     });
     register('room:join', raw => {
       const input = joinInput.parse(raw);
@@ -132,7 +139,8 @@ export class RoomRuntimeService {
         const reconnectToken = this.sessions.issue(context.code, admitted.playerId);
         this.refreshExpiry(context);
         this.publish(context);
-        return { playerId: admitted.playerId, reconnectToken, view: this.view(context, admitted.playerId), voiceEnabled: this.options.voiceEnabled };
+        socket.emit('server:capabilities', { voice: this.voice });
+        return { playerId: admitted.playerId, reconnectToken, view: this.view(context, admitted.playerId), voice: this.voice };
       });
     });
     register('room:reconnect', raw => {
@@ -149,7 +157,8 @@ export class RoomRuntimeService {
         this.bind(context, socket, playerId);
         this.refreshExpiry(context);
         this.publish(context);
-        return { playerId, reconnectToken, view: this.view(context, playerId), voiceEnabled: this.options.voiceEnabled };
+        socket.emit('server:capabilities', { voice: this.voice });
+        return { playerId, reconnectToken, view: this.view(context, playerId), voice: this.voice };
       });
     });
     register('room:command', raw => this.command(socket, commandInput.parse(raw)));
@@ -170,9 +179,9 @@ export class RoomRuntimeService {
     });
     register('room:sync', raw => this.snapshot(socket, emptyInput.parse(raw ?? {}), false));
     register('room:spectate', raw => this.snapshot(socket, emptyInput.parse(raw ?? {}), true));
+    register('voice:join', raw => this.joinVoice(socket, emptyInput.parse(raw ?? {})));
+    register('voice:leave', raw => this.leaveVoice(socket, emptyInput.parse(raw ?? {})));
     register('voice:signal', raw => this.signal(socket, signalInput.parse(raw)));
-    socket.emit('server:capabilities', { voiceEnabled: this.options.voiceEnabled });
-
     socket.on('disconnect', () => {
       // Queue disconnect after any already-admitted socket operation, then join the room queue.
       socketQueue = socketQueue.then(async () => {
@@ -185,6 +194,7 @@ export class RoomRuntimeService {
           if (this.clock.now() >= context.expiresAt) { this.destroy(context, 'ROOM_EXPIRED'); return; }
           const member = context.members.get(identity.playerId);
           if (member?.generation !== identity.generation) return;
+          context.voiceMembers.delete(identity.playerId);
           context.members.delete(identity.playerId);
           // Connection changes cancel target interactions before any later timeout can accept.
           await this.game.setConnected(context.code, identity.playerId, false, this.clock.now());
@@ -249,7 +259,32 @@ export class RoomRuntimeService {
       const identity = this.authorize(socket, binding);
       await this.synchronize(context);
       if (requireSpectator && !this.isSpectator(context, identity.playerId)) throw new ProtocolError('SPECTATOR_FORBIDDEN', 'Only permanently dead or exited players may spectate.');
-      return { view: this.view(context, identity.playerId), voiceEnabled: this.options.voiceEnabled };
+      return { view: this.view(context, identity.playerId), voice: this.voice };
+    });
+  }
+
+  private joinVoice(socket: Socket, _input: unknown): Promise<unknown> {
+    const binding = this.authorize(socket);
+    const context = this.context(binding.code);
+    return this.enqueue(context, async () => {
+      const identity = this.authorize(socket, binding);
+      await this.synchronize(context);
+      if (!this.voice.enabled) throw new ProtocolError('VOICE_DISABLED', 'Voice is disabled on this server. Global text remains available.');
+      if (!this.isVoiceEligible(context, identity.playerId)) throw new ProtocolError('VOICE_FORBIDDEN', 'Voice requires a connected living player in this room.');
+      context.voiceMembers.add(identity.playerId);
+      this.publishVoice(context);
+      return { playerIds: [...context.voiceMembers].sort() };
+    });
+  }
+
+  private leaveVoice(socket: Socket, _input: unknown): Promise<unknown> {
+    const binding = this.authorize(socket);
+    const context = this.context(binding.code);
+    return this.enqueue(context, async () => {
+      const identity = this.authorize(socket, binding);
+      context.voiceMembers.delete(identity.playerId);
+      this.publishVoice(context);
+      return { left: true };
     });
   }
 
@@ -259,11 +294,11 @@ export class RoomRuntimeService {
     return this.enqueue(context, async () => {
       const identity = this.authorize(socket, binding);
       await this.synchronize(context);
-      if (!this.options.voiceEnabled) throw new ProtocolError('VOICE_DISABLED', 'Voice is disabled on this server. Global text remains available.');
+      if (!this.voice.enabled) throw new ProtocolError('VOICE_DISABLED', 'Voice is disabled on this server. Global text remains available.');
       const room = this.read(context);
       const actor = room.players.find(player => player.id === identity.playerId);
       const target = room.players.find(player => player.id === input.toPlayerId);
-      if (!actor || !target || target.id === actor.id || ['DEAD', 'EXITED'].includes(actor.life) || ['DEAD', 'EXITED'].includes(target.life) || target.connection !== 'CONNECTED') throw new ProtocolError('VOICE_FORBIDDEN', 'Voice requires two connected living players in this room.');
+      if (!actor || !target || target.id === actor.id || !context.voiceMembers.has(actor.id) || !context.voiceMembers.has(target.id) || !this.isVoiceEligible(context, actor.id) || !this.isVoiceEligible(context, target.id)) throw new ProtocolError('VOICE_FORBIDDEN', 'Voice requires two opted-in connected living players in this room.');
       const peer = context.members.get(target.id);
       if (!peer?.socket.connected) throw new ProtocolError('TARGET_DISCONNECTED', 'That player is disconnected.');
       peer.socket.emit('voice:signal', { fromPlayerId: identity.playerId, signal: input.signal });
@@ -285,13 +320,15 @@ export class RoomRuntimeService {
   }
 
   private newRoom(room: RoomState): RoomRuntime {
-    const context: RoomRuntime = { code: room.code, queue: Promise.resolve(), queued: 0, members: new Map(), receipts: new Map(), messages: [], expiresAt: 0, timer: undefined, closed: false };
+    const context: RoomRuntime = { code: room.code, queue: Promise.resolve(), queued: 0, members: new Map(), voiceMembers: new Set(), receipts: new Map(), messages: [], expiresAt: 0, timer: undefined, closed: false };
     this.rooms.set(room.code, context);
     return context;
   }
 
   private bind(context: RoomRuntime, socket: Socket, playerId: string): void {
     const previous = context.members.get(playerId);
+    // Voice opt-in belongs to this browser session, never to a reconnect token.
+    context.voiceMembers.delete(playerId);
     const generation = randomUUID();
     context.members.set(playerId, { socket, generation });
     this.bindings.set(socket.id, { code: context.code, playerId, generation });
@@ -332,6 +369,12 @@ export class RoomRuntimeService {
     return player.life === 'DEAD' || player.life === 'EXITED';
   }
 
+  private isVoiceEligible(context: RoomRuntime, playerId: string): boolean {
+    const player = this.read(context).players.find(candidate => candidate.id === playerId);
+    const member = context.members.get(playerId);
+    return Boolean(player && member?.socket.connected && player.connection === 'CONNECTED' && player.life !== 'DEAD' && player.life !== 'EXITED');
+  }
+
   private view(context: RoomRuntime, playerId: string): unknown {
     const spectator = this.isSpectator(context, playerId);
     const projected = this.game.project(context.code, playerId, spectator);
@@ -351,7 +394,20 @@ export class RoomRuntimeService {
       member.socket.emit('room:view', view);
       if (view && typeof view === 'object' && 'public' in view) member.socket.emit('room:public', view.public);
     }
+    this.publishVoice(context);
     this.schedule(context);
+  }
+
+  private publishVoice(context: RoomRuntime): void {
+    if (context.closed) return;
+    for (const playerId of [...context.voiceMembers]) if (!this.isVoiceEligible(context, playerId)) context.voiceMembers.delete(playerId);
+    const playerIds = [...context.voiceMembers].sort();
+    for (const [playerId, member] of context.members) {
+      if (!member.socket.connected) continue;
+      const binding = this.bindings.get(member.socket.id);
+      if (binding?.generation !== member.generation) continue;
+      member.socket.emit('voice:peers', { playerIds: this.isVoiceEligible(context, playerId) ? playerIds : [] });
+    }
   }
 
   private enqueue<T>(context: RoomRuntime, operation: () => Promise<T>, internal = false): Promise<T> {
@@ -418,6 +474,7 @@ export class RoomRuntimeService {
   private destroy(context: RoomRuntime, reason: string): void {
     if (context.closed) return;
     context.closed = true;
+    context.voiceMembers.clear();
     if (context.timer) this.clock.clearTimeout(context.timer);
     for (const member of context.members.values()) {
       this.bindings.delete(member.socket.id);

@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type { RoleId } from '@the-table/game';
-import type { AnyRoomView, CommandPayload, Result, RevisionAck, RoomView, SessionPayload, SpectatorRoomView } from './protocol';
+import type { AnyRoomView, CommandPayload, Result, RevisionAck, RoomView, SessionPayload, SpectatorRoomView, VoiceCapability, VoiceSignal } from './protocol';
 
 type Acknowledgement<T> = (result: Result<T>) => void;
 
@@ -48,9 +48,19 @@ export class TableClient {
     return () => this.socket.off('room:public', listener);
   }
 
-  onCapabilities(listener: (value: { voiceEnabled: boolean }) => void): () => void {
+  onCapabilities(listener: (value: { voice: VoiceCapability }) => void): () => void {
     this.socket.on('server:capabilities', listener);
     return () => { this.socket.off('server:capabilities', listener); };
+  }
+
+  onVoicePeers(listener: (value: { playerIds: string[] }) => void): () => void {
+    this.socket.on('voice:peers', listener);
+    return () => { this.socket.off('voice:peers', listener); };
+  }
+
+  onVoiceSignal(listener: (value: { fromPlayerId: string; signal: VoiceSignal }) => void): () => void {
+    this.socket.on('voice:signal', listener);
+    return () => { this.socket.off('voice:signal', listener); };
   }
 
   onClosed(listener: (value: { code: string; reason: string }) => void): () => void {
@@ -88,11 +98,11 @@ export class TableClient {
   }
 
   sync() {
-    return this.emit<{ view: AnyRoomView; voiceEnabled?: boolean }>('room:sync', {});
+    return this.emit<{ view: AnyRoomView; voice?: VoiceCapability }>('room:sync', {});
   }
 
   spectate() {
-    return this.emit<{ view: SpectatorRoomView }>('room:spectate', {});
+    return this.emit<{ view: SpectatorRoomView; voice?: VoiceCapability }>('room:spectate', {});
   }
 
   rematch(idempotencyKey: string, expectedRevision?: number) {
@@ -109,6 +119,14 @@ export class TableClient {
 
   signalVoice(payload: { toPlayerId: string; signal: unknown }) {
     return this.emit('voice:signal', payload);
+  }
+
+  joinVoice() {
+    return this.emit<{ playerIds: string[] }>('voice:join', {});
+  }
+
+  leaveVoice() {
+    return this.emit<{ left: true }>('voice:leave', {});
   }
 
   private emit<T>(event: string, payload: object): Promise<Result<T>> {

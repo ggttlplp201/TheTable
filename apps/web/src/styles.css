@@ -166,6 +166,11 @@ input::placeholder { color: #aaa297; }
 .audio-controls input[type="range"] { min-height: 2rem; padding: 0; accent-color: var(--match-accent); }
 .intro-notice { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--match-line); color: var(--match-muted); font-size: 0.85rem; }
 .intro-notice .button { min-height: 44px; padding: 0.5rem 0.75rem; }
+.voice-warning { color: var(--match-alert); font-size: 0.85rem; line-height: 1.45; }
+.voice-actions { margin-bottom: 1rem; }
+.voice-peers { list-style: none; padding: 0; margin: 1rem 0 0; }
+.voice-peers li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.65rem 0; border-top: 1px solid var(--match-line); font-size: 0.85rem; }
+.voice-remote-audio { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .panel > :last-child { margin-bottom: 0; }
 .section-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
 .section-heading h2 { margin-bottom: 0.75rem; }
