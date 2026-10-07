@@ -1,4 +1,5 @@
 export * from './clips.js';
+export * from './arrival.js';
 export * from './dispose.js';
 export * from './kit.js';
 export * from './post.js';

@@ -1,0 +1,11 @@
+.table-presentation { position: relative; }
+.table-presentation-canvas { position: absolute; inset: 0; }
+.table-arrival { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr auto; align-content: end; align-items: end; gap: 10px 16px; padding: clamp(12px, 3vw, 24px); pointer-events: none; background: linear-gradient(transparent 60%, rgb(9 7 5 / 0.9)); color: #e0d2b6; }
+.table-arrival-copy .eyebrow { color: #bfa475; }
+.table-arrival-copy p { font-family: "IM Fell English", Georgia, serif; font-size: clamp(20px, 3vw, 28px); line-height: 1.1; margin: 4px 0 0; }
+.table-arrival-skip { pointer-events: auto; min-height: 56px; border: 1px solid #9d8353; background: #19150f; color: #e0d2b6; white-space: nowrap; }
+.table-arrival-skip:focus-visible { outline: 2px solid #f0d69c; outline-offset: 3px; }
+.table-arrival-skip:active { transform: scale(0.98); }
+.table-arrival-live { grid-column: 1 / -1; font-size: 13px; line-height: 1.3; color: #c7b99e; }
+.table-presentation .scene-fallback { position: relative; padding: 20px; }
+@media (prefers-reduced-motion: reduce) { .table-arrival-skip:active { transform: none; } }

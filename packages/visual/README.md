@@ -83,6 +83,12 @@ runPresentationClip('pistol', pivot, pistol, elapsed, {
 
 Clip time is clamped to `[0, duration]`; animation completion must never gate an authoritative game transition. Artifact items without specified physical actions are listed in `ITEMS_WITHOUT_CLIPS`.
 
+## Match arrival
+
+`TableArrival(camera, seat, character?, onBeat?)` owns a 7.2-second cosmetic arrival. Pass a public `SeatVisual` for the viewer and the matching scene character. Its named chair pulls back while the viewer's body remains implicit; the camera approaches, sits, settles, looks across the room, and ends at the existing overview. `sampleArrival(seat, seconds)` is deterministic and scrubbable for inspection/tests. `update(seconds)` emits each semantic footstep/chair/settle beat once; `finish()` and `dispose()` restore the camera, chair and body without emitting remaining beats.
+
+The caller owns eligibility, reduced motion, skipping and persistence. No arrival function has command, timer or room-state access. The web adapter keeps authoritative updates and all gameplay controls active throughout, avoids historical event replay, disposes on unmount/context loss, and uses static rendering for reduced motion.
+
 ## Pixel post-processing
 
 `createPostPipeline(renderer, width, height, options)` renders through the ported exposure, gamma, desaturation, sodium grade, animated grain, Bayer dither, color quantization, and vignette pass. Render at the desired low internal resolution and upscale the renderer canvas with CSS `image-rendering: pixelated`.

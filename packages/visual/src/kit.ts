@@ -381,10 +381,14 @@ export class VisualKit {
         root.add(thigh, shin, boot);
       }
     } else {
-      root.add(
+      const chair = named(this.group(
         this.mesh(new BoxGeometry(0.62, 0.06, 0.6), m.wood, 0, 0.5, 0),
         this.mesh(new BoxGeometry(0.62, 1.1, 0.06), m.wood, 0, 1.05, -0.32),
-      );
+      ), 'chair');
+      for (const x of [-0.25, 0.25]) for (const z of [-0.24, 0.24]) {
+        chair.add(this.mesh(new BoxGeometry(0.055, 0.48, 0.055), m.wood, x, 0.24, z));
+      }
+      root.add(chair);
     }
 
     this.#decorateCharacter(root, role, upper, head, arms);
