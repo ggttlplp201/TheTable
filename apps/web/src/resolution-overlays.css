@@ -1,0 +1,21 @@
+/* Scene HTML: authorized private reveals and personal successful exit. */
+.scene-private-inspection { position:absolute; inset:0; z-index:38; pointer-events:none; }
+.scene-spyglass-aperture { position:absolute; inset:0; background:radial-gradient(circle at 50% 50%,rgba(0,0,0,0) 0 30%,rgba(0,0,0,.97) 33%); animation:scene-spyglass-aperture 3.5s both; }
+.scene-inspection-reveal { position:absolute; left:50%; bottom:120px; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 18px; background:rgba(8,12,14,.88); border:2px solid #8fb0c0; white-space:nowrap; font-family:'VT323',monospace; }
+.scene-inspection-reveal > span { font-size:18px; letter-spacing:.2em; color:#8fb0c0; }
+.scene-inspection-reveal > strong { font-size:30px; font-weight:400; color:#e6f0f2; }
+.spyglass .scene-inspection-reveal { animation:scene-spyglass-reveal 3.5s both; }
+.scene-exit-confirmation { position:absolute; inset:0; z-index:80; background:rgba(0,0,0,.88); }
+.match-layout:has(> .scene-exit-confirmation) > :is(.match-overlay-backdrop,.results-stage) { visibility:hidden; }
+.match-layout .scene-exit-confirmation > button { width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:0; border:0; border-radius:0; background:transparent; color:#d8ccb0; cursor:pointer; font-family:'VT323',monospace; }
+.scene-exit-confirmation span { font-size:22px; letter-spacing:.3em; color:#a8c05a; }
+.scene-exit-confirmation strong { font:72px/1 'IM Fell English SC',serif; }
+.scene-exit-confirmation small { font-size:24px; color:#b8ab92; }
+.scene-inspection-history { position:absolute; left:36px; bottom:36px; width:370px; max-height:300px; overflow:auto; padding:8px 10px; border:2px solid #8fb0c0; background:rgba(8,12,14,.95); color:#cfe0e6; font:18px 'VT323',monospace; }
+.scene-inspection-history summary { cursor:pointer; color:#8fb0c0; }
+.scene-inspection-history p { display:flex; flex-direction:column; gap:2px; padding:8px 0; border-top:1px solid rgba(143,176,192,.3); }
+.scene-inspection-history span { font-size:14px; color:#8fb0c0; }
+.scene-inspection-history strong { font-size:20px; font-weight:400; }
+@keyframes scene-spyglass-aperture { 0%,15.7% { opacity:0; } 30%,82.8% { opacity:1; } 97.2%,100% { opacity:0; } }
+@keyframes scene-spyglass-reveal { 0%,32.8% { visibility:hidden; } 32.9%,82.8% { visibility:visible; } 82.9%,100% { visibility:hidden; } }
+@media (prefers-reduced-motion:reduce) { .scene-spyglass-aperture,.spyglass .scene-inspection-reveal { animation:none; } }

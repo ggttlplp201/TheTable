@@ -1,0 +1,91 @@
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { PublicRoomView } from '@the-table/game';
+import type { ArrivalBeat, ArrivalPhase } from '@the-table/visual';
+import type { TablePresentation } from './table-scene-runtime';
+import { matchPresentationKey, publicSeats } from './table-presentation';
+import './table-presentation.css';
+
+export type SceneIntent =
+  | { kind: 'PLAYER'; playerId: string }
+  | { kind: 'ITEM'; instanceId: string; ownerId: string; itemId: string }
+  | { kind: 'CHEST'; chestKind: 'STANDARD' | 'BLACK' }
+  | { kind: 'EXIT' | 'MARKET_PUBLIC' | 'MARKET_BLACK' | 'SELL' | 'EMPTY' };
+
+export type SceneFocus = 'seat' | 'left' | 'down' | 'door';
+
+export function GameTableScene({ room, viewerId, onArrivalBeat, onArrivalStateChange, onReadyChange, onIntent, interactionsEnabled = true, exitReady = false, showOwnerMarket = false, focus = 'seat', selectedItemId, aimTargets = [], spyglassTargetId, spyglassActive = false, children }: {
+  room: PublicRoomView;
+  /** Omit for spectators; identity must come from the authorized caller. */
+  viewerId?: string | undefined;
+  onArrivalBeat?: ((beat: ArrivalBeat) => void) | undefined;
+  onArrivalStateChange?: ((active: boolean) => void) | undefined;
+  onIntent?: ((intent: SceneIntent) => void) | undefined;
+  onReadyChange?: ((ready: boolean) => void) | undefined;
+  interactionsEnabled?: boolean | undefined;
+  exitReady?: boolean;
+  /** Generic owner affordance only: no private offers or item identities enter the renderer. */
+  showOwnerMarket?: boolean;
+  focus?: SceneFocus;
+  selectedItemId?: string | undefined;
+  aimTargets?: readonly string[];
+  /** Authorized owner-only camera signal; never carries inspection contents. */
+  spyglassTargetId?: string | undefined;
+  spyglassActive?: boolean;
+  children?: ReactNode;
+}) {
+  const mount = useRef<HTMLDivElement>(null);
+  const runtime = useRef<TablePresentation | undefined>(undefined);
+  const latestRoom = useRef(room);
+  const latestBeat = useRef(onArrivalBeat);
+  const latestArrivalState = useRef(onArrivalStateChange);
+  const latestIntent = useRef(onIntent);
+  const latestReady = useRef(onReadyChange);
+  const latestPresentation = useRef({ interactionsEnabled, exitReady, focus, selectedItemId, aimTargets, spyglassTargetId, spyglassActive });
+  const [renderFailed, setRenderFailed] = useState(false);
+  const [intro, setIntro] = useState<ArrivalPhase | null>(null);
+  const [canSkip, setCanSkip] = useState(false);
+  latestRoom.current = room;
+  latestBeat.current = onArrivalBeat;
+  latestArrivalState.current = onArrivalStateChange;
+  latestIntent.current = onIntent;
+  latestReady.current = onReadyChange;
+  latestPresentation.current = { interactionsEnabled, exitReady, focus, selectedItemId, aimTargets, spyglassTargetId, spyglassActive };
+  const rosterSignature = publicSeats(room).map(seat => `${seat.id}:${seat.role}:${seat.label}:${seat.position.join(',')}`).join('|');
+  const matchKey = matchPresentationKey(room);
+
+  useEffect(() => {
+    const target = mount.current; if (!target) return;
+    let cancelled = false;
+    setRenderFailed(false); setIntro(null);
+    void import('./table-scene-runtime').then(({ createTablePresentation }) => {
+      if (cancelled) return;
+      let reportedIntro = false, failed = false;
+      runtime.current = createTablePresentation(target, latestRoom.current, {
+        ...(viewerId === undefined ? {} : { viewerId }),
+        onIntroChange: (phase, skip) => { reportedIntro = true; if (!cancelled) { setIntro(phase); setCanSkip(skip); latestArrivalState.current?.(phase !== null); } },
+        onBeat: beat => latestBeat.current?.(beat),
+        onIntent: intent => latestIntent.current?.(intent),
+        ...latestPresentation.current,
+        showOwnerMarket,
+        onError: () => { failed = true; if (!cancelled) { setRenderFailed(true); setIntro(null); latestReady.current?.(false); } },
+      });
+      latestReady.current?.(!failed);
+      if (!reportedIntro) latestArrivalState.current?.(false);
+    }).catch(() => { if (!cancelled) { setRenderFailed(true); latestReady.current?.(false); } });
+    return () => { cancelled = true; runtime.current?.dispose(); runtime.current = undefined; latestReady.current?.(false); };
+  }, [room.id, matchKey, rosterSignature, viewerId, showOwnerMarket]);
+
+  useEffect(() => { runtime.current?.update(room); }, [room]);
+  useEffect(() => { runtime.current?.setInteractionsEnabled(interactionsEnabled); }, [interactionsEnabled]);
+  useEffect(() => { runtime.current?.setExitReady(exitReady); }, [exitReady]);
+  useEffect(() => { runtime.current?.setFocus(focus); }, [focus]);
+  useEffect(() => { runtime.current?.setItemSelection(selectedItemId, aimTargets); }, [selectedItemId, aimTargets]);
+  useEffect(() => { runtime.current?.setSpyglass(spyglassTargetId, spyglassActive); }, [spyglassTargetId, spyglassActive]);
+
+  return <div className="scene-frame table-presentation" aria-label="The Table game room">
+    <div className="table-presentation-canvas" ref={mount} aria-hidden="true" />
+    {children}
+    {intro && canSkip && <div className="table-arrival"><button className="button table-arrival-skip" type="button" onClick={() => runtime.current?.skipIntro()}>Skip Intro</button></div>}
+    {renderFailed && <p className="scene-fallback" role="status">The table view is unavailable. Match state is still connected.</p>}
+  </div>;
+}

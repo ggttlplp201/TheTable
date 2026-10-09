@@ -1,0 +1,73 @@
+/* Audit against the Table Scene / Game UI design files. Loaded last so it wins over desktop-fidelity.css. */
+
+/* 09–13 Trade, Threat and Overflow are modal overlays over the table: the table HUD (seat ribbon, vitals,
+   inventory strip, action dock, tools, event feed) must not draw through them. The turn timer stays,
+   top centre, and the modal sits below it instead of colliding with it. */
+.match-layout[data-modal='true'] :is(.seat-ribbon, .self-hand, .action-dock, .match-utility, .scene-event-feed) { visibility: hidden; }
+.match-layout[data-modal='true'] .match-overlay-backdrop { padding-top: 72px; box-sizing: border-box; }
+.match-layout[data-modal='true'] .forced-decision { padding-top: 72px; box-sizing: border-box; }
+.match-viewport[data-modal='true'] > .match-hud-top { display:block; z-index:46; }
+.match-viewport[data-modal='true'] .match-overlay.reference-interface,
+.match-viewport[data-modal='true'] .forced-decision > .decision-panel { max-height:calc(100dvh - 88px); overflow-y:auto; }
+
+/* 20 Spectator: the "SPECTATING · GOD VIEW" heading is drawn by the HUD; cards start below it (board: top 96px). */
+.reference-interface[data-panel=SPECTATOR] > .match-overlay-body { padding-top: 96px; box-sizing: border-box; }
+.reference-interface[data-panel=SPECTATOR] > header { display: grid; }
+.reference-interface[data-panel=SPECTATOR] > header > :is(p, h2) { display: none; }
+.reference-interface[data-panel=SPECTATOR] > header > button { opacity: 1; color: #cfe0e6; }
+.match-viewport[data-viewer=spectator]:has(.reference-interface[data-panel=SPECTATOR]) > .match-hud-top { display:block; z-index:46; }
+.reference-interface[data-panel=SPECTATOR] .reference-spectator { padding-top:0; }
+.reference-interface[data-panel=SPECTATOR] .reference-spectator > header { display:none; }
+.reference-interface[data-panel=SPECTATOR] .spectator-clock { top:-24px; }
+.reference-interface[data-panel=SPECTATOR] .spectator-cards { overflow-y:auto; }
+
+/* 05 Contract card: never clipped by short viewports. */
+.match-viewport[data-modal='true'] .match-overlay.reference-interface.paper { max-height:calc(100dvh - 120px); overflow-y:auto; margin-block:16px; }
+.reference-interface.paper > .match-overlay-body { min-height:min-content; height:auto; }
+
+/* 16 Black Market: the Brass Idol reroll is a per-slip option shown on the slip you are considering,
+   not a chip stamped on every slip (it covered the items). Sold slips never offer it. */
+.market-focus-black .market-reroll { bottom:100%; opacity: 0; pointer-events: none; transition: opacity .12s; }
+.market-focus-black .market-stock-tag:hover .market-reroll,
+.market-focus-black .market-stock-tag:focus-within .market-reroll { opacity: 1; pointer-events: auto; }
+.market-focus-black .market-stock-tag.sold .market-reroll { display: none; }
+
+/* 14 Core HUD at narrow desktop widths: the timer stays top centre; the turn-order panel drops below it instead of
+   colliding ("ROUND YOUR TURN 41" over "▶ I YOU"). The fulfilled banner sits under the panel. */
+@media (max-width: 1180px) {
+  .match-hud-top { max-width: none; }
+  .seat-ribbon { top: 76px; }
+  .reference-fulfilled-banner { top: 196px; }
+}
+
+/* 19 Downed: only the downed state and its actions are on screen (vitals, dock and feed collided with them). */
+.match-layout:has(.reference-downed-hud) :is(.self-hand, .action-dock, .scene-event-feed, .match-utility) { visibility: hidden; }
+.downed-title h2 { font-size: clamp(48px, 10vh, 84px); }
+@media (max-height: 620px) { .downed-title { top: 64px; gap: 6px; } .downed-title p, .downed-title strong { font-size: 20px; } }
+
+/* 08 Leave Table: when the lintel is too close to the timer, the prompt sits centred in the lit doorway
+   (runtime sets data-door-prompt). The pointer line is only meaningful above the door. */
+[data-door-prompt='inside'] .scene-exit-prompt { transform: translate(-50%, -50%); }
+[data-door-prompt='inside'] .scene-exit-prompt > i { display: none; }
+[data-door-prompt='inside'] .scene-exit-prompt > span { padding: 2px 10px; background: rgba(8,6,5,.72); }
+
+/* 05 Contract card: the whole card fits the viewport as on the board instead of scrolling its last line
+   out of view. Type steps down on short screens; the scroll stays only as a last resort. */
+.reference-interface.paper > .match-overlay-body { align-items: center; }
+.reference-interface .reference-contract { max-height: calc(100dvh - 140px); overflow-y: auto; }
+@media (max-height: 820px) {
+  .reference-interface.paper > .match-overlay-body { padding: 16px 32px; }
+  .reference-interface .reference-contract { padding: 14px 16px; gap: 8px; }
+  .reference-contract .objective-name { font-size: 32px; padding-bottom: 6px; }
+  .reference-contract .objective-detail { gap: 8px; }
+  .reference-contract .objective-detail > p { font-size: 21px; }
+  .reference-contract .objective-detail > .contract-rule { font-size: 18px; padding: 5px 8px; }
+  .reference-contract .facts { font-size: 19px; gap: 3px; }
+  .reference-contract header, .reference-contract footer, .reference-contract .contract-privacy { font-size: 17px; }
+}
+@media (max-height: 640px) {
+  .reference-contract .objective-name { font-size: 28px; }
+  .reference-contract .objective-detail > p { font-size: 19px; }
+  .reference-contract .facts { font-size: 18px; }
+  .reference-contract .inspection-history { display: none; }
+}

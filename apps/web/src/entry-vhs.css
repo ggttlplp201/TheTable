@@ -1,0 +1,13 @@
+/* Title screen: the empty table, slowly orbited, full-bleed behind the menu (no VHS pass). */
+.entry-vhs { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: #050404; pointer-events: none; }
+.entry-vhs-host, .entry-vhs-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+/* Keeps the menu at ≥ 4.5:1 over the brightest frames. */
+.entry-vhs-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgb(5 4 3 / .86) 0%, rgb(5 4 3 / .6) 36%, rgb(5 4 3 / 0) 62%), linear-gradient(0deg, rgb(5 4 3 / .55), transparent 22%); }
+.entry-layout { position: relative; z-index: 1; }
+.entry-layout:has(> .entry-vhs) {
+  width: 100%; max-width: none; margin-inline: 0; padding-inline: clamp(32px, 5vw, 96px);
+  grid-template-columns: minmax(0, 1fr); justify-items: start;
+}
+.entry-layout:has(> .entry-vhs) .entry-copy { position: relative; z-index: 1; }
+.entry-layout:has(> .entry-vhs) .entry-version { position: fixed; left: clamp(16px, 3vw, 40px); bottom: clamp(14px, 3vh, 28px); z-index: 1; }
+@media (max-width: 720px) { .entry-vhs-shade { background: linear-gradient(0deg, rgb(5 4 3 / .9) 0%, rgb(5 4 3 / .65) 55%, rgb(5 4 3 / .2) 100%); } }

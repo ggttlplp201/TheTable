@@ -1,0 +1,56 @@
+/* Keep the physical counter; attach concise phase information above its stock. */
+.market-focus { --market-stock-bottom:156px; }
+.market-focus-black { --market-stock-bottom:156px; }
+.market-phase-strip { position:absolute; z-index:4; left:20px; top:84px; width:min(460px,calc(100% - 40px)); box-sizing:border-box; padding:9px 12px; background:rgba(8,6,5,.95); border:1px solid #57472f; }
+.market-phase-heading { display:flex; justify-content:space-between; align-items:baseline; gap:16px; color:#e0a040; }
+.market-phase-heading strong { font-weight:400; letter-spacing:.06em; }
+.market-phase-heading [role="timer"] { font-variant-numeric:tabular-nums; font-size:25px; }
+.market-phase-strip p { margin:5px 0 0; font-size:17px; line-height:1.15; color:#c4b89d; }
+.market-phase-strip .market-public-order { color:#aa9d85; }
+.market-public-order .is-shopping { color:#e0a040; text-decoration:underline; text-underline-offset:3px; }
+.market-public-order .is-resolved { color:#b8c7b4; }
+.market-phase-strip small { display:block; margin-top:5px; font-size:15px; color:#b8c7b4; }
+.market-focus .market-options { top:226px; right:20px; display:flex; flex-direction:column; gap:6px; font-size:17px; line-height:1.2; }
+.market-focus .market-options > span,.market-focus .market-options label { align-self:flex-start; padding:4px 7px; background:rgba(8,6,5,.94); }
+.market-focus .market-options input:disabled { opacity:.5; }
+.market-focus .market-footer { padding:8px 0 0; background:linear-gradient(transparent,rgba(3,3,3,.96) 20%); }
+.market-focus .market-footer nav button { background:#0e0b08; font-size:18px; }
+.market-focus .market-stock-tag { z-index:4; }
+.market-focus .market-stock-tag > button { min-height:28px; background:#0e0b08; }
+.market-focus.market-focus-black .market-stock-tag .market-reroll { display:block; min-height:28px; opacity:1; pointer-events:auto; transition:none; }
+.market-focus .market-sale-reason { display:block; color:#e8b19f; line-height:1.2; font-size:17px; }
+.market-focus .market-sell-inventory { bottom:100px; flex-wrap:wrap; }
+.market-focus .market-sell-inventory small { white-space:normal; max-width:160px; font-size:15px; }
+.market-focus .market-pocket-panel { z-index:8; bottom:108px; max-height:calc(100% - 128px); }
+.market-pocket-panel .reference-pockets { height:auto; padding:12px 0; background:transparent; }
+.market-pocket-panel .reference-pockets > fieldset { height:auto; gap:12px!important; }
+.market-pocket-panel .reference-screen-heading h2 { font-size:28px; }
+.market-pocket-panel .reference-pocket-row { gap:8px; }
+.market-pocket-panel .reference-pocket { gap:8px; padding:8px; }
+.market-pocket-panel .reference-pocket .pocket-art { width:48px; height:48px; font-size:28px; }
+.market-pocket-panel .pocket-art img { max-width:100%; max-height:100%; object-fit:contain; }
+.market-pocket-panel .reference-pocket > span:last-child { min-width:0; overflow-wrap:normal; word-break:normal; }
+.market-pocket-panel .reference-pocket small { font-size:16px; letter-spacing:.05em; }
+.market-pocket-panel .reference-pocket strong { font-size:18px; line-height:1.1; }
+.market-focus .market-feedback { top:auto; bottom:120px; }
+.market-focus .market-render-error { top:270px; }
+.market-focus .market-inspection { bottom:168px; z-index:6; }
+@media (max-width:600px) {
+  .market-focus { --market-stock-bottom:208px; }
+  .market-phase-strip { left:10px; top:78px; width:calc(100% - 20px); }
+  .market-phase-strip p { font-size:15px; }
+  .market-phase-heading { font-size:17px; }
+  .market-focus .market-options { top:234px; left:10px; right:10px; font-size:15px; }
+  .market-focus .market-status { right:10px; padding:4px 8px; }
+  .market-focus .market-heading { left:10px; }
+  .market-focus .market-heading h2 { font-size:28px; }
+  .market-focus .market-sale { width:210px; transform:translate(-90%,-36%); }
+  .market-focus .market-sell-inventory { bottom:136px; gap:5px; }
+  .market-focus .market-sell-inventory button { padding:4px; font-size:15px; }
+  .market-focus .market-sell-inventory img { width:28px; height:28px; }
+  .market-focus .market-footer nav { gap:5px; }
+  .market-focus .market-footer nav button { font-size:16px; padding:5px 7px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .market-focus button:active:not(:disabled) { scale:1; }
+}
