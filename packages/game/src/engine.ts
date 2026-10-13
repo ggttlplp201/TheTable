@@ -1,13 +1,20 @@
+import { assignTasks, expireTasks, resolveTaskEvents, startTaskOpportunity } from './tasks.js';
+import { STARTING_BONUS_POOL, WILDCARDS } from '@the-table/content';
 import { ROLES, ITEM_BY_ID, RULES } from './content.js';
-import { downedInteraction, initiateThreat, initiateTrade, primary, requireShopper, requireTurn, resolveThreat, resolveTrade, resumeTurn, shopAction, useItem } from './actions.js';
-import { expireRescueWindows, loot, startPoisonTicks } from './combat.js';
-import { beginIntermission, refreshChests } from './economy.js';
+import { downedInteraction, initiateThreat, initiateTrade, primary, requireTurn, resolveThreat, resolveTrade, resumeTurn, shopAction, placePocketItem, useItem } from './actions.js';
+import { concedePlayer, expireRescueWindows, loot, startPoisonTicks } from './combat.js';
+import { beginIntermission, refreshChests, withRandom } from './economy.js';
 import { event, living, playerById, requireRule } from './internal.js';
-import { disposeInventory, resolveOverflow, stack, syncEquipment } from './inventory.js';
+import { disposeInventory, owned, removeItem, resolveOverflow, stack, syncEquipment } from './inventory.js';
 import { assertRoomInvariants } from './invariants.js';
-import { assignCompatibleObjectives, bankObjective, evaluateObjectives } from './objectives.js';
+import { advanceIntermission, finishIntermissionPlayer } from './intermission.js';
+import { assignCompatibleObjectives, bankObjective, evaluateObjectives, failObjective } from './objectives.js';
 import { SeededRandom } from './random.js';
+import { burnWildcard, drawWildcard, expireWildcard, grantRoundIncome, resolveWildcard, unlockWildcards, useWildcard } from './wildcards.js';
 import { ROLE_IDS, type ConnectionState, type GameCommand, type PlayerState, type RoleId, type RoomState } from './types.js';
+
+/** Desktop opening: the ZIP's 6s arrival + 1.4s seated hold, then the user-approved 12s objective read. */
+export const MATCH_OPENING_PRESENTATION_MS = 19_400;
 
 function timestamp(room: RoomState, now: number): void {
   requireRule(Number.isFinite(now) && now >= room.updatedAt, 'INVALID_COMMAND', 'Command time must be finite and monotonic.');
@@ -30,10 +37,12 @@ function finishIfRequired(room: RoomState, now: number): boolean {
     const next = ready[0]!;
     bankObjective(room, next, now); disposeInventory(room, next);
   }
-  for (const player of room.players) if (player.objective!.status !== 'BANKED') { player.objective!.status = 'FAILED'; player.score = 0; }
+  for (const player of room.players) if (player.objective!.status !== 'BANKED') { failObjective(room, player, 'The match ended before this objective could be banked.', now); player.score = 0; }
   // A match-end result cannot retain a live command or timer.
+  expireTasks(room, now);
   room.status = 'RESULTS'; room.round!.phase = 'RESULTS'; room.round!.seatsOwedTurn = [];
   delete room.turn; delete room.pendingTrade; delete room.pendingThreat;
+  for (const playerId of Object.keys(room.pendingPrivateWildcardByPlayer ?? {})) expireWildcard(room, playerId, now, 'TIMEOUT');
   for (const pending of room.overflows ?? []) resolveOverflow(room, pending.id, now);
   room.overflows = [];
   event(room, now, 'MATCH_ENDED', 'The match has ended.');
@@ -43,7 +52,8 @@ function beginRound(room: RoomState, now: number): void {
   room.round!.number += 1; room.round!.phase = 'TURN';
   room.round!.seatsOwedTurn = [...room.match!.fixedSeats];
   delete room.shop;
-  refreshChests(room, now); evaluateObjectives(room, now);
+  unlockWildcards(room, now);
+  refreshChests(room, now); assignTasks(room, now); evaluateObjectives(room, now);
   nextTurn(room, now);
 }
 function nextTurn(room: RoomState, now: number): void {
@@ -60,25 +70,21 @@ function nextTurn(room: RoomState, now: number): void {
     event(room, now, 'TURN_STARTED', `${player.name}'s turn begins.`, player.id);
     startPoisonTicks(room, player, now);
     if (player.life === 'DOWNED') room.turn.startedDowned = true;
+    startTaskOpportunity(room, player, now);
     evaluateObjectives(room, now);
     finishIfRequired(room, now);
     return;
   }
+  expireTasks(room, now);
+  grantRoundIncome(room, now);
   evaluateObjectives(room, now, true);
   if (finishIfRequired(room, now)) return;
   beginIntermission(room, now);
   advanceDisconnectedShoppers(room, now);
 }
-/** Hub-approved reconnect safety: disconnected shoppers forfeit their opportunity, without a new timer. */
+/** All phase progression is authoritative; private decisions never block the public queue. */
 function advanceDisconnectedShoppers(room: RoomState, now: number): void {
-  if (room.status !== 'PLAYING' || room.round?.phase !== 'INTERMISSION' || !room.shop) return;
-  while (room.shop.activeShopperIndex < room.shop.order.length) {
-    const shopper = playerById(room, room.shop.order[room.shop.activeShopperIndex]!);
-    if (shopper.life === 'ACTIVE' && shopper.connection === 'CONNECTED') break;
-    room.shop.activeShopperIndex += 1;
-    event(room, now, 'SHOPPER_SKIPPED', `${shopper.name}'s shopping opportunity was skipped.`, shopper.id);
-  }
-  if (room.shop.activeShopperIndex >= room.shop.order.length && !room.overflows?.length) beginRound(room, now);
+  if (advanceIntermission(room, now)) beginRound(room, now);
 }
 function endTurn(room: RoomState, now: number): void {
   const active = room.players.find((player) => player.seat === room.turn!.activeSeat)!;
@@ -86,18 +92,39 @@ function endTurn(room: RoomState, now: number): void {
   event(room, now, 'TURN_ENDED', `${active.name}'s turn ended.`, active.id);
   nextTurn(room, now);
 }
+/** A committed Primary Action only waits for actual decisions, never its visual effects. */
+function completePrimaryTurn(room: RoomState, now: number): void {
+  if (room.status !== 'PLAYING' || !room.turn?.primaryUsed || room.pendingTrade || room.pendingThreat || room.overflows?.length || Object.keys(room.pendingPrivateWildcardByPlayer ?? {}).length) return;
+  const opportunity = room.turn.immediateLoot;
+  if (opportunity) {
+    const target = playerById(room, opportunity.targetId);
+    const owner = playerById(room, opportunity.playerId);
+    if (target.life === 'DOWNED' && target.inventory.visible.some(Boolean) && owner.connection === 'CONNECTED') {
+      opportunity.deadlineAt ??= now + RULES.overflowMs;
+      if (opportunity.deadlineAt > now) { room.turn.deadlineAt = opportunity.deadlineAt; return; }
+    }
+    delete room.turn.immediateLoot;
+  }
+  endTurn(room, now);
+}
 export function startMatch(input: RoomState, options: { seed: number; now: number }): RoomState {
   timestamp(input, options.now);
   requireRule(input.status === 'LOBBY', 'WRONG_PHASE', 'A match can only start in the lobby.');
-  requireRule(input.players.length >= 2 && input.players.length <= 4, 'NOT_ELIGIBLE', 'A match needs two to four players.');
+  requireRule((input.mode === 'tutorial' && input.players.length === 2) || (input.players.length >= RULES.minimumPlayers && input.players.length <= RULES.maximumPlayers), 'NOT_ELIGIBLE', 'A match needs three or four connected players.');
   requireRule(input.players.every((player) => player.ready && player.roleId && player.connection === 'CONNECTED'), 'NOT_ELIGIBLE', 'Every player must be connected, have a Role, and be ready.');
   requireRule(new Set(input.players.map((player) => player.roleId)).size === input.players.length, 'INVALID_STATE', 'Roles must be unique.');
   const room = structuredClone(input);
   const random = new SeededRandom(options.seed);
   const players = [...room.players].sort((a, b) => a.seat - b.seat);
-  const objectives = assignCompatibleObjectives(players, random);
+  const objectives = input.mode === 'tutorial' ? Object.fromEntries(players.map((player, index) => [player.id, { objectiveId: index === 0 ? 'escapist' : 'collector', status: 'ACTIVE' as const, progress: {}, rewardGranted: false }])) : assignCompatibleObjectives(players, random);
   room.matchSerial = (input.matchSerial ?? 0) + 1;
   room.status = 'PLAYING'; room.events = []; room.overflows = [];
+  // A separate seeded shuffle preserves the established opening item/chest RNG stream.
+  room.wildcardDeck = new SeededRandom(options.seed ^ 0x57494c44).shuffle(WILDCARDS.map(card => card.id));
+  room.wildcardDiscard = []; room.wildcardUnlocked = false;
+  room.wildcardDrawUsedByPlayer = Object.fromEntries(players.map(player => [player.id, false]));
+  room.pendingPrivateWildcardByPlayer = {};
+  room.roundIncomeAmount = RULES.roundIncome; room.roundIncomeGrantedThrough = 0;
   room.match = {
     seed: options.seed, rngState: random.state, nextId: 1, turnSerial: 0, playerCount: players.length,
     fixedSeats: players.map((player) => player.seat), artifactPool: Object.values(ITEM_BY_ID).filter((item) => item.rarity === 'ARTIFACT').map((item) => item.id),
@@ -106,31 +133,57 @@ export function startMatch(input: RoomState, options: { seed: number; now: numbe
   };
   for (const player of players) {
     const role = ROLES[player.roleId!];
-    player.hp = RULES.maxHp; player.life = 'ACTIVE'; player.score = 0; player.statuses = []; player.turnsStarted = 0;
+    player.hp = RULES.maxHp; player.temporaryHp = 0; player.life = 'ACTIVE'; player.score = 0; player.statuses = []; player.turnsStarted = 0;
     player.abilities = { quickDrawUsed: false }; player.safeAssignments = {};
-    delete player.downed; delete player.exitOrder; delete player.bankedAt;
+    delete player.downed; delete player.exitOrder; delete player.bankedAt; delete player.conceded; delete player.phoenixMedicineOfferSeen;
     player.inventory = { visible: Array<null>(RULES.visibleSlots).fill(null), pockets: [{ item: null, protectedBySafe: false, source: 'DEFAULT' }], coins: role.startingCoins };
     for (const [index, itemId] of role.startingItems.entries()) player.inventory.visible[index] = stack(room, itemId);
     syncEquipment(room, player, options.now);
     player.objective = objectives[player.id]!;
   }
-  room.round = { number: 1, phase: 'TURN', seatsOwedTurn: [...room.match.fixedSeats] };
+  room.round = { number: 0, phase: 'SETUP', seatsOwedTurn: [] };
+  const bonusPlayer = withRandom(room, random => random.pick(players));
+  const bonusItem = stack(room, withRandom(room, random => random.pick(STARTING_BONUS_POOL)));
+  bonusPlayer.inventory.visible[ROLES[bonusPlayer.roleId!].startingItems.length] = bonusItem;
+  room.setup = { deadlineAt: options.now + RULES.setupMs, lockedPlayerIds: [], bonusPlayerId: bonusPlayer.id, bonusItemInstanceId: bonusItem.instanceId };
   room.chests = [{ kind: 'STANDARD', availability: 'HIDDEN', loot: [] }, { kind: 'BLACK', availability: 'HIDDEN', loot: [] }];
-  delete room.shop; delete room.pendingTrade; delete room.pendingThreat;
-  event(room, options.now, 'MATCH_STARTED', 'The match begins.');
-  nextTurn(room, options.now);
+  delete room.turn; delete room.shop; delete room.pendingTrade; delete room.pendingThreat;
+  event(room, options.now, 'SETUP_STARTED', 'Choose your starting Pocket item privately.');
   return commit(room, options.now);
+}
+function lockSetupItem(room: RoomState, actor: PlayerState, instanceId: string): void {
+  requireRule(room.setup && room.round?.phase === 'SETUP', 'WRONG_PHASE', 'Starting Pocket choices are only available during setup.');
+  requireRule(!room.setup.lockedPlayerIds.includes(actor.id), 'LOCKED', 'Your starting Pocket choice is already locked. Wait for the other players.');
+  const item = owned(actor, instanceId, true);
+  requireRule(ITEM_BY_ID[item.itemId]!.pocketEligible, 'NOT_ELIGIBLE', `${ITEM_BY_ID[item.itemId]!.name} must remain visible and cannot go into a Pocket.`);
+  const pocket = actor.inventory.pockets.find(pocket => pocket.source === 'DEFAULT')!;
+  requireRule(!pocket.item, 'LOCKED', 'Your starting Pocket is already filled.');
+  pocket.item = removeItem(actor, instanceId);
+  room.setup.lockedPlayerIds.push(actor.id);
+}
+function revealStartingInventories(room: RoomState, now: number): void {
+  delete room.setup;
+  room.round = { number: 1, phase: 'TURN', seatsOwedTurn: [...room.match!.fixedSeats] };
+  event(room, now, 'MATCH_STARTED', 'Starting inventories are revealed. Round 1 begins.');
+  refreshChests(room, now);
+  assignTasks(room, now);
+  nextTurn(room, now);
+  room.turn!.deadlineAt += MATCH_OPENING_PRESENTATION_MS;
 }
 export function resetMatch(input: RoomState, now: number): RoomState {
   timestamp(input, now);
   requireRule(input.status === 'RESULTS', 'WRONG_PHASE', 'Rematch is only available after results.');
   const room = structuredClone(input);
   room.status = 'LOBBY';
-  delete room.match; delete room.turn; delete room.round; delete room.shop; delete room.chests; delete room.events; delete room.overflows; delete room.pendingTrade; delete room.pendingThreat;
+  delete room.sideJobsByPlayer; delete room.sideJobRoundId;
+  delete room.wildcardDeck; delete room.wildcardDiscard; delete room.wildcardUnlocked;
+  delete room.wildcardDrawUsedByPlayer; delete room.pendingPrivateWildcardByPlayer;
+  delete room.roundIncomeAmount; delete room.roundIncomeGrantedThrough;
+  delete room.setup; delete room.match; delete room.turn; delete room.round; delete room.shop; delete room.chests; delete room.events; delete room.overflows; delete room.pendingTrade; delete room.pendingThreat;
   for (const player of room.players) {
-    player.ready = false; player.life = 'ACTIVE'; player.hp = RULES.maxHp; player.score = 0;
+    player.ready = false; player.life = 'ACTIVE'; player.hp = RULES.maxHp; player.temporaryHp = 0; player.score = 0;
     player.inventory = { visible: Array<null>(RULES.visibleSlots).fill(null), pockets: [{ item: null, protectedBySafe: false, source: 'DEFAULT' }], coins: 0 };
-    delete player.objective; delete player.downed; delete player.statuses; delete player.turnsStarted; delete player.abilities; delete player.exitOrder; delete player.bankedAt; delete player.safeAssignments;
+    delete player.objective; delete player.downed; delete player.statuses; delete player.turnsStarted; delete player.abilities; delete player.exitOrder; delete player.bankedAt; delete player.safeAssignments; delete player.conceded; delete player.phoenixMedicineOfferSeen;
   }
   return commit(room, now);
 }
@@ -156,6 +209,15 @@ export function applyCommand(input: RoomState, actorId: string, command: GameCom
   requireRule(room.status === 'PLAYING' && living(actor), 'NOT_ELIGIBLE', 'Only living match players can act.');
   const deadline = getNextDeadline(room);
   requireRule(deadline === undefined || now < deadline, 'DEADLINE_EXPIRED', 'The authoritative deadline has expired.');
+  if (room.round?.phase === 'SETUP') {
+    requireRule(command.type === 'LOCK_SETUP', 'WRONG_PHASE', 'Lock your starting Pocket choice and wait for everyone before taking game actions.');
+    lockSetupItem(room, actor, command.instanceId);
+    if (room.setup!.lockedPlayerIds.length === room.players.length) revealStartingInventories(room, now);
+    return commit(room, now);
+  }
+  if (Object.keys(room.pendingPrivateWildcardByPlayer ?? {}).length) {
+    requireRule(Boolean(room.pendingPrivateWildcardByPlayer?.[actorId]) && ['USE_WILDCARD', 'BURN_WILDCARD', 'RESOLVE_WILDCARD'].includes(command.type), 'LOCKED', 'Resolve the drawn Wildcard before taking another action.');
+  }
   if (command.type === 'OVERFLOW_CHOICE') {
     const pending = room.overflows?.find((entry) => entry.id === command.overflowId && entry.playerId === actor.id);
     requireRule(pending, 'NOT_FOUND', 'This overflow decision is not yours.');
@@ -167,13 +229,32 @@ export function applyCommand(input: RoomState, actorId: string, command: GameCom
     requireRule(room.pendingThreat?.targetId === actorId && typeof command.comply === 'boolean', 'NOT_ELIGIBLE', 'This Threat response is not yours.');
     resolveThreat(room, command.comply, now);
   } else {
-    requireRule(!room.pendingTrade && !room.pendingThreat && !room.overflows?.length, 'LOCKED', 'Resolve the pending interaction first.');
+    const blockingOverflow = room.round?.phase === 'INTERMISSION' ? room.overflows?.some(choice => choice.playerId === actorId) : room.overflows?.length;
+    requireRule(!room.pendingTrade && !room.pendingThreat && !blockingOverflow, 'LOCKED', 'Resolve the pending interaction first.');
     switch (command.type) {
+      case 'DRAW_WILDCARD': drawWildcard(room, actor, now); break;
+      case 'USE_WILDCARD': useWildcard(room, actor, now); break;
+      case 'BURN_WILDCARD': burnWildcard(room, actor, now); break;
+      case 'RESOLVE_WILDCARD': resolveWildcard(room, actor, command, now); break;
+      case 'PASS_TURN':
+        requireTurn(room, actor);
+        requireRule(!room.turn!.primaryUsed, 'NOT_ELIGIBLE', 'Your Primary Action is already committed. Resolve its remaining decision.');
+        event(room, now, 'TURN_PASSED', `${actor.name} passed.`, actor.id);
+        endTurn(room, now); break;
+      case 'SKIP_LOOT':
+        requireRule(room.turn?.immediateLoot?.playerId === actorId, 'NOT_ELIGIBLE', 'No immediate attacker loot is available.');
+        delete room.turn!.immediateLoot; break;
       case 'END_TURN': requireTurn(room, actor); endTurn(room, now); break;
-      case 'STAY': requireTurn(room, actor); requireRule(canLeave(room, actor), 'NOT_ELIGIBLE', 'No exit choice is available.'); room.turn!.exitDeclined = true; break;
+      case 'CONCEDE':
+        requireTurn(room, actor);
+        requireRule(actor.life === 'ACTIVE' && !room.turn!.startedDowned && actor.objective?.status === 'FAILED', 'NOT_ELIGIBLE', 'Concede is available for a failed objective on your own normal turn.');
+        concedePlayer(room, actor, now);
+        if (!finishIfRequired(room, now)) endTurn(room, now);
+        break;
+      case 'STAY': requireTurn(room, actor); requireRule(canLeave(room, actor), 'NOT_ELIGIBLE', leaveFailure(room, actor) ?? ''); room.turn!.exitDeclined = true; break;
       case 'LEAVE_TABLE':
         requireTurn(room, actor); evaluateObjectives(room, now);
-        requireRule(canLeave(room, actor), 'NOT_ELIGIBLE', 'Leave Table is not available.');
+        requireRule(canLeave(room, actor), 'NOT_ELIGIBLE', leaveFailure(room, actor) ?? '');
         bankObjective(room, actor, now); disposeInventory(room, actor);
         if (!finishIfRequired(room, now)) endTurn(room, now);
         break;
@@ -187,12 +268,19 @@ export function applyCommand(input: RoomState, actorId: string, command: GameCom
         loot(room, actor, playerById(room, command.targetId), command.instanceId, now); delete room.turn!.immediateLoot; break;
       }
       case 'FINISH_SHOPPING':
-        requireShopper(room, actor); room.shop!.activeShopperIndex += 1;
+        finishIntermissionPlayer(room, actor.id, now);
         advanceDisconnectedShoppers(room, now);
         break;
-      case 'SELL': case 'BUY': case 'POCKET': case 'ASSIGN_SAFE': case 'REROLL_MARKET': shopAction(room, actor, command, now); break;
+      case 'POCKET':
+        if (room.mode === 'tutorial' && room.round?.phase === 'TURN') placePocketItem(room, actor, command.instanceId, command.pocketIndex, now);
+        else { shopAction(room, actor, command, now); advanceDisconnectedShoppers(room, now); }
+        break;
+      case 'SKIP_PUBLIC_SHOP': case 'SELL': case 'BUY': case 'ASSIGN_SAFE': case 'REROLL_MARKET':
+        shopAction(room, actor, command, now); advanceDisconnectedShoppers(room, now); break;
       case 'INSPECT_CHEST': {
-        requireRule(actor.life === 'ACTIVE' && actor.roleId === 'locksmith' && actor.abilities!.locksmithRound !== room.round!.number, 'NOT_ELIGIBLE', 'Tumbler Sense is unavailable.');
+        requireRule(actor.life === 'ACTIVE', 'NOT_ELIGIBLE', 'You cannot inspect a chest while Downed.');
+        requireRule(actor.roleId === 'locksmith', 'NOT_ELIGIBLE', 'Only the Locksmith can use Tumbler Sense.');
+        requireRule(actor.abilities!.locksmithRound !== room.round!.number, 'NOT_ELIGIBLE', 'You already used Tumbler Sense this round.');
         const chest = room.chests!.find((entry) => entry.kind === 'STANDARD')!;
         requireRule(chest.availability === 'AVAILABLE', 'NOT_ELIGIBLE', 'Standard Chest is unavailable.');
         actor.abilities!.locksmithRound = room.round!.number;
@@ -204,17 +292,33 @@ export function applyCommand(input: RoomState, actorId: string, command: GameCom
       default: requireRule(false, 'INVALID_COMMAND', 'Unknown game command.');
     }
   }
-  if (room.status === 'PLAYING') { evaluateObjectives(room, now); finishIfRequired(room, now); }
+  resolveTaskEvents(input, room, now);
+  if (room.status === 'PLAYING') { evaluateObjectives(room, now); if (!finishIfRequired(room, now)) completePrimaryTurn(room, now); }
   return commit(room, now);
 }
+function leaveFailure(room: RoomState, player: PlayerState): string | undefined {
+  if (room.status !== 'PLAYING' || room.round?.phase !== 'TURN') return 'You can leave only during a normal turn.';
+  if (room.turn?.activeSeat !== player.seat) return 'Wait for your turn to leave the table.';
+  if (player.life !== 'ACTIVE' || room.turn.startedDowned) return 'You must be active at the start of your turn to leave.';
+  if (room.turn.exitDeclined) return 'You chose to stay or took an action. You can leave on your next normal turn.';
+  if (room.turn.primaryUsed) return 'You already used your Primary Action. You can leave on your next normal turn.';
+  if (player.objective?.status !== 'EXIT_READY') return 'Complete your private objective before leaving the table.';
+  if ((player.turnsStarted ?? 0) < (player.objective.readyOnTurn ?? Infinity)) return 'Your objective is complete. Wait until your next normal turn to leave.';
+  return undefined;
+}
 export function canLeave(room: RoomState, player: PlayerState): boolean {
-  return room.status === 'PLAYING' && room.round?.phase === 'TURN' && room.turn?.activeSeat === player.seat && player.life === 'ACTIVE' && !room.turn.startedDowned && !room.turn.exitDeclined && !room.turn.primaryUsed && player.objective?.status === 'EXIT_READY' && (player.turnsStarted ?? 0) >= (player.objective.readyOnTurn ?? Infinity);
+  return leaveFailure(room, player) === undefined;
 }
 export function getNextDeadline(room: RoomState): number | undefined {
   if (room.status !== 'PLAYING') return undefined;
+  if (room.setup) return room.setup.deadlineAt;
   const deadlines = (room.overflows ?? []).map((entry) => entry.deadlineAt);
   if (room.pendingTrade) deadlines.push(room.pendingTrade.deadlineAt);
   if (room.pendingThreat) deadlines.push(room.pendingThreat.deadlineAt);
+  if (room.round?.phase === 'INTERMISSION' && room.shop) {
+    const deadline = room.shop.phase === 'PREP' ? room.shop.prepDeadlineAt : room.shop.phase === 'PUBLIC' ? room.shop.publicDeadlineAt : room.shop.privateDeadlineAt;
+    if (deadline !== undefined) deadlines.push(deadline);
+  }
   if (room.turn && room.turn.pausedRemainingMs === undefined) deadlines.push(room.turn.deadlineAt);
   return deadlines.length ? Math.min(...deadlines) : undefined;
 }
@@ -223,14 +327,28 @@ export function applyTimeout(input: RoomState, now: number): RoomState {
   const deadline = getNextDeadline(input);
   if (deadline === undefined || now < deadline) return input;
   const room = structuredClone(input);
+  if (room.setup) {
+    for (const player of room.players) {
+      if (room.setup.lockedPlayerIds.includes(player.id)) continue;
+      const item = player.inventory.visible.find(item => item && ITEM_BY_ID[item.itemId]!.pocketEligible)!;
+      lockSetupItem(room, player, item.instanceId);
+    }
+    revealStartingInventories(room, now);
+    return commit(room, now);
+  }
   // Process at the authoritative deadline, not scheduler latency; newly opened turns begin at now.
   for (const choice of [...(room.overflows ?? [])]) if (choice.deadlineAt <= now) resolveOverflow(room, choice.id, now);
-  if (room.pendingTrade && room.pendingTrade.deadlineAt <= now) resolveTrade(room, true, now, playerById(room, room.pendingTrade.targetId).connection === 'DISCONNECTED');
-  if (room.pendingThreat && room.pendingThreat.deadlineAt <= now) resolveThreat(room, true, now, playerById(room, room.pendingThreat.targetId).connection === 'DISCONNECTED');
+  if (room.pendingTrade && room.pendingTrade.deadlineAt <= now) resolveTrade(room, false, now, playerById(room, room.pendingTrade.targetId).connection === 'DISCONNECTED', true);
+  if (room.pendingThreat && room.pendingThreat.deadlineAt <= now) resolveThreat(room, true, now, playerById(room, room.pendingThreat.targetId).connection === 'DISCONNECTED', true);
   resumeTurn(room, now);
   advanceDisconnectedShoppers(room, now);
-  if (room.turn && room.turn.pausedRemainingMs === undefined && room.turn.deadlineAt <= now) endTurn(room, now);
-  if (room.status === 'PLAYING') { evaluateObjectives(room, now); finishIfRequired(room, now); }
+  resolveTaskEvents(input, room, now);
+  if (room.status === 'PLAYING') { evaluateObjectives(room, now); if (!finishIfRequired(room, now)) completePrimaryTurn(room, now); }
+  if (room.turn && room.turn.pausedRemainingMs === undefined && room.turn.deadlineAt <= now) {
+    for (const playerId of Object.keys(room.pendingPrivateWildcardByPlayer ?? {})) expireWildcard(room, playerId, now, 'TIMEOUT');
+    endTurn(room, now);
+  }
+  if (room.status === 'PLAYING') { evaluateObjectives(room, now); if (!finishIfRequired(room, now)) completePrimaryTurn(room, now); }
   return commit(room, now);
 }
 export function setConnection(input: RoomState, playerId: string, connection: ConnectionState, now: number): RoomState {
@@ -238,10 +356,12 @@ export function setConnection(input: RoomState, playerId: string, connection: Co
   requireRule(connection === 'CONNECTED' || connection === 'DISCONNECTED', 'INVALID_COMMAND', 'Unknown connection state.');
   const room = structuredClone(input); playerById(room, playerId).connection = connection;
   if (connection === 'DISCONNECTED') {
+    expireWildcard(room, playerId, now, 'DISCONNECT');
     if (room.pendingTrade?.targetId === playerId) resolveTrade(room, false, now, true);
     if (room.pendingThreat?.targetId === playerId) resolveThreat(room, false, now, true);
   }
   advanceDisconnectedShoppers(room, now);
+  if (room.status === 'PLAYING') { resolveTaskEvents(input, room, now); if (!finishIfRequired(room, now)) completePrimaryTurn(room, now); }
   return commit(room, now);
 }
 /** Convenience transport-independent envelope adapter. */

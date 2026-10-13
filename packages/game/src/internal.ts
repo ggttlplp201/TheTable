@@ -15,6 +15,7 @@ export function event(room: RoomState, now: number, kind: string, publicText: st
   const result: ActionEvent = {
     id: id(room, 'event'), sequence: (room.events?.at(-1)?.sequence ?? 0) + 1,
     at: now, kind, publicText, targetIds,
+    ...(room.round ? { round: room.round.number } : {}),
     ...(actorId === undefined ? {} : { actorId }),
     ...(privatePayloads === undefined ? {} : { privatePayloads }),
     ...(presentation === undefined ? {} : { presentation }),

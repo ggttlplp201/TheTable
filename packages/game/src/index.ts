@@ -5,3 +5,4 @@ export * from './invariants.js';
 export * from './objectives.js';
 export * from './random.js';
 export * from './content.js';
+export * from './tasks.js';

@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { ROLES } from '@the-table/content';
 import {
-  applyCommand, applyTimeout, assertRoomInvariants, assignCompatibleObjectives, canLeave,
+  applyCommand, applyTimeout, assertRoomInvariants, assignCompatibleObjectives, canLeave, MATCH_OPENING_PRESENTATION_MS,
   evaluateObjectives, getNextDeadline, objectiveCondition, projectAuthorizedRoom, projectPublicRoom,
   projectSpectatorRoom, ROLE_IDS, SeededRandom, setConnection, startMatch,
   type GameCommand, type ItemStack, type PlayerState, type RoleId, type RoomState,
 } from './index.js';
-import { acquire, stack, syncEquipment } from './inventory.js';
+import { acquire, disposeInventory, stack, syncEquipment } from './inventory.js';
 import { bankObjective } from './objectives.js';
 import { damage, permanentlyDie } from './combat.js';
+import { beginIntermission, refreshChests } from './economy.js';
 
 function lobby(count = 4, roles: readonly RoleId[] = ROLE_IDS): RoomState {
   return { id: 'room-test', code: 'ABC234', status: 'LOBBY', revision: 1, hostPlayerId: 'p0', createdAt: 0, updatedAt: 0,
@@ -20,14 +21,31 @@ function lobby(count = 4, roles: readonly RoleId[] = ROLE_IDS): RoomState {
   };
 }
 function game(count = 4, seed = 77): RoomState {
-  const room = startMatch(lobby(count), { seed, now: 1 });
+  let room = startMatch(lobby(count), { seed, now: 1 });
+  const bonusId = room.setup!.bonusItemInstanceId;
+  for (const player of room.players) {
+    const item = player.inventory.visible[2]!;
+    room = applyCommand(room, player.id, { type: 'LOCK_SETUP', instanceId: item.instanceId }, 1);
+  }
+  // Mid-match rule fixtures retain the original two visible items and empty
+  // Pockets. Real setup ownership/privacy is covered in early-game.test.ts.
+  for (const player of room.players) {
+    player.inventory.visible = player.inventory.visible.map(item => item?.instanceId === bonusId ? null : item);
+    player.inventory.pockets.forEach(pocket => { pocket.item = null; });
+  }
   room.players.forEach((player, index) => { player.objective = { objectiveId: ['escapist', 'collector', 'tycoon', 'arsenal'][index]!, status: 'ACTIVE', progress: {}, rewardGranted: false }; });
   return room;
 }
 function actor(room: RoomState): PlayerState { return room.players.find((player) => player.seat === room.turn!.activeSeat)!; }
 function command(room: RoomState, value: GameCommand, playerId = actor(room).id, elapsed = 1): RoomState { return applyCommand(room, playerId, value, room.updatedAt + elapsed); }
 function advance(room: RoomState): RoomState {
-  if (room.round!.phase === 'INTERMISSION') return applyCommand(room, room.shop!.order[room.shop!.activeShopperIndex]!, { type: 'FINISH_SHOPPING' }, room.updatedAt + 1);
+  if (room.setup) return applyTimeout(room, room.setup.deadlineAt);
+  if (room.round!.phase === 'INTERMISSION') {
+    const shop = room.shop!;
+    if (shop.phase === 'PREP') return applyTimeout(room, shop.prepDeadlineAt);
+    if (shop.phase === 'PUBLIC') return applyCommand(room, shop.order[shop.activeShopperIndex]!, { type: 'SKIP_PUBLIC_SHOP' }, room.updatedAt + 1);
+    return applyCommand(room, shop.order.find(playerId => !shop.finishedBy[playerId])!, { type: 'FINISH_SHOPPING' }, room.updatedAt + 1);
+  }
   return actor(room).connection === 'DISCONNECTED' ? applyTimeout(room, room.turn!.deadlineAt) : command(room, { type: 'END_TURN' });
 }
 function until(room: RoomState, test: (room: RoomState) => boolean, maximum = 50): RoomState {
@@ -49,19 +67,35 @@ function objective(room: RoomState, seat: number, objectiveId: string, target?: 
 }
 
 describe('initialization and assignment', () => {
+  it('projects the original random shopping draws without consuming extra randomness', () => {
+    for (const count of [3, 4]) for (const seed of [3, 10, 77]) {
+      const room = game(count, seed);
+      if (count === 4) room.players[1]!.life = 'DOWNED';
+      const eligible = room.players.filter(player => player.life === 'ACTIVE').sort((a, b) => a.seat - b.seat);
+      const rng = new SeededRandom(room.match!.rngState);
+      const start = rng.int(eligible.length), direction = rng.int(2) === 0 ? 1 : -1;
+      beginIntermission(room, 5000);
+      const reveal = projectPublicRoom(room).shop!.orderReveal!;
+      expect(reveal).toEqual({ startedAt: 5000, firstPlayerId: eligible[start]!.id, selectedIndex: start, eligiblePlayerIds: eligible.map(player => player.id), direction: direction === 1 ? 'ASCENDING' : 'DESCENDING' });
+      expect(room.shop!.order).toEqual(eligible.map((_, index) => eligible[(start + direction * index + eligible.length) % eligible.length]!.id));
+      reveal.eligiblePlayerIds.length = 0;
+      expect(room.shop!.orderReveal!.eligiblePlayerIds).toHaveLength(eligible.length);
+    }
+  });
   it.each(ROLE_IDS)('grants exactly the authoritative %s kit', (roleId) => {
     const roles = [roleId, ...ROLE_IDS.filter((role) => role !== roleId)];
-    const input = lobby(2, roles);
+    const input = lobby(3, roles);
     const room = startMatch(input, { seed: 10, now: 1 });
     const player = room.players[0]!;
-    expect(player.inventory.visible.filter(Boolean).map((item) => item!.itemId)).toEqual(ROLES[roleId].startingItems);
+    expect(player.inventory.visible.slice(0, 3).map((item) => item!.itemId)).toEqual(ROLES[roleId].startingItems);
     expect(player.inventory.coins).toBe(ROLES[roleId].startingCoins);
     expect(player.inventory.pockets).toHaveLength(roleId === 'smuggler' ? 2 : 1);
     expect(input.status).toBe('LOBBY');
     expect(startMatch(input, { seed: 10, now: 1 })).toEqual(room);
   });
-  it('assigns compatible unique objectives for thousands of seeded lobbies', () => {
-    for (const count of [2, 3, 4]) for (let seed = 1; seed <= 500; seed += 1) {
+  it('assigns compatible unique objectives for one thousand seeded production lobbies', () => {
+    expect(() => assignCompatibleObjectives(lobby(2).players, new SeededRandom(1))).toThrow(/three- or four-player/);
+    for (const count of [3, 4]) for (let seed = 1; seed <= 500; seed += 1) {
       const players = lobby(count).players;
       const assignment = assignCompatibleObjectives(players, new SeededRandom(seed));
       const states = Object.values(assignment);
@@ -72,7 +106,7 @@ describe('initialization and assignment', () => {
         if (state.targetPlayerId) expect(state.targetPlayerId).not.toBe(playerId);
         if (['guardian', 'kingmaker'].includes(state.objectiveId)) expect(assignment[state.targetPlayerId!]!.objectiveId).not.toBe('martyr');
         if (state.objectiveId === 'kingmaker' && assignment[state.targetPlayerId!]!.objectiveId === 'executioner') expect(assignment[state.targetPlayerId!]!.targetPlayerId).not.toBe(playerId);
-        if (count === 2) expect(['guardian', 'kingmaker', 'duelist', 'savior', 'graverobber', 'poisoner', 'extortionist']).not.toContain(state.objectiveId);
+        if (count === 3 && state.objectiveId === 'kingmaker') expect(assignment[state.targetPlayerId!]!.objectiveId).not.toBe('survivor');
       }
     }
   });
@@ -101,11 +135,11 @@ describe('normal turns and deadlines', () => {
     const original = structuredClone(room);
     room = command(room, { type: 'USE_ITEM', instanceId: room.players[0]!.inventory.visible[0]!.instanceId, targetId: 'p1' });
     expect(projectPublicRoom(room).events!.find(entry => entry.kind === 'WEAPON_USED')?.presentation).toEqual({ itemId: 'pistol' });
-    expect(room.turn!.primaryUsed).toBe(true);
+    expect(room.turn!.activeSeat).toBe(1); expect(room.turn!.primaryUsed).toBe(false);
     expect(() => command(room, { type: 'USE_ITEM', instanceId: room.players[0]!.inventory.visible[0]!.instanceId, targetId: 'p1' })).toThrow();
     expect(original.players[1]!.hp).toBe(5);
     room = applyTimeout(room, room.turn!.deadlineAt);
-    expect(room.turn!.activeSeat).toBe(1);
+    expect(room.turn!.activeSeat).toBe(2);
     room = until(room, (state) => state.round!.phase === 'INTERMISSION');
     expect(room.round!.number).toBe(1);
     expect(room.shop!.publicOffers).toHaveLength(4);
@@ -126,7 +160,6 @@ describe('normal turns and deadlines', () => {
   it('blocks Handcuffs only on the next turn, then removes them', () => {
     let room = game(); const cuffs = give(room, 0, 'handcuffs');
     room = command(room, { type: 'USE_ITEM', instanceId: cuffs.instanceId, targetId: 'p1' });
-    room = advance(room);
     expect(() => command(room, { type: 'TRADE', targetId: 'p0', offeredItems: [], offeredCoins: 0, requestedItems: [], requestedCoins: 0 })).toThrow(/Handcuffs/);
     const medicine = room.players[1]!.inventory.visible.find((item) => item?.itemId === 'medicine')!;
     room.players[1]!.hp = 4;
@@ -139,12 +172,14 @@ describe('normal turns and deadlines', () => {
 describe('market privacy', () => {
   it('does not reveal a private Black Market purchase in the public event log', () => {
     let room = until(game(), state => state.round!.phase === 'INTERMISSION');
+    room = applyTimeout(room, room.shop!.prepDeadlineAt);
     const shopperId = room.shop!.order[room.shop!.activeShopperIndex]!;
     const shopper = room.players.find(player => player.id === shopperId)!;
     const privateOffer = room.shop!.privateOffers[shopperId]![0]!;
     const purchasedItemName = privateOffer.itemId;
     shopper.inventory.coins = 100;
 
+    room = command(room, { type: 'SKIP_PUBLIC_SHOP' }, shopperId);
     room = command(room, { type: 'BUY', market: 'BLACK', offerId: privateOffer.id }, shopperId);
 
     const purchase = projectPublicRoom(room).events!.at(-1)!;
@@ -165,21 +200,26 @@ describe('market privacy', () => {
 });
 
 describe('Trade, Threat, and response locks', () => {
-  it('pauses and restores the remaining turn time and defaults connected Trade to Accept', () => {
+  it('pauses and advances after the response and defaults connected Trade to Decline', () => {
     let room = game();
     const offer = room.players[0]!.inventory.visible[1]!;
     const request = room.players[1]!.inventory.visible[1]!;
-    room = command(room, { type: 'TRADE', targetId: 'p1', offeredItems: [offer.instanceId], offeredCoins: 1, requestedItems: [request.instanceId], requestedCoins: 2 }, 'p0', 10_000);
+    // First-turn commands become visible after the synchronized arrival and
+    // private-contract presentation, leaving the normal 60s action clock.
+    room = command(room, { type: 'TRADE', targetId: 'p1', offeredItems: [offer.instanceId], offeredCoins: 1, requestedItems: [request.instanceId], requestedCoins: 2 }, 'p0', 10_000 + MATCH_OPENING_PRESENTATION_MS);
     expect(room.turn!.pausedRemainingMs).toBe(50_000);
     expect(getNextDeadline(room)).toBe(room.pendingTrade!.deadlineAt);
     expect(() => command(room, { type: 'END_TURN' })).toThrow(/pending/);
     const deadline = room.pendingTrade!.deadlineAt;
     room = applyTimeout(room, deadline);
-    expect(room.players[0]!.inventory.visible.some((item) => item?.instanceId === request.instanceId)).toBe(true);
-    expect(room.players[1]!.inventory.visible.some((item) => item?.instanceId === offer.instanceId)).toBe(true);
-    expect(room.players[0]!.inventory.coins).toBe(3);
-    expect(room.turn!.deadlineAt).toBe(deadline + 50_000);
-    expect(room.match!.history.trades).toHaveLength(1);
+    expect(room.players[0]!.inventory.visible.some((item) => item?.instanceId === offer.instanceId)).toBe(true);
+    expect(room.players[1]!.inventory.visible.some((item) => item?.instanceId === request.instanceId)).toBe(true);
+    expect(room.players[0]!.inventory.coins).toBe(2);
+    expect(room.players[1]!.inventory.coins).toBe(3);
+    expect(room.turn!.deadlineAt).toBe(deadline + 60_000);
+    expect(room.match!.history.trades).toHaveLength(0);
+    expect(room.pendingTrade).toBeUndefined();
+    expect(room.events!.find(event => event.kind === 'TRADE_EXPIRED_DECLINED')).toMatchObject({ kind: 'TRADE_EXPIRED_DECLINED', presentation: { resolution: 'TIMEOUT' } });
     assertRoomInvariants(room);
   });
   it('cancels target disconnect without transferring, preserves seat, and rejects new targeting', () => {
@@ -209,12 +249,12 @@ describe('Trade, Threat, and response locks', () => {
     room = applyTimeout(room, room.pendingThreat!.deadlineAt);
     expect(room.players[1]!.hp).toBe(5);
     expect(room.players[0]!.inventory.visible.filter(Boolean).map((item) => item!.itemId)).toEqual(['pistol', 'bullet']);
-    expect(room.events!.at(-1)!.publicText).toContain('Pistol');
+    expect(room.events!.find(event => event.kind === 'THREAT_COMPLIED')!.publicText).toContain('Pistol');
   });
   it('nonadjacent covered Knife is a bluff and Open mode rejects it', () => {
     let room = game(); const knife = give(room, 0, 'knife'); const cloth = give(room, 0, 'cloth');
     const base = { type: 'THREAT' as const, targetId: 'p2', committedItemId: knife.instanceId, demandedItems: [], demandedCoins: 0 };
-    expect(() => command(room, { ...base, mode: 'OPEN' })).toThrow(/valid weapon/);
+    expect(() => command(room, { ...base, mode: 'OPEN' })).toThrow(/directly beside you/);
     room = command(room, { ...base, mode: 'COVERED', clothItemId: cloth.instanceId });
     room = command(room, { type: 'RESPOND_THREAT', comply: false }, 'p2');
     expect(room.players[2]!.hp).toBe(5);
@@ -270,7 +310,6 @@ describe('Downed windows', () => {
   it('pauses Poison while Downed, resumes only at next living turn after rescue', () => {
     let room = game(); const poison = give(room, 0, 'poison'); room.players[1]!.hp = 1;
     room = command(room, { type: 'USE_ITEM', instanceId: poison.instanceId, targetId: 'p1' });
-    room = advance(room);
     expect(room.players[1]!.life).toBe('DOWNED'); expect(room.players[1]!.statuses![0]!.remainingTurns).toBe(2);
     const medicine = room.players[1]!.inventory.visible[0]!;
     room = command(room, { type: 'USE_ITEM', instanceId: medicine.instanceId });
@@ -290,11 +329,12 @@ describe('Downed windows', () => {
 
 describe('objectives and score', () => {
   it('sustained readiness grants one reward and requires the next turn; staying defers exit', () => {
-    let room = game(); objective(room, 0, 'tycoon'); room.round!.number = 2; room.players[0]!.inventory.coins = 12;
+    let room = game(); objective(room, 0, 'tycoon'); room.round!.number = 2; room.players[0]!.inventory.coins = 15;
+    room.match!.history.trades.push({ actorId: 'p0', targetId: 'p1', round: 1, sequence: 1 });
     evaluateObjectives(room, 5);
-    expect(room.players[0]!.inventory.coins).toBe(15); expect(canLeave(room, room.players[0]!)).toBe(false);
+    expect(room.players[0]!.inventory.coins).toBe(18); expect(canLeave(room, room.players[0]!)).toBe(false);
     room.players[0]!.inventory.coins = 11; evaluateObjectives(room, 6); expect(room.players[0]!.objective!.status).toBe('ACTIVE');
-    room.players[0]!.inventory.coins = 12; evaluateObjectives(room, 7); expect(room.players[0]!.inventory.coins).toBe(12);
+    room.players[0]!.inventory.coins = 15; evaluateObjectives(room, 7); expect(room.players[0]!.inventory.coins).toBe(15);
     room = until(room, (state) => state.round!.number === 3);
     expect(canLeave(room, room.players[0]!)).toBe(true);
     room = command(room, { type: 'STAY' }); expect(canLeave(room, room.players[0]!)).toBe(false);
@@ -302,21 +342,26 @@ describe('objectives and score', () => {
     room = command(room, { type: 'LEAVE_TABLE' }); expect(room.players[0]!.life).toBe('EXITED'); expect(room.players[0]!.score).toBe(100);
     expect(projectPublicRoom(room).players[0]!.revealedObjective!.objectiveId).toBe('tycoon');
   });
-  it('supports two-player Merchant trades in different rounds, including as recipient', () => {
-    const room = game(2); objective(room, 0, 'merchant'); room.round!.number = 2;
+  it('requires two distinct Merchant partners, including trades received from another player', () => {
+    const room = game(3); objective(room, 0, 'merchant'); room.round!.number = 2;
     room.match!.history.trades.push({ actorId: 'p0', targetId: 'p1', round: 1, sequence: 1 }, { actorId: 'p1', targetId: 'p0', round: 1, sequence: 2 });
     expect(objectiveCondition(room, room.players[0]!)).toBe(false);
-    room.match!.history.trades[1]!.round = 2; evaluateObjectives(room, 3);
+    room.match!.history.trades[1]!.round = 2;
+    expect(objectiveCondition(room, room.players[0]!)).toBe(false);
+    room.match!.history.trades[1]!.actorId = 'p2'; evaluateObjectives(room, 3);
     expect(room.players[0]!.objective!.status).toBe('EXIT_READY');
     room.match!.history.trades = []; evaluateObjectives(room, 4);
     expect(room.players[0]!.objective!.status).toBe('EXIT_READY');
   });
-  it('auto-banks two-player Survivor on forced end before round three', () => {
-    let room = game(2); objective(room, 0, 'survivor'); objective(room, 1, 'martyr');
+  it('auto-banks three-player Survivor once two opponents resolve after Round 3', () => {
+    let room = game(3); objective(room, 0, 'survivor'); objective(room, 1, 'martyr');
+    room.round!.number = 3;
+    bankObjective(room, room.players[2]!, room.updatedAt); disposeInventory(room, room.players[2]!);
     room.players[1]!.hp = 3;
     room = command(room, { type: 'USE_ITEM', instanceId: room.players[0]!.inventory.visible[0]!.instanceId, targetId: 'p1' });
     room = until(room, (state) => state.status === 'RESULTS');
-    expect(room.players[1]!.score).toBe(50); expect(room.players[0]!.score).toBe(100);
+    // Survivor and Martyr become ready at the same death boundary; seat order breaks that tie.
+    expect(room.players[2]!.score).toBe(100); expect(room.players[0]!.score).toBe(65); expect(room.players[1]!.score).toBe(35);
     expect(room.players[0]!.objective!.status).toBe('BANKED'); expect(getNextDeadline(room)).toBeUndefined();
   });
   it('resolves target contingencies, grants two coins, and scores eighty percent', () => {
@@ -392,8 +437,8 @@ describe('inventory, economy, privacy, and deterministic simulations', () => {
     const room = game(); room.players[1]!.inventory.visible[2] = { ...room.players[0]!.inventory.visible[0]! };
     expect(() => assertRoomInvariants(room)).toThrow(/Duplicate item/);
   });
-  it('replays seeded 2/3/4-player matches identically with invariant checks at every transition', () => {
-    for (const count of [2, 3, 4]) for (let seed = 1; seed <= 20; seed += 1) {
+  it('replays seeded 3/4-player matches identically with invariant checks at every transition', () => {
+    for (const count of [3, 4]) for (let seed = 1; seed <= 20; seed += 1) {
       let a = startMatch(lobby(count), { seed, now: 1 }); let b = startMatch(lobby(count), { seed, now: 1 });
       for (let step = 0; step < 60 && a.status === 'PLAYING'; step += 1) {
         a = advance(a); b = advance(b);
@@ -515,8 +560,11 @@ describe('forced closure and production safety interpretations', () => {
     const first = room.shop!.order[0]!; const second = room.shop!.order[1]!;
     room = setConnection(room, second, 'DISCONNECTED', room.updatedAt + 1);
     room = setConnection(room, first, 'DISCONNECTED', room.updatedAt + 1);
+    expect(room.shop!.finishedBy[first]).toBe(true); expect(room.shop!.finishedBy[second]).toBe(true);
+    expect(getNextDeadline(room)).toBe(room.shop!.prepDeadlineAt);
+    room = applyTimeout(room, room.shop!.prepDeadlineAt);
     expect(room.shop!.activeShopperIndex).toBe(2);
-    expect(getNextDeadline(room)).toBeUndefined();
+    expect(getNextDeadline(room)).toBe(room.shop!.publicDeadlineAt);
     room = until(room, (state) => state.round!.number === 2);
     room = setConnection(room, first, 'CONNECTED', room.updatedAt + 1);
     expect(room.players.find((player) => player.id === first)!.seat).toBe(Number(first.slice(1)));
@@ -528,12 +576,202 @@ describe('Downed support items', () => {
     let room = game(); const poison = give(room, 0, 'poison');
     room.players[2]!.hp = 1;
     room = command(room, { type: 'USE_ITEM', instanceId: poison.instanceId, targetId: 'p2' });
-    room = advance(advance(room)); // Poison ticks at seat 3 and Downs its owner.
+    room = advance(room); // Poison ticks at seat 3 and Downs its owner.
     expect(room.players[2]!.life).toBe('DOWNED');
     const antidote = give(room, 3, 'antidote');
     room = advance(room);
     room = command(room, { type: 'DOWNED_INTERACTION', kind: 'HELP', targetId: 'p2', instanceId: antidote.instanceId });
     expect(room.players[2]!.life).toBe('DOWNED'); expect(room.players[2]!.statuses).toEqual([]);
     expect(room.turn!.primaryUsed).toBe(false); expect(room.turn!.downedInteractionUsed).toBe(true);
+  });
+});
+
+describe('preserved core conformance regressions', () => {
+  it.each(['spyglass', 'glass-eye', 'pickpocket'])('Safe blocks %s without revealing or stealing Pocket contents', (itemId) => {
+    let room = game();
+    const hidden = stack(room, 'knife');
+    room.players[1]!.inventory.pockets[0]!.item = hidden;
+    give(room, 1, 'safe');
+    const tool = give(room, 0, itemId);
+    room = command(room, { type: 'USE_ITEM', instanceId: tool.instanceId, targetId: 'p1', pocketIndex: 0 });
+    expect(room.players[1]!.inventory.pockets[0]!.item).toEqual(hidden);
+    expect(JSON.stringify(projectAuthorizedRoom(room, 'p0'))).not.toContain(hidden.instanceId);
+    expect(room.match!.history.pickpockets).toEqual([]);
+    if (itemId === 'glass-eye') expect(room.players[0]!.inventory.visible.some((item) => item?.instanceId === tool.instanceId)).toBe(true);
+    else expect(room.players[0]!.inventory.visible.some((item) => item?.instanceId === tool.instanceId)).toBe(false);
+  });
+
+  it('sends exact Spyglass information only to its owner and gives Pickpocket actual ownership', () => {
+    let room = game();
+    const hidden = stack(room, 'knife');
+    room.players[1]!.inventory.pockets[0]!.item = hidden;
+    const spyglass = give(room, 0, 'spyglass');
+    room = command(room, { type: 'USE_ITEM', instanceId: spyglass.instanceId, targetId: 'p1', pocketIndex: 0 });
+    expect(JSON.stringify(projectAuthorizedRoom(room, 'p0').private.inspections)).toContain(hidden.instanceId);
+    expect(JSON.stringify(projectAuthorizedRoom(room, 'p2'))).not.toContain(hidden.instanceId);
+    room = until(room, (state) => state.round!.number === 2);
+    const pickpocket = give(room, 0, 'pickpocket');
+    room = command(room, { type: 'USE_ITEM', instanceId: pickpocket.instanceId, targetId: 'p1', pocketIndex: 0 });
+    expect(room.players[1]!.inventory.pockets[0]!.item).toBeNull();
+    expect(room.players[0]!.inventory.visible.some((item) => item?.instanceId === hidden.instanceId)).toBe(true);
+    expect(room.match!.history.pickpockets).toEqual([{ actorId: 'p0', targetId: 'p1' }]);
+    assertRoomInvariants(room);
+  });
+
+  it.each(['key', 'lockpick', 'crowbar'])('applies %s access, consumption and the Standard Chest refresh boundary', (itemId) => {
+    let room = game();
+    room.round!.number = 2;
+    const tool = give(room, 0, itemId);
+    room.chests![0] = { kind: 'STANDARD', availability: 'AVAILABLE', loot: [{ kind: 'COINS', amount: 3 }, { kind: 'COINS', amount: 4 }] };
+    room = command(room, { type: 'USE_ITEM', instanceId: tool.instanceId });
+    expect(room.chests![0]!.availability).toBe('OPENED');
+    expect(room.chests![0]!.refreshRound).toBe(3);
+    expect(itemId === 'crowbar' ? [3, 4] : [7]).toContain(room.players[0]!.inventory.coins - 2);
+    expect(room.players[0]!.inventory.visible.some((item) => item?.instanceId === tool.instanceId)).toBe(itemId === 'crowbar');
+    refreshChests(room, room.updatedAt);
+    expect(room.chests![0]!.availability).toBe('OPENED');
+    room.round!.number = 3; refreshChests(room, room.updatedAt);
+    expect(room.chests![0]!.availability).toBe('AVAILABLE');
+  });
+
+  it('keeps an opened Black Chest unavailable for exactly two rounds', () => {
+    let room = game();
+    room.round!.number = 3;
+    const key = give(room, 0, 'black-key');
+    room.chests![1] = { kind: 'BLACK', availability: 'AVAILABLE', loot: [] };
+    room = command(room, { type: 'USE_ITEM', instanceId: key.instanceId });
+    expect(room.chests![1]!.refreshRound).toBe(5);
+    room.round!.number = 4; refreshChests(room, room.updatedAt);
+    expect(room.chests![1]!.availability).toBe('OPENED');
+    room.round!.number = 5; refreshChests(room, room.updatedAt);
+    expect(room.chests![1]!.availability).toBe('AVAILABLE');
+    expect(room.players[0]!.inventory.visible.some((item) => item?.instanceId === key.instanceId)).toBe(false);
+  });
+
+  it('preserves every rescue opportunity for every attacker/target seat at 3P and 4P', () => {
+    for (const count of [3, 4]) for (let aggressor = 0; aggressor < count; aggressor += 1) for (let target = 0; target < count; target += 1) {
+      if (aggressor === target) continue;
+      let room = game(count);
+      room = until(room, (state) => state.turn?.activeSeat === aggressor);
+      const pistol = room.players[aggressor]!.inventory.visible.find((item) => item?.itemId === 'pistol') ?? give(room, aggressor, 'pistol');
+      if (!room.players[aggressor]!.inventory.visible.some((item) => item?.itemId === 'bullet')) give(room, aggressor, 'bullet');
+      room.players[target]!.hp = 3;
+      room = command(room, { type: 'USE_ITEM', instanceId: pistol.instanceId, targetId: `p${target}` });
+      const opportunities: number[] = [];
+      for (let step = 0; room.players[target]!.life === 'DOWNED' && step < 20; step += 1) {
+        room = advance(room);
+        if (room.players[target]!.life === 'DOWNED' && room.turn) opportunities.push(room.turn.activeSeat);
+      }
+      expect(opportunities).toEqual(Array.from({ length: count - 1 }, (_, index) => (aggressor + index + 1) % count));
+      expect(room.players[target]!.life).toBe('DEAD');
+      expect(room.match!.history.deaths[0]!.killerId).toBe(`p${aggressor}`);
+      expect(room.turn!.activeSeat).toBe(aggressor);
+      assertRoomInvariants(room);
+    }
+  });
+
+  it('keeps Bag Pockets locked when an atomic Trade replaces both players Bags', () => {
+    let room = game();
+    const offeredBag = give(room, 0, 'bag');
+    const offeredKnife = give(room, 0, 'knife');
+    const requestedBag = room.players[2]!.inventory.visible.find((item) => item?.itemId === 'bag')!;
+    const hidden = stack(room, 'poison');
+    room.players[2]!.inventory.pockets[1]!.item = hidden;
+    room = command(room, {
+      type: 'TRADE', targetId: 'p2', offeredItems: [offeredKnife.instanceId, offeredBag.instanceId],
+      offeredCoins: 0, requestedItems: [requestedBag.instanceId], requestedCoins: 0,
+    });
+    room = command(room, { type: 'RESPOND_TRADE', accept: true }, 'p2');
+    expect(room.players[2]!.inventory.pockets[1]!.item).toEqual(hidden);
+    expect(room.players[2]!.inventory.visible.some((item) => item?.instanceId === hidden.instanceId)).toBe(false);
+    expect(room.overflows).toEqual([]);
+    assertRoomInvariants(room);
+  });
+
+  it('does not count a Black Key locked inside Black Chest as an obtainable first key', () => {
+    let sampledKey = false;
+    for (let seed = 1; seed <= 100 && !sampledKey; seed += 1) {
+      const room = game();
+      room.round!.number = 3;
+      room.match!.rngState = seed;
+      room.match!.blackKeyObtainable = false;
+      room.chests![0]!.availability = 'AVAILABLE';
+      refreshChests(room, room.updatedAt);
+      sampledKey = room.chests![1]!.loot.some((entry) => entry.kind === 'ITEM' && entry.stack.itemId === 'black-key');
+      if (!sampledKey) continue;
+      expect(room.match!.blackKeyObtainable).toBe(false);
+      beginIntermission(room, room.updatedAt);
+      expect(Object.values(room.shop!.privateOffers).flat().some((offer) => offer.itemId === 'black-key')).toBe(true);
+      assertRoomInvariants(room);
+    }
+    expect(sampledKey).toBe(true);
+  });
+});
+
+
+describe('action rejection explanations and shopping progression', () => {
+  it.each(['USE_ITEM', 'THREAT'] as const)('explains missing ammunition for %s without spending the action', type => {
+    const room = game(), player = room.players[0]!;
+    player.inventory.visible = player.inventory.visible.map(item => item?.itemId === 'bullet' ? null : item);
+    player.abilities!.quickDrawUsed = true;
+    const pistol = player.inventory.visible.find(item => item?.itemId === 'pistol')!;
+    const attempt: GameCommand = type === 'USE_ITEM' ? { type, instanceId: pistol.instanceId, targetId: 'p1' } : { type, committedItemId: pistol.instanceId, targetId: 'p1', mode: 'OPEN', demandedItems: [], demandedCoins: 1 };
+    const before = structuredClone(room);
+    expect(() => command(room, attempt)).toThrow('Your Pistol needs a Bullet. You have none, and Quick Draw has already been used this match.');
+    expect(room).toEqual(before);
+    player.abilities!.quickDrawUsed = false;
+    expect(() => command(room, attempt)).not.toThrow();
+  });
+  it('distinguishes a spent Quick Draw from missing ammunition', () => {
+    const room = game(); room.players[0]!.abilities!.quickDrawUsed = true;
+    const pistol = room.players[0]!.inventory.visible[0]!;
+    expect(() => command(room, { type: 'USE_ITEM', instanceId: pistol.instanceId, targetId: 'p1', useQuickDraw: true })).toThrow('Quick Draw has already been used');
+    expect(() => command(room, { type: 'USE_ITEM', instanceId: pistol.instanceId, targetId: 'p1' })).not.toThrow();
+  });
+  it('explains Knife range, full HP, and an unnecessary Antidote', () => {
+    const room = game(), knife = give(room, 0, 'knife'), medicine = give(room, 0, 'medicine'), antidote = give(room, 0, 'antidote');
+    expect(() => command(room, { type: 'USE_ITEM', instanceId: knife.instanceId, targetId: 'p2' })).toThrow('directly beside you');
+    expect(() => command(room, { type: 'THREAT', committedItemId: knife.instanceId, targetId: 'p2', mode: 'OPEN', demandedItems: [], demandedCoins: 0 })).toThrow('directly beside you');
+    expect(() => command(room, { type: 'USE_ITEM', instanceId: medicine.instanceId })).toThrow('already has full HP');
+    expect(() => command(room, { type: 'USE_ITEM', instanceId: antidote.instanceId })).toThrow('is not Poisoned');
+  });
+  it('withholds private offers and rejects buying or rerolling until the Public Shop is resolved', () => {
+    let room = until(game(), state => state.round!.phase === 'INTERMISSION');
+    room = applyTimeout(room, room.shop!.prepDeadlineAt);
+    const shopperId = room.shop!.order[0]!, offer = room.shop!.privateOffers[shopperId]![0]!;
+    const before = structuredClone(room), view = projectAuthorizedRoom(room, shopperId);
+    expect(view.private.blackMarket).toBeUndefined();
+    expect(view.private.capabilities).toContain('SKIP_PUBLIC_SHOP');
+    expect(view.private.capabilities).not.toContain('REROLL_MARKET');
+    expect(() => command(room, { type: 'BUY', market: 'BLACK', offerId: offer.id }, shopperId)).toThrow('Resolve your Public Shop decision');
+    expect(() => command(room, { type: 'REROLL_MARKET', offerId: offer.id }, shopperId)).toThrow('Resolve your Public Shop decision');
+    expect(room).toEqual(before);
+    room = command(room, { type: 'SKIP_PUBLIC_SHOP' }, shopperId);
+    expect(projectAuthorizedRoom(room, shopperId).private.blackMarket).toEqual(room.shop!.privateOffers[shopperId]);
+    expect(projectPublicRoom(room).shop!.publicSkippedBy?.[shopperId]).toBe(true);
+    expect(() => command(room, { type: 'BUY', market: 'PUBLIC', offerId: room.shop!.publicOffers[0]!.id }, shopperId)).toThrow('Wait for your Public Shop decision');
+    const nextRound = room.round!.number + 1;
+    room = until(room, state => state.round!.number === nextRound && state.round!.phase === 'INTERMISSION');
+    expect(projectAuthorizedRoom(room, shopperId).private.blackMarket).toBeUndefined();
+    expect(room.shop!.publicSkippedBy).toEqual({});
+  });
+  it('unlocks the private market after a purchase and preserves progression on reconnect', () => {
+    let room = until(game(), state => state.round!.phase === 'INTERMISSION');
+    room = applyTimeout(room, room.shop!.prepDeadlineAt);
+    const shopperId = room.shop!.order[0]!;
+    room.players.find(player => player.id === shopperId)!.inventory.coins = 100;
+    room = command(room, { type: 'BUY', market: 'PUBLIC', offerId: room.shop!.publicOffers[0]!.id }, shopperId);
+    expect(projectAuthorizedRoom(room, shopperId).private.blackMarket?.length).toBeGreaterThan(0);
+    expect(projectAuthorizedRoom(room, shopperId).private.capabilities).toContain('SELL');
+    const persisted = JSON.parse(JSON.stringify(room)) as RoomState;
+    expect(projectAuthorizedRoom(persisted, shopperId).private.blackMarket).toEqual(room.shop!.privateOffers[shopperId]);
+    const offer = room.shop!.privateOffers[shopperId]![0]!;
+    room = command(room, { type: 'BUY', market: 'BLACK', offerId: offer.id }, shopperId);
+    expect(room.shop!.privatePurchasedBy[shopperId]).toBe(true);
+    room = setConnection(room, shopperId, 'DISCONNECTED', room.updatedAt + 1);
+    room = setConnection(room, shopperId, 'CONNECTED', room.updatedAt + 1);
+    expect(room.shop!.privatePurchasedBy[shopperId]).toBe(true);
+    expect(room.shop!.finishedBy[shopperId]).toBe(true);
+    expect(projectAuthorizedRoom(room, shopperId).private.capabilities).not.toContain('BUY_BLACK');
   });
 });

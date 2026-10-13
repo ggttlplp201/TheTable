@@ -47,6 +47,7 @@ export const ITEMS = {
   poison: item('poison', 'Poison', 'WEAPON', 4, 'UNCOMMON', 'ONE_USE', true, 1, ['status'], { damage: 1, ownerTurns: 3 }),
   antidote: item('antidote', 'Antidote', 'HEALING', 3, 'COMMON', 'ONE_USE', true, 1, ['status'], { removes: 'poison' }),
   medicine: item('medicine', 'Medicine', 'HEALING', 4, 'COMMON', 'ONE_USE', true, 1, ['revive', 'heal'], { heal: 2, reviveHp: 2 }),
+  stimulant: item('stimulant', 'Stimulant', 'HEALING', 5, 'UNCOMMON', 'ONE_USE', true, 1, ['heal', 'recovery', 'defense', 'temporary-hp'], { heal: 2, temporaryHpCap: 2 }),
   armor: item('armor', 'Armor', 'DEFENSE', 5, 'UNCOMMON', 'PERSISTENT_UNTIL_TRIGGER', false, 1, ['blocks-hit'], { blocks: ['knife', 'pistol'] }),
   cloth: item('cloth', 'Cloth', 'UTILITY', 2, 'COMMON', 'ONE_USE', true, 1, ['threat']),
   bag: item('bag', 'Bag', 'UTILITY', 5, 'RARE', 'PERSISTENT_UNTIL_TRIGGER', false, 1, ['capacity'], { extraPockets: 1 }),
@@ -66,45 +67,81 @@ export const ITEMS = {
 
 export type ItemId = keyof typeof ITEMS;
 
+/** Table events, deliberately separate from inventory items and market pools. */
+export const WILDCARDS = [
+  { id: 'seize', name: 'Seize', description: 'Take 1 visible item from another active player.', targeting: 'VISIBLE_ITEM' },
+  { id: 'destroy', name: 'Destroy', description: 'Discard 1 visible item belonging to another active player.', targeting: 'VISIBLE_ITEM' },
+  { id: 'supply-drop', name: 'Supply Drop', description: 'Every active player receives 1 random Common or Uncommon normal item.', targeting: 'NONE' },
+  { id: 'shatter', name: 'Shatter', description: 'Every active player loses 1 random visible item.', targeting: 'NONE' },
+  { id: 'forced-exchange', name: 'Forced Exchange', description: 'Swap 1 of your visible items with 1 visible item belonging to another active player.', targeting: 'EXCHANGE' },
+  { id: 'search-warrant', name: 'Search Warrant', description: 'Reveal an occupied Pocket belonging to another active player to the table. Safe blocks this.', targeting: 'POCKET' },
+  { id: 'windfall', name: 'Windfall', description: 'Every active player gains 2 Gold.', targeting: 'NONE' },
+  { id: 'redistribution', name: 'Redistribution', description: 'The active player with the least Gold receives 1 Gold from every other active player who can pay. Ties are random.', targeting: 'NONE' },
+  { id: 'scramble', name: 'Scramble', description: 'Every active player passes 1 random visible item to the next active seat clockwise.', targeting: 'NONE' },
+  { id: 'second-chance', name: 'Second Chance', description: 'Every living active player heals 1 HP, up to maximum. Does not revive Downed players or remove Poison.', targeting: 'NONE' },
+] as const;
+export type WildcardId = (typeof WILDCARDS)[number]['id'];
+export const TASK_REWARD = 2;
+export const TASKS_PER_ROUND = 2;
+export const TASKS = [
+  { id: 'trade', name: 'Trade', description: 'Complete a Trade that transfers an item or Gold.', category: 'SOCIAL', weight: 3 },
+  { id: 'damage', name: 'Damage', description: 'Deal direct damage to another player.', category: 'COMBAT', weight: 3 },
+  { id: 'extort', name: 'Extort', description: 'Receive a demanded asset through a Threat.', category: 'SOCIAL', weight: 3 },
+  { id: 'heal', name: 'Heal', description: 'Restore at least 1 normal HP to another living player. Temporary HP does not count.', category: 'SUPPORT', weight: 3 },
+  { id: 'revive', name: 'Revive', description: 'Revive another Downed player.', category: 'SUPPORT', weight: 3 },
+  { id: 'loot', name: 'Loot', description: 'Loot a visible item from a Downed player.', category: 'RESOURCE', weight: 3 },
+  { id: 'open-chest', name: 'Open a Chest', description: 'Open either Chest yourself.', category: 'RESOURCE', weight: 3 },
+  { id: 'inspect-pocket', name: 'Inspect a Pocket', description: 'Use a Spyglass to inspect another player’s Pocket.', category: 'INFORMATION', weight: 3 },
+  { id: 'pickpocket', name: 'Pickpocket', description: 'Steal an item from another player’s Pocket.', category: 'INFORMATION', weight: 3 },
+  { id: 'break-armor', name: 'Break Armor', description: 'Destroy another player’s Armor with a direct attack.', category: 'COMBAT', weight: 3 },
+  { id: 'call-bluff', name: 'Call a Bluff', description: 'Refuse a Covered Threat and take no damage.', category: 'REACTIVE', weight: 1 },
+  { id: 'bluff', name: 'Bluff Successfully', description: 'Get compliance with a harmless or invalid Covered Threat.', category: 'SOCIAL', weight: 3 },
+  { id: 'wildcard', name: 'Use a Wildcard', description: 'Draw and Use a Wildcard. Burning does not count.', category: 'WILDCARD', weight: 3 },
+  { id: 'receive-coins', name: 'Receive 2 Gold', description: 'Receive 2 Gold in one Trade or Threat.', category: 'RESOURCE', weight: 3 },
+] as const;
+export type TaskId = (typeof TASKS)[number]['id'];
+
+export const ROUND_INCOME = 2;
+
 export const ROLES = {
-  enforcer: { id: 'enforcer', name: 'Enforcer', startingItems: ['pistol', 'bullet'], startingCoins: 2, ability: { id: 'quick-draw', name: 'Quick Draw', uses: 1, effect: 'fire-pistol-without-bullet' } },
-  medic: { id: 'medic', name: 'Medic', startingItems: ['medicine', 'antidote'], startingCoins: 3, ability: { id: 'field-dressing', name: 'Field Dressing', effect: 'revive-another-to-3-hp' } },
-  smuggler: { id: 'smuggler', name: 'Smuggler', startingItems: ['cloth', 'bag'], startingCoins: 4, ability: { id: 'private-stock', name: 'Private Stock', offers: 4 } },
-  locksmith: { id: 'locksmith', name: 'Locksmith', startingItems: ['key', 'lockpick'], startingCoins: 3, ability: { id: 'tumbler-sense', name: 'Tumbler Sense', uses: 'once-per-complete-round' } },
-  broker: { id: 'broker', name: 'Broker', startingItems: ['spyglass'], startingCoins: 6, ability: { id: 'margin', name: 'Margin', coins: 1, cap: 'base-price-minus-one' } },
-  scavenger: { id: 'scavenger', name: 'Scavenger', startingItems: ['knife', 'medicine'], startingCoins: 3, ability: { id: 'salvage', name: 'Salvage', coins: 1, frequency: 'once-per-intermission' } },
+  enforcer: { id: 'enforcer', name: 'Enforcer', startingItems: ['pistol', 'bullet', 'cloth'], startingCoins: 2, ability: { id: 'quick-draw', name: 'Quick Draw', uses: 1, effect: 'fire-pistol-without-bullet' } },
+  medic: { id: 'medic', name: 'Medic', startingItems: ['medicine', 'antidote', 'knife'], startingCoins: 3, ability: { id: 'field-dressing', name: 'Field Dressing', effect: 'revive-another-to-3-hp' } },
+  smuggler: { id: 'smuggler', name: 'Smuggler', startingItems: ['cloth', 'bag', 'poison'], startingCoins: 4, ability: { id: 'private-stock', name: 'Private Stock', offers: 4 } },
+  locksmith: { id: 'locksmith', name: 'Locksmith', startingItems: ['key', 'lockpick', 'knife'], startingCoins: 3, ability: { id: 'tumbler-sense', name: 'Tumbler Sense', uses: 'once-per-complete-round' } },
+  broker: { id: 'broker', name: 'Broker', startingItems: ['spyglass', 'handcuffs', 'knife'], startingCoins: 5, ability: { id: 'margin', name: 'Margin', coins: 1, cap: 'base-price-minus-one' } },
+  scavenger: { id: 'scavenger', name: 'Scavenger', startingItems: ['knife', 'medicine', 'crowbar'], startingCoins: 3, ability: { id: 'salvage', name: 'Salvage', coins: 1, frequency: 'once-per-intermission' } },
 } as const satisfies Record<string, RoleDefinition>;
 
 export const OBJECTIVES: readonly ObjectiveDefinition[] = [
-  { id: 'escapist', name: 'Escapist', unlockRound: 3, mode: 'SUSTAINED', targeting: 'NONE', playerCount: [2, 3, 4], tags: ['exit'], completion: { kind: 'POSSESS_ITEM_THEN_EXIT', itemId: 'passageToken', surviveToLaterTurn: true } },
-  { id: 'collector', name: 'Collector', unlockRound: 2, mode: 'SUSTAINED', targeting: 'NONE', playerCount: [2, 3, 4], tags: ['exit', 'artifact'], completion: { kind: 'POSSESS_DISTINCT_ITEMS', itemRarity: 'ARTIFACT', count: 2, thenExitLater: true } },
-  { id: 'tycoon', name: 'Tycoon', unlockRound: 2, mode: 'SUSTAINED', targeting: 'NONE', playerCount: [2, 3, 4], tags: ['exit', 'coins'], completion: { kind: 'COINS_AT_LEAST', amount: 12 } },
-  { id: 'executioner', name: 'Executioner', unlockRound: 1, mode: 'LATCHED', targeting: 'ONE_OTHER_PLAYER', playerCount: [2, 3, 4], tags: ['target'], completion: { kind: 'PERSONALLY_CAUSE_PERMANENT_DEATH', targetCount: 1 }, contingency: { kind: 'EXTERNAL_TARGET_KILLED', response: 'KILL_KILLER', ifTargetExits: 'FAIL_NO_CONTINGENCY' } },
+  { id: 'escapist', name: 'Escapist', unlockRound: 3, mode: 'SUSTAINED', targeting: 'NONE', playerCount: [3, 4], tags: ['exit'], completion: { kind: 'POSSESS_ITEM_THEN_EXIT', itemId: 'passageToken', surviveToLaterTurn: true } },
+  { id: 'collector', name: 'Collector', unlockRound: 2, mode: 'SUSTAINED', targeting: 'NONE', playerCount: [3, 4], tags: ['exit', 'artifact'], completion: { kind: 'POSSESS_DISTINCT_ITEMS', itemRarity: 'ARTIFACT', count: 2, thenExitLater: true } },
+  { id: 'tycoon', name: 'Tycoon', unlockRound: 2, mode: 'SUSTAINED', targeting: 'NONE', playerCount: [3, 4], tags: ['exit', 'coins', 'trade'], completion: { kind: 'COINS_AND_SUCCESSFUL_TRADE', amount: 15, successfulTrades: 1, tradeLatched: true } },
+  { id: 'executioner', name: 'Executioner', unlockRound: 1, mode: 'LATCHED', targeting: 'ONE_OTHER_PLAYER', playerCount: [3, 4], tags: ['target'], completion: { kind: 'PERSONALLY_CAUSE_PERMANENT_DEATH', targetCount: 1 }, contingency: { kind: 'EXTERNAL_TARGET_KILLED', response: 'KILL_KILLER', ifTargetExits: 'FAIL_NO_CONTINGENCY' } },
   { id: 'guardian', name: 'Guardian', unlockRound: 1, mode: 'LATCHED', targeting: 'ONE_OTHER_PLAYER', playerCount: [3, 4], tags: ['target', 'protect'], completion: { kind: 'TARGET_ALIVE_THROUGH_ROUND', round: 4, targetExitBeforeRoundCounts: true }, targetConstraint: { kind: 'TARGET_OBJECTIVE_EXCLUSION', excludedTags: ['death-objective'] }, contingency: { kind: 'EXTERNAL_TARGET_KILLED', response: 'KILL_KILLER' } },
   { id: 'kingmaker', name: 'Kingmaker', unlockRound: 2, mode: 'LATCHED', targeting: 'ONE_OTHER_PLAYER', playerCount: [3, 4], tags: ['target'], completion: { kind: 'TARGET_COMPLETES_OBJECTIVE_AND_EXITS' }, targetConstraint: { kind: 'TARGET_OBJECTIVE_EXCLUSION', excludedTags: ['death-objective'] }, contingency: { kind: 'EXTERNAL_TARGET_KILLED', response: 'KILL_KILLER_THEN_EXIT' } },
-  { id: 'martyr', name: 'Martyr', unlockRound: 1, mode: 'LATCHED', targeting: 'DEATH_SUCCESS', playerCount: [2, 3, 4], tags: ['death-objective'], completion: { kind: 'FIRST_PERMANENT_DEATH', deathIsSuccess: true } },
-  { id: 'phoenix', name: 'Phoenix', unlockRound: 2, mode: 'LATCHED', targeting: 'NONE', playerCount: [2, 3, 4], tags: ['revive'], completion: { kind: 'RECOVER_FROM_DOWNED_EVENTS', count: 2, separateEvents: true } },
-  { id: 'betrayer', name: 'Betrayer', unlockRound: 2, mode: 'LATCHED', targeting: 'ONE_OTHER_PLAYER', playerCount: [2, 3, 4], tags: ['target'], completion: { kind: 'TRADE_THEN_PERSONALLY_DOWN_SAME_PLAYER', sequencing: 'TRADE_RESOLVES_BEFORE_DOWN' } },
+  { id: 'martyr', name: 'Martyr', unlockRound: 1, mode: 'LATCHED', targeting: 'DEATH_SUCCESS', playerCount: [3, 4], tags: ['death-objective'], completion: { kind: 'FIRST_PERMANENT_DEATH', deathIsSuccess: true } },
+  { id: 'phoenix', name: 'Phoenix', unlockRound: 2, mode: 'LATCHED', targeting: 'NONE', playerCount: [3, 4], tags: ['revive'], completion: { kind: 'RECOVER_FROM_DOWNED_EVENTS', count: 2, separateEvents: true } },
+  { id: 'betrayer', name: 'Betrayer', unlockRound: 2, mode: 'LATCHED', targeting: 'ONE_OTHER_PLAYER', playerCount: [3, 4], tags: ['target'], completion: { kind: 'TRADE_THEN_PERSONALLY_DOWN_SAME_PLAYER', sequencing: 'TRADE_RESOLVES_BEFORE_DOWN' } },
   { id: 'extortionist', name: 'Extortionist', unlockRound: 2, mode: 'LATCHED', targeting: 'TWO_OTHER_PLAYERS', playerCount: [3, 4], tags: ['target'], completion: { kind: 'SUCCESSFUL_THREATS', distinctTargetCount: 2, demandedAssetsReceived: true } },
-  { id: 'con-artist', name: 'Con Artist', unlockRound: 2, mode: 'LATCHED', targeting: 'NONE', playerCount: [2, 3, 4], tags: ['threat', 'bluff'], completion: { kind: 'COVERED_BLUFF_BOTH_OUTCOMES', compliantHarmless: 1, refusedRealWeapon: 1 } },
+  { id: 'con-artist', name: 'Con Artist', unlockRound: 2, mode: 'LATCHED', targeting: 'NONE', playerCount: [3, 4], tags: ['threat', 'bluff'], completion: { kind: 'COVERED_BLUFF_BOTH_OUTCOMES', compliantHarmless: 1, refusedRealWeapon: 1 } },
   { id: 'duelist', name: 'Duelist', unlockRound: 2, mode: 'LATCHED', targeting: 'TWO_OTHER_PLAYERS', playerCount: [3, 4], tags: ['target'], completion: { kind: 'PERSONALLY_DOWN_DISTINCT_PLAYERS', count: 2 } },
   { id: 'savior', name: 'Savior', unlockRound: 2, mode: 'LATCHED', targeting: 'TWO_OTHER_PLAYERS', playerCount: [3, 4], tags: ['target', 'revive'], completion: { kind: 'PERSONALLY_REVIVE_DISTINCT_PLAYERS', count: 2, selfReviveCounts: false } },
   { id: 'graverobber', name: 'Graverobber', unlockRound: 2, mode: 'LATCHED', targeting: 'TWO_OTHER_PLAYERS', playerCount: [3, 4], tags: ['target', 'death'], completion: { kind: 'LOOT_DOWNED_DISTINCT_PLAYERS', count: 2, visibleItemsAtLeast: 1 } },
   { id: 'poisoner', name: 'Poisoner', unlockRound: 2, mode: 'LATCHED', targeting: 'TWO_OTHER_PLAYERS', playerCount: [3, 4], tags: ['target'], completion: { kind: 'CAUSE_POISON_TICK_ON_DISTINCT_PLAYERS', count: 2 } },
-  { id: 'chest-raider', name: 'Chest Raider', unlockRound: 3, mode: 'LATCHED', targeting: 'NONE', playerCount: [2, 3, 4], tags: ['chest'], completion: { kind: 'PERSONALLY_OPEN_CHESTS', chestKinds: ['STANDARD', 'BLACK'] } },
-  { id: 'merchant', name: 'Merchant', unlockRound: 2, mode: 'LATCHED', targeting: 'TWO_OTHER_PLAYERS', targetingByPlayerCount: { 2: 'ONE_OTHER_PLAYER' }, playerCount: [2, 3, 4], tags: ['trade'], completion: { kind: 'SUCCESSFUL_TRADES', distinctTargetCount: 2, twoPlayer: 'TWO_TRADES_DIFFERENT_ROUNDS' } },
-  { id: 'hidden-hand', name: 'Hidden Hand', unlockRound: 2, mode: 'LATCHED', targeting: 'NONE', playerCount: [2, 3, 4], tags: ['pocket'], completion: { kind: 'ACQUIRE_VIA_METHODS', methods: ['PICKPOCKET', 'DOWNED_LOOT'], sameSourceAllowed: true } },
-  { id: 'survivor', name: 'Survivor', unlockRound: 3, mode: 'LATCHED', targeting: 'TWO_OTHER_PLAYERS', targetingByPlayerCount: { 2: 'ONE_OTHER_PLAYER' }, playerCount: [2, 3, 4], tags: ['target', 'exit'], completion: { kind: 'REMAIN_ALIVE_AFTER_RESOLVED_PLAYERS', resolvedCount: 2, resolvedStates: ['EXITED', 'DEAD'], twoPlayer: 'OPPONENT_EXIT_OR_DEATH' } },
-  { id: 'arsenal', name: 'Arsenal', unlockRound: 2, mode: 'SUSTAINED', targeting: 'NONE', playerCount: [2, 3, 4], tags: ['exit', 'weapons'], completion: { kind: 'POSSESS_ITEMS', itemIds: ['pistol', 'bullet', 'knife', 'armor'], bulletMinimum: 1, sustainedUntilExit: true } },
+  { id: 'chest-raider', name: 'Chest Raider', unlockRound: 3, mode: 'LATCHED', targeting: 'NONE', playerCount: [3, 4], tags: ['chest'], completion: { kind: 'PERSONALLY_OPEN_CHESTS', chestKinds: ['STANDARD', 'BLACK'] } },
+  { id: 'merchant', name: 'Merchant', unlockRound: 2, mode: 'LATCHED', targeting: 'TWO_OTHER_PLAYERS', playerCount: [3, 4], tags: ['trade'], completion: { kind: 'SUCCESSFUL_TRADES', distinctTargetCount: 2 } },
+  { id: 'hidden-hand', name: 'Hidden Hand', unlockRound: 2, mode: 'LATCHED', targeting: 'NONE', playerCount: [3, 4], tags: ['pocket'], completion: { kind: 'ACQUIRE_VIA_METHODS', methods: ['PICKPOCKET', 'DOWNED_LOOT'], sameSourceAllowed: true } },
+  { id: 'survivor', name: 'Survivor', unlockRound: 3, mode: 'LATCHED', targeting: 'TWO_OTHER_PLAYERS', playerCount: [3, 4], tags: ['target', 'exit'], completion: { kind: 'REMAIN_ALIVE_AFTER_RESOLVED_PLAYERS', resolvedCount: 2, resolvedStates: ['EXITED', 'DEAD'] } },
+  { id: 'arsenal', name: 'Arsenal', unlockRound: 2, mode: 'SUSTAINED', targeting: 'NONE', playerCount: [3, 4], tags: ['exit', 'weapons'], completion: { kind: 'POSSESS_ITEMS', itemIds: ['pistol', 'bullet', 'knife', 'armor'], bulletMinimum: 1, sustainedUntilExit: true } },
 ];
 
 export const SHOP_WEIGHTS = {
   publicRarity: { COMMON: 50, UNCOMMON: 40, RARE: 10 },
   blackMarketRarity: { COMMON: 15, UNCOMMON: 50, RARE: 30, SPECIAL: 5 },
-  publicSlots: { 2: 3, 3: 4, 4: 4 },
+  publicSlots: { 3: 4, 4: 4 },
   privateOffers: { default: 3, smuggler: 4 },
   publicSlotPools: {
-    supportUtility: ['medicine', 'antidote', 'key', 'bullet', 'cloth'] as const,
+    supportUtility: ['medicine', 'antidote', 'key', 'bullet', 'cloth', 'stimulant'] as const,
     interactionCombat: ['knife', 'poison', 'spyglass', 'pickpocket', 'handcuffs', 'armor'] as const,
     remainingRarePool: ['pistol', 'bag', 'crowbar'] as const,
     excluded: ['blackKey', 'brassIdol', 'glassEye', 'redLedger', 'passageToken'] as const,
@@ -112,7 +149,13 @@ export const SHOP_WEIGHTS = {
   blackMarketEmphasizedPool: ['cloth', 'safe', 'pickpocket', 'poison', 'bag', 'lockpick', 'pistol', 'blackKey'] as const,
 } as const;
 
+export const STARTING_BONUS_POOL = ['knife', 'poison', 'spyglass', 'handcuffs', 'medicine', 'key', 'cloth', 'bullet'] as const;
+
 export const CHEST_DISTRIBUTIONS = {
+  openingStandard: {
+    slotA: { commonItem: 60, uncommonItem: 40 },
+    slotB: { coins2: 50, commonItem: 35, uncommonItem: 15 },
+  },
   standard: {
     slotA: { outcomes: { coins3: 20, uncommonItem: 50, rareItem: 30 } },
     slotB: { outcomes: { coins4: 25, artifact: 35, uncommonOrRareItem: 25, blackKey: 15 } },
@@ -131,7 +174,13 @@ export const POOL_RETURN_RULES = {
 } as const;
 
 export const GAME_CONSTANTS = {
+  roundIncome: ROUND_INCOME,
+  wildcardUnlockRound: 3,
+  minimumPlayers: 3,
+  maximumPlayers: 4,
+  setupChoiceMs: 30_000,
   maxHp: 5,
+  maxTemporaryHp: 2,
   visibleInventorySlots: 6,
   defaultPockets: 1,
   bagExtraPockets: 1,
@@ -139,15 +188,17 @@ export const GAME_CONSTANTS = {
   normalTurnMs: 60_000,
   interactionResponseMs: 30_000,
   acquisitionChoiceMs: 15_000,
+  intermissionPrepMs: 10_000,
+  publicShopDecisionMs: 30_000,
+  privateMarketGraceMs: 30_000,
   readinessRewards: { first: 3, contingency: 2 },
-  exitScores: { 2: [100, 50], 3: [100, 65, 35], 4: [100, 70, 45, 25] },
+  exitScores: { 3: [100, 65, 35], 4: [100, 70, 45, 25] },
   contingencyScorePercent: 80,
 } as const;
 
 /** Canonical immutable prototype balance data consumed by the rules engine. */
 export const BALANCE = GAME_CONSTANTS;
 
-export const DECK_EXCLUSIONS_2P = ['guardian', 'kingmaker', 'duelist', 'savior', 'graverobber', 'poisoner', 'extortionist'] as const;
 export const DEATH_OBJECTIVE_TAG = 'death-objective';
 
 export function validateContent(): string[] {
@@ -163,7 +214,7 @@ export function validateContent(): string[] {
   for (const objective of OBJECTIVES) {
     if (objectiveIds.has(objective.id)) errors.push(`duplicate objective id: ${objective.id}`);
     objectiveIds.add(objective.id);
-    if (!objective.playerCount.every((count) => count >= 2 && count <= 4)) errors.push(`invalid objective player count: ${objective.id}`);
+    if (!objective.playerCount.every((count) => count >= 3 && count <= 4)) errors.push(`invalid objective player count: ${objective.id}`);
   }
   return errors;
 }
@@ -173,8 +224,8 @@ export function objectivesForPlayerCount(playerCount: number): readonly Objectiv
 }
 
 export function assignObjectives(playerCount: number, random: () => number): ObjectiveDefinition[] {
-  if (!Number.isInteger(playerCount) || playerCount < 2 || playerCount > 4) throw new Error('player count must be 2–4');
-  const eligible = objectivesForPlayerCount(playerCount).filter((objective) => !(playerCount === 2 && DECK_EXCLUSIONS_2P.includes(objective.id as typeof DECK_EXCLUSIONS_2P[number])));
+  if (!Number.isInteger(playerCount) || playerCount < 3 || playerCount > 4) throw new Error('player count must be 3–4');
+  const eligible = objectivesForPlayerCount(playerCount);
   const shuffled = [...eligible];
   for (let index = shuffled.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(Math.max(0, Math.min(0.999999, random())) * (index + 1));

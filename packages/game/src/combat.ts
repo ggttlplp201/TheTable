@@ -1,7 +1,7 @@
 import { ITEM_BY_ID, RULES } from './content.js';
 import { event, id, living, playerById, requireRule } from './internal.js';
 import { acquire, consume, disposeInventory, heldItems, owned, removeItem, syncEquipment } from './inventory.js';
-import { bankObjective } from './objectives.js';
+import { bankObjective, failObjective } from './objectives.js';
 import type { ItemStack, PlayerState, RoomState } from './types.js';
 
 export function adjacent(room: RoomState, first: PlayerState, second: PlayerState): boolean {
@@ -9,12 +9,20 @@ export function adjacent(room: RoomState, first: PlayerState, second: PlayerStat
   const distance = Math.abs(seats.indexOf(first.seat) - seats.indexOf(second.seat));
   return first.id !== second.id && (distance === 1 || distance === seats.length - 1);
 }
-export function legalWeapon(room: RoomState, actor: PlayerState, target: PlayerState, weapon: ItemStack, quickDraw = false): boolean {
-  if (actor.life !== 'ACTIVE' || target.life !== 'ACTIVE' || actor.id === target.id) return false;
-  if (weapon.itemId === 'knife') return adjacent(room, actor, target);
-  if (weapon.itemId !== 'pistol') return false;
+/** Shared by direct attacks and open threats so both explain the same rule failure. */
+export function weaponFailure(room: RoomState, actor: PlayerState, target: PlayerState, weapon: ItemStack, quickDraw = false): string | undefined {
+  if (actor.life !== 'ACTIVE') return 'You cannot use a weapon while Downed, dead, or outside the table.';
+  if (actor.id === target.id) return 'You cannot attack or threaten yourself.';
+  if (target.life !== 'ACTIVE') return `${target.name} is ${target.life.toLowerCase()} and cannot be attacked or threatened.`;
+  if (weapon.itemId === 'knife') return adjacent(room, actor, target) ? undefined : 'A Knife can only reach a player seated directly beside you.';
+  if (weapon.itemId !== 'pistol') return `${ITEM_BY_ID[weapon.itemId]!.name} is not a weapon. Use a Knife or Pistol for an Open Threat.`;
   const canQuickDraw = actor.roleId === 'enforcer' && !actor.abilities!.quickDrawUsed;
-  return quickDraw ? canQuickDraw : heldItems(actor).some((item) => item.itemId === 'bullet') || canQuickDraw;
+  if (quickDraw && !canQuickDraw) return actor.roleId === 'enforcer' ? 'Quick Draw has already been used this match. Uncheck Quick Draw to use a Bullet.' : 'Only the Enforcer can use Quick Draw.';
+  if (!heldItems(actor).some(item => item.itemId === 'bullet') && !canQuickDraw) return actor.roleId === 'enforcer' ? 'Your Pistol needs a Bullet. You have none, and Quick Draw has already been used this match.' : 'Your Pistol needs a Bullet. You have no ammunition.';
+  return undefined;
+}
+export function legalWeapon(room: RoomState, actor: PlayerState, target: PlayerState, weapon: ItemStack, quickDraw = false): boolean {
+  return weaponFailure(room, actor, target, weapon, quickDraw) === undefined;
 }
 export function damage(room: RoomState, actor: PlayerState, target: PlayerState, amount: number, now: number, direct: boolean): void {
   requireRule(target.life === 'ACTIVE', 'INVALID_TARGET', 'Damage requires a living non-Downed target.');
@@ -22,10 +30,16 @@ export function damage(room: RoomState, actor: PlayerState, target: PlayerState,
     const armor = target.inventory.visible.find((item) => item?.itemId === 'armor');
     if (armor) { consume(room, target, armor, now); event(room, now, 'ARMOR_BLOCKED', `${target.name}'s Armor blocked the entire hit.`, actor.id, [target.id]); return; }
   }
-  target.hp = Math.max(0, target.hp - amount);
-  event(room, now, direct ? 'DAMAGE' : 'POISON_DAMAGE', `${target.name} took ${amount} damage.`, actor.id, [target.id]);
+  const previousHp = target.hp, previousTemporaryHp = target.temporaryHp ?? 0;
+  const absorbed = Math.min(previousTemporaryHp, amount);
+  target.temporaryHp = previousTemporaryHp - absorbed;
+  target.hp = Math.max(0, previousHp - (amount - absorbed));
+  event(room, now, direct ? 'DAMAGE' : 'POISON_DAMAGE', `${target.name} took ${amount} damage.`, actor.id, [target.id], undefined, {
+    hpChanges: [{ playerId: target.id, amount: target.hp - previousHp }], temporaryHpChanges: [{ playerId: target.id, amount: target.temporaryHp - previousTemporaryHp }],
+  });
   if (target.hp > 0) return;
   target.life = 'DOWNED';
+  target.temporaryHp = 0;
   const down = event(room, now, 'DOWNED', `${target.name} is Downed.`, actor.id, [target.id]);
   target.downed = {
     aggressorId: actor.id, downedAt: now, eventId: down.id,
@@ -35,7 +49,8 @@ export function damage(room: RoomState, actor: PlayerState, target: PlayerState,
   if (actor.id !== target.id && actor.life === 'ACTIVE') room.turn!.immediateLoot = { playerId: actor.id, targetId: target.id, downEventId: down.id };
 }
 export function attack(room: RoomState, actor: PlayerState, target: PlayerState, weapon: ItemStack, now: number, quickDraw = false): void {
-  requireRule(legalWeapon(room, actor, target, weapon, quickDraw), 'INVALID_TARGET', 'Weapon cannot legally attack this target.');
+  const failure = weaponFailure(room, actor, target, weapon, quickDraw);
+  requireRule(!failure, 'INVALID_TARGET', failure ?? '');
   if (weapon.itemId === 'knife') consume(room, actor, weapon, now);
   else {
     const bullet = heldItems(actor).find((item) => item.itemId === 'bullet');
@@ -50,6 +65,7 @@ export function revive(room: RoomState, actor: PlayerState, target: PlayerState,
   const downEvent = target.downed!.eventId;
   consume(room, actor, medicine, now);
   target.life = 'ACTIVE';
+  target.temporaryHp = 0;
   target.hp = Number(ITEM_BY_ID.medicine!.effect.reviveHp) + (actor.roleId === 'medic' && actor.id !== target.id ? 1 : 0);
   delete target.downed;
   const history = room.match!.history.downs.find((entry) => entry.eventId === downEvent)!;
@@ -69,14 +85,26 @@ export function loot(room: RoomState, actor: PlayerState, target: PlayerState, i
 }
 export function permanentlyDie(room: RoomState, player: PlayerState, now: number): void {
   const killerId = player.downed!.aggressorId;
+  const departureCoins = player.inventory.coins;
   player.life = 'DEAD'; player.hp = 0; player.score = 0;
   delete player.downed;
   player.statuses = [];
   room.match!.history.deaths.push({ playerId: player.id, killerId, at: now });
   disposeInventory(room, player);
-  event(room, now, 'DEATH', `${player.name} permanently died.`, killerId, [player.id]);
+  event(room, now, 'DEATH', `${player.name} permanently died.`, killerId, [player.id], undefined, { departureCoins });
   if (player.objective!.objectiveId === 'martyr' && room.match!.history.deaths.length === 1) bankObjective(room, player, now, true);
-  else { player.objective!.status = 'FAILED'; } // v13 §2 reveals only successful exits/qualifying death objectives.
+  else failObjective(room, player, 'You permanently died before banking a successful exit.', now);
+}
+/** Concession is a departure with no killer and no permanent-death objective credit. */
+export function concedePlayer(room: RoomState, player: PlayerState, now: number): void {
+  requireRule(player.life === 'ACTIVE' && player.objective?.status === 'FAILED', 'NOT_ELIGIBLE', 'Only an active player with a failed contract may concede.');
+  const departureCoins = player.inventory.coins;
+  player.life = 'DEAD'; player.conceded = true; player.hp = 0; player.score = 0;
+  player.statuses = [];
+  delete player.downed;
+  disposeInventory(room, player);
+  if (room.turn?.immediateLoot && (room.turn.immediateLoot.playerId === player.id || room.turn.immediateLoot.targetId === player.id)) delete room.turn.immediateLoot;
+  event(room, now, 'PLAYER_CONCEDED', `${player.name} conceded and left the table.`, player.id, [], undefined, { departureCoins });
 }
 export function expireRescueWindows(room: RoomState, seat: number, now: number): void {
   // A departed aggressor retains their fixed scheduling position for rescue deadlines.

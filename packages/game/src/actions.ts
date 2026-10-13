@@ -1,8 +1,9 @@
 import { ITEM_BY_ID, RULES } from './content.js';
-import { attack, applyStatus, legalWeapon, loot, revive } from './combat.js';
+import { attack, weaponFailure, applyStatus, legalWeapon, loot, revive } from './combat.js';
 import { generateBlackOffer, resalePrice, withRandom } from './economy.js';
+import { canManageIntermission, canUsePrivateMarket, isPublicShopper, resolvePublicDecision } from './intermission.js';
 import { event, id, living, playerById, requireRule } from './internal.js';
-import { acquire, consume, heldItems, owned, removeItem, returnToPool, syncEquipment } from './inventory.js';
+import { acquire, consume, heldItems, isResaleEligible, owned, removeItem, returnToPool, syncEquipment } from './inventory.js';
 import type { GameCommand, PlayerState, RoomState } from './types.js';
 
 export function requireTurn(room: RoomState, actor: PlayerState): void {
@@ -12,7 +13,9 @@ export function requireTurn(room: RoomState, actor: PlayerState): void {
 }
 export function primary(room: RoomState, actor: PlayerState): void {
   requireTurn(room, actor);
-  requireRule(actor.life === 'ACTIVE' && !room.turn!.startedDowned && !room.turn!.primaryUsed, 'NOT_ELIGIBLE', 'No Primary Action is available.');
+  requireRule(actor.life === 'ACTIVE', 'NOT_ELIGIBLE', 'While Downed, you can only use Medicine to revive yourself.');
+  requireRule(!room.turn!.startedDowned, 'NOT_ELIGIBLE', 'You started this turn Downed. Your next normal turn restores your Primary Action.');
+  requireRule(!room.turn!.primaryUsed, 'NOT_ELIGIBLE', 'Your Primary Action is already committed. Resolve its remaining decision.');
   room.turn!.primaryUsed = true; room.turn!.exitDeclined = true;
   delete room.turn!.immediateLoot;
 }
@@ -39,7 +42,8 @@ function socialTarget(room: RoomState, actor: PlayerState, targetId: string): Pl
 }
 function validateAssets(player: PlayerState, items: string[], coins: number): void {
   requireRule(Array.isArray(items) && items.every((entry) => typeof entry === 'string') && new Set(items).size === items.length, 'INVALID_COMMAND', 'Selected items must be unique.');
-  requireRule(Number.isSafeInteger(coins) && coins >= 0 && coins <= player.inventory.coins, 'INSUFFICIENT_COINS', 'Coin amount is invalid or unavailable.');
+  requireRule(Number.isSafeInteger(coins) && coins >= 0, 'INVALID_COMMAND', 'Choose a whole number of Gold, zero or more.');
+  requireRule(coins <= player.inventory.coins, 'INSUFFICIENT_COINS', `${player.name} only has ${player.inventory.coins} Gold; you selected ${coins}.`);
   for (const item of items) owned(player, item, true);
 }
 function transfer(room: RoomState, first: PlayerState, second: PlayerState, firstItems: string[], firstCoins: number, secondItems: string[], secondCoins: number, now: number): void {
@@ -47,8 +51,10 @@ function transfer(room: RoomState, first: PlayerState, second: PlayerState, firs
   const outgoingFirst = firstItems.map((instanceId) => removeItem(first, instanceId));
   const outgoingSecond = secondItems.map((instanceId) => removeItem(second, instanceId));
   first.inventory.coins += secondCoins - firstCoins; second.inventory.coins += firstCoins - secondCoins;
-  for (const item of outgoingFirst) acquire(room, second, item, now);
-  for (const item of outgoingSecond) acquire(room, first, item, now);
+  // Both sides' assets arrive atomically. Evaluate equipment only after every
+  // incoming item is installed, so replacing a Bag does not unlock its Pocket.
+  for (const item of outgoingFirst) acquire(room, second, item, now, true);
+  for (const item of outgoingSecond) acquire(room, first, item, now, true);
   syncEquipment(room, first, now); syncEquipment(room, second, now);
 }
 export function initiateTrade(room: RoomState, actor: PlayerState, command: Extract<GameCommand, { type: 'TRADE' }>, now: number): void {
@@ -59,14 +65,19 @@ export function initiateTrade(room: RoomState, actor: PlayerState, command: Extr
   pauseTurn(room, now, room.pendingTrade.id);
   event(room, now, 'TRADE_OFFERED', `${actor.name} offered a Trade to ${target.name}.`, actor.id, [target.id]);
 }
-export function resolveTrade(room: RoomState, accept: boolean, now: number, cancelled = false): void {
+export function resolveTrade(room: RoomState, accept: boolean, now: number, cancelled = false, timedOut = false): void {
   const proposal = room.pendingTrade!;
   const actor = playerById(room, proposal.actorId); const target = playerById(room, proposal.targetId);
-  if (accept && !cancelled) {
+  if (accept && !cancelled && !timedOut) {
     transfer(room, actor, target, proposal.offeredItems, proposal.offeredCoins, proposal.requestedItems, proposal.requestedCoins, now);
-    const resolved = event(room, now, 'TRADE_ACCEPTED', `${target.name} accepted ${actor.name}'s Trade.`, actor.id, [target.id]);
-    room.match!.history.trades.push({ actorId: actor.id, targetId: target.id, round: room.round!.number, sequence: resolved.sequence });
-  } else event(room, now, cancelled ? 'TRADE_CANCELLED' : 'TRADE_DECLINED', cancelled ? 'Trade cancelled because the target disconnected.' : `${target.name} declined the Trade.`, actor.id, [target.id]);
+    const resolved = event(room, now, 'TRADE_ACCEPTED', `${target.name} accepted ${actor.name}'s Trade.`, actor.id, [target.id], undefined, { resolution: 'MANUAL' });
+    if (proposal.offeredItems.length || proposal.requestedItems.length || proposal.offeredCoins || proposal.requestedCoins) {
+      room.match!.history.trades.push({ actorId: actor.id, targetId: target.id, round: room.round!.number, sequence: resolved.sequence });
+    }
+  } else event(room, now,
+    cancelled ? 'TRADE_CANCELLED' : timedOut ? 'TRADE_EXPIRED_DECLINED' : 'TRADE_DECLINED',
+    cancelled ? 'Trade cancelled because the target disconnected.' : timedOut ? 'Trade expired — declined.' : `${target.name} declined the Trade.`,
+    actor.id, [target.id], undefined, { resolution: cancelled ? 'DISCONNECT' : timedOut ? 'TIMEOUT' : 'MANUAL' });
   delete room.pendingTrade;
   resumeTurn(room, now);
 }
@@ -76,8 +87,10 @@ export function initiateThreat(room: RoomState, actor: PlayerState, command: Ext
   requireRule(command.mode === 'OPEN' || command.mode === 'COVERED', 'INVALID_COMMAND', 'Unknown Threat mode.');
   const committed = owned(actor, command.committedItemId, true);
   validateAssets(target, command.demandedItems, command.demandedCoins);
-  if (command.mode === 'OPEN') requireRule(legalWeapon(room, actor, target, committed, command.useQuickDraw), 'INVALID_TARGET', 'Open Threat requires a valid weapon against this target.');
-  else {
+  if (command.mode === 'OPEN') {
+    const failure = weaponFailure(room, actor, target, committed, command.useQuickDraw);
+    requireRule(!failure, 'INVALID_TARGET', failure ?? '');
+  } else {
     const cloth = owned(actor, command.clothItemId ?? '');
     requireRule(cloth.itemId === 'cloth' && cloth.instanceId !== committed.instanceId, 'INVALID_COMMAND', 'Covered Threat needs separate Cloth and one visible item.');
     consume(room, actor, cloth, now);
@@ -91,18 +104,19 @@ export function initiateThreat(room: RoomState, actor: PlayerState, command: Ext
   pauseTurn(room, now, room.pendingThreat.id);
   event(room, now, 'THREAT_OFFERED', `${actor.name} made a ${command.mode.toLowerCase()} Threat against ${target.name}.`, actor.id, [target.id]);
 }
-export function resolveThreat(room: RoomState, comply: boolean, now: number, cancelled = false): void {
+export function resolveThreat(room: RoomState, comply: boolean, now: number, cancelled = false, timedOut = false): void {
   const proposal = room.pendingThreat!;
   const actor = playerById(room, proposal.actorId); const target = playerById(room, proposal.targetId);
   const committed = owned(actor, proposal.committedItemId, true);
   const validWeapon = legalWeapon(room, actor, target, committed, proposal.useQuickDraw);
+  if (timedOut) comply = true;
   if (!cancelled) {
     if (comply) transfer(room, target, actor, proposal.demandedItems, proposal.demandedCoins, [], 0, now);
     else if (validWeapon) attack(room, actor, target, committed, now, proposal.useQuickDraw);
-    room.match!.history.threats.push({ actorId: actor.id, targetId: target.id, complied: comply, covered: proposal.mode === 'COVERED', validWeapon, assetsReceived: comply && (proposal.demandedItems.length > 0 || proposal.demandedCoins > 0) });
+    room.match!.history.threats.push({ actorId: actor.id, targetId: target.id, complied: comply, covered: proposal.mode === 'COVERED', validWeapon, assetsReceived: comply && (proposal.demandedItems.length > 0 || proposal.demandedCoins > 0), resolution: timedOut ? 'TIMEOUT' : 'MANUAL' });
   }
-  event(room, now, cancelled ? 'THREAT_CANCELLED' : comply ? 'THREAT_COMPLIED' : 'THREAT_REFUSED', `${cancelled ? 'Threat cancelled.' : `${target.name} ${comply ? 'complied' : 'refused'}.`}${proposal.mode === 'COVERED' ? ` The covered item was ${ITEM_BY_ID[committed.itemId]!.name}.` : ''}`, actor.id, [target.id], undefined,
-    !cancelled && proposal.mode === 'COVERED' ? { itemId: committed.itemId } : undefined);
+  event(room, now, cancelled ? 'THREAT_CANCELLED' : comply ? 'THREAT_COMPLIED' : 'THREAT_REFUSED', `${cancelled ? 'Threat cancelled.' : timedOut ? `${target.name} automatically complied when the Threat expired.` : `${target.name} ${comply ? 'complied' : 'refused'}.`}${proposal.mode === 'COVERED' ? ` The covered item was ${ITEM_BY_ID[committed.itemId]!.name}.` : ''}`, actor.id, [target.id], undefined,
+    { resolution: cancelled ? 'DISCONNECT' : timedOut ? 'TIMEOUT' : 'MANUAL', ...(!cancelled && proposal.mode === 'COVERED' ? { itemId: committed.itemId } : {}) });
   delete room.pendingThreat; resumeTurn(room, now);
 }
 
@@ -123,16 +137,31 @@ export function useItem(room: RoomState, actor: PlayerState, command: Extract<Ga
   }
   switch (item.itemId) {
     case 'knife': case 'pistol': attack(room, actor, target, item, now, command.useQuickDraw); return;
+    case 'stimulant': {
+      requireRule(target.life === 'ACTIVE', 'INVALID_TARGET', 'Stimulant requires a living non-Downed player and cannot revive.');
+      const restored = Math.min(RULES.maxHp - target.hp, Number(ITEM_BY_ID.stimulant!.effect.heal));
+      const temporary = Math.min(RULES.maxTemporaryHp - (target.temporaryHp ?? 0), Number(ITEM_BY_ID.stimulant!.effect.heal) - restored);
+      requireRule(restored + temporary > 0, 'INVALID_TARGET', `${target.name} already has full HP and Temporary HP. Stimulant would have no effect.`);
+      consume(room, actor, item, now);
+      target.hp += restored; target.temporaryHp = (target.temporaryHp ?? 0) + temporary;
+      event(room, now, 'STIMULANT_USED', `${actor.name} used Stimulant on ${target.name}.`, actor.id, [target.id], undefined, {
+        itemId: 'stimulant', hpChanges: [{ playerId: target.id, amount: restored }], temporaryHpChanges: [{ playerId: target.id, amount: temporary }],
+      });
+      return;
+    }
     case 'medicine':
       if (target.life === 'DOWNED') revive(room, actor, target, item, now);
       else {
-        requireRule(target.life === 'ACTIVE' && target.hp < RULES.maxHp, 'INVALID_TARGET', 'Medicine needs a wounded living target.');
-        consume(room, actor, item, now); target.hp = Math.min(RULES.maxHp, target.hp + Number(ITEM_BY_ID.medicine!.effect.heal));
-        event(room, now, 'HEALED', `${actor.name} healed ${target.name}.`, actor.id, [target.id]);
+        requireRule(target.life === 'ACTIVE', 'INVALID_TARGET', 'Medicine cannot heal a player who has died or left the table.');
+        requireRule(target.hp < RULES.maxHp, 'INVALID_TARGET', `${target.name} already has full HP. Medicine would have no effect.`);
+        const restored = Math.min(RULES.maxHp - target.hp, Number(ITEM_BY_ID.medicine!.effect.heal));
+        consume(room, actor, item, now); target.hp += restored;
+        event(room, now, 'HEALED', `${actor.name} healed ${target.name}.`, actor.id, [target.id], undefined, { itemId: 'medicine', hpChanges: [{ playerId: target.id, amount: restored }] });
       }
       return;
     case 'antidote':
-      requireRule(living(target) && target.statuses?.some((status) => status.kind === 'POISON'), 'INVALID_TARGET', 'Antidote needs a living Poisoned target.');
+      requireRule(living(target), 'INVALID_TARGET', 'Antidote cannot help a player who has died or left the table.');
+      requireRule(target.statuses?.some(status => status.kind === 'POISON'), 'INVALID_TARGET', `${target.name} is not Poisoned. Antidote would have no effect.`);
       consume(room, actor, item, now); target.statuses = (target.statuses ?? []).filter((status) => status.kind !== 'POISON');
       event(room, now, 'POISON_CURED', `${actor.name} cured ${target.name}'s Poison.`, actor.id, [target.id]); return;
     case 'poison': case 'handcuffs':
@@ -162,7 +191,8 @@ export function useItem(room: RoomState, actor: PlayerState, command: Extract<Ga
     case 'key': case 'lockpick': case 'crowbar': case 'black-key': {
       const kind = item.itemId === 'black-key' ? 'BLACK' : 'STANDARD';
       const chest = room.chests!.find((entry) => entry.kind === kind)!;
-      requireRule(chest.availability === 'AVAILABLE', 'NOT_ELIGIBLE', 'This chest is not available.');
+      requireRule(chest.availability !== 'HIDDEN', 'NOT_ELIGIBLE', `The ${kind === 'BLACK' ? 'Black' : 'Standard'} Chest becomes available in Round ${kind === 'BLACK' ? 3 : 1}.`);
+      requireRule(chest.availability === 'AVAILABLE', 'NOT_ELIGIBLE', `The ${kind === 'BLACK' ? 'Black' : 'Standard'} Chest has already been opened. It refreshes in Round ${chest.refreshRound}.`);
       if (item.itemId === 'crowbar' && chest.loot.length) {
         const removed = chest.loot.splice(withRandom(room, (random) => random.int(chest.loot.length)), 1)[0]!;
         if (removed.kind === 'ITEM') returnToPool(room, removed.stack);
@@ -172,14 +202,18 @@ export function useItem(room: RoomState, actor: PlayerState, command: Extract<Ga
       room.match!.history.chests.push({ actorId: actor.id, kind });
       event(room, now, 'CHEST_OPENED', `${actor.name} opened the ${kind === 'STANDARD' ? 'Standard' : 'Black'} Chest.`, actor.id, [], undefined, { itemId: item.itemId, chestKind: kind }); return;
     }
-    default: requireRule(false, 'INVALID_COMMAND', 'This item has no normal-turn use.');
+    default: requireRule(false, 'INVALID_COMMAND', `${ITEM_BY_ID[item.itemId]!.name} cannot be used as a Primary Action. Its effect applies through equipment, ammunition, Threats, or shopping.`);
   }
 }
 
 export function downedInteraction(room: RoomState, actor: PlayerState, command: Extract<GameCommand, { type: 'DOWNED_INTERACTION' }>, now: number): void {
   requireTurn(room, actor);
   const target = playerById(room, command.targetId);
-  requireRule(actor.life === 'ACTIVE' && !room.turn!.startedDowned && !room.turn!.downedInteractionUsed && target.life === 'DOWNED' && target.id !== actor.id && target.downed!.aggressorId !== actor.id, 'NOT_ELIGIBLE', 'No extra Downed Interaction is available.');
+  requireRule(actor.life === 'ACTIVE' && !room.turn!.startedDowned, 'NOT_ELIGIBLE', 'You cannot help or loot another player on a turn you started Downed.');
+  requireRule(!room.turn!.downedInteractionUsed, 'NOT_ELIGIBLE', 'You already helped or looted a Downed player this turn.');
+  requireRule(target.id !== actor.id, 'INVALID_TARGET', 'Choose another player to help or loot.');
+  requireRule(target.life === 'DOWNED', 'INVALID_TARGET', `${target.name} is not Downed.`);
+  requireRule(target.downed!.aggressorId !== actor.id, 'NOT_ELIGIBLE', 'You Downed this player. You can only take the immediate loot offered after the attack.');
   if (command.kind === 'LOOT') loot(room, actor, target, command.instanceId, now);
   else {
     requireRule(command.kind === 'REVIVE' || command.kind === 'HELP', 'INVALID_COMMAND', 'Unknown Downed Interaction.');
@@ -195,16 +229,22 @@ export function downedInteraction(room: RoomState, actor: PlayerState, command: 
 }
 export function requireShopper(room: RoomState, actor: PlayerState): void {
   requireRule(room.round?.phase === 'INTERMISSION' && actor.life === 'ACTIVE', 'WRONG_PHASE', 'Shopping requires Intermission and a living non-Downed player.');
-  requireRule(room.shop?.order[room.shop.activeShopperIndex] === actor.id, 'NOT_YOUR_TURN', 'Wait for your shopping opportunity.');
-  requireRule(!room.overflows?.length, 'LOCKED', 'Resolve inventory overflow first.');
+  requireRule(canManageIntermission(room, actor), 'NOT_ELIGIBLE', 'Your Intermission is finished or unavailable.');
+  requireRule(!room.overflows?.some(choice => choice.playerId === actor.id), 'LOCKED', 'Resolve your inventory overflow first.');
 }
 export function shopAction(room: RoomState, actor: PlayerState, command: GameCommand, now: number): void {
   requireShopper(room, actor);
   const shop = room.shop!;
   switch (command.type) {
+    case 'SKIP_PUBLIC_SHOP':
+      requireRule(isPublicShopper(room, actor), 'NOT_YOUR_TURN', 'Wait for your Public Shop decision.');
+      resolvePublicDecision(room, actor.id, now);
+      return;
     case 'BUY': {
       requireRule(command.market === 'PUBLIC' || command.market === 'BLACK', 'INVALID_COMMAND', 'Unknown market.');
       const publicBuy = command.market === 'PUBLIC';
+      if (publicBuy) requireRule(isPublicShopper(room, actor), 'NOT_YOUR_TURN', 'Wait for your Public Shop decision.');
+      else requireRule(canUsePrivateMarket(room, actor), 'NOT_ELIGIBLE', 'Resolve your Public Shop decision before entering the Black Market.');
       const offers = publicBuy ? shop.publicOffers : shop.privateOffers[actor.id]!;
       const purchases = publicBuy ? shop.publicPurchasedBy : shop.privatePurchasedBy;
       requireRule(!purchases[actor.id], 'NOT_ELIGIBLE', 'You already purchased from this market.');
@@ -212,10 +252,12 @@ export function shopAction(room: RoomState, actor: PlayerState, command: GameCom
       requireRule(offer, 'NOT_FOUND', 'Offer is no longer available.');
       let price = offer.price;
       if (command.useRedLedger) {
-        requireRule(publicBuy && heldItems(actor).some((item) => item.itemId === 'red-ledger') && actor.abilities!.redLedgerRound !== room.round!.number, 'NOT_ELIGIBLE', 'Red Ledger discount is unavailable.');
+        requireRule(publicBuy, 'NOT_ELIGIBLE', 'Red Ledger only discounts the Public Shop.');
+        requireRule(heldItems(actor).some(item => item.itemId === 'red-ledger'), 'NOT_ELIGIBLE', 'You need a Red Ledger to claim this discount.');
+        requireRule(actor.abilities!.redLedgerRound !== room.round!.number, 'NOT_ELIGIBLE', 'You already used Red Ledger this Intermission.');
         price = Math.max(0, price - 1); actor.abilities!.redLedgerRound = room.round!.number;
       }
-      requireRule(actor.inventory.coins >= price, 'INSUFFICIENT_COINS', 'Not enough Coins.');
+      requireRule(actor.inventory.coins >= price, 'INSUFFICIENT_COINS', `This item costs ${price} Gold. You have ${actor.inventory.coins} and need ${price - actor.inventory.coins} more.`);
       actor.inventory.coins -= price; purchases[actor.id] = true; shop.boughtBy[actor.id] = true;
       offer.purchasedBy = actor.id;
       if (publicBuy) shop.publicOffers = shop.publicOffers.filter((entry) => entry.id !== offer.id);
@@ -223,33 +265,32 @@ export function shopAction(room: RoomState, actor: PlayerState, command: GameCom
       const purchaseDescription = publicBuy
         ? `${actor.name} purchased ${ITEM_BY_ID[offer.itemId]!.name} from the Public Shop.`
         : `${actor.name} purchased an item.`;
-      event(room, now, 'PURCHASE', purchaseDescription, actor.id, [], undefined, publicBuy ? { itemId: offer.itemId, market: 'PUBLIC' } : undefined); return;
+      event(room, now, 'PURCHASE', purchaseDescription, actor.id, [], undefined, publicBuy ? { itemId: offer.itemId, market: 'PUBLIC' } : undefined);
+      if (publicBuy) resolvePublicDecision(room, actor.id, now);
+      return;
     }
     case 'SELL': {
-      requireRule(!shop.boughtBy[actor.id], 'NOT_ELIGIBLE', 'Sell before making purchases.');
       const item = owned(actor, command.instanceId, true);
       requireRule(ITEM_BY_ID[item.itemId]!.basePrice !== null, 'NOT_ELIGIBLE', 'Artifacts and Passage Token cannot be sold.');
+      requireRule(isResaleEligible(room, item), 'NOT_ELIGIBLE', 'Items acquired during this Intermission cannot be sold until the next Intermission.');
       actor.inventory.coins += resalePrice(item.itemId, actor.roleId === 'broker') * item.quantity;
       removeItem(actor, item.instanceId); syncEquipment(room, actor, now);
       event(room, now, 'SOLD', `${actor.name} sold ${ITEM_BY_ID[item.itemId]!.name}.`, actor.id, [], undefined, { itemId: item.itemId }); return;
     }
-    case 'POCKET': {
-      const item = owned(actor, command.instanceId, true);
-      const pocket = actor.inventory.pockets[command.pocketIndex];
-      requireRule(Number.isInteger(command.pocketIndex) && pocket && !pocket.item && ITEM_BY_ID[item.itemId]!.pocketEligible, 'NOT_ELIGIBLE', 'Pocket placement is not legal.');
-      pocket.item = removeItem(actor, item.instanceId);
-      event(room, now, 'POCKET_FILLED', `${actor.name} filled a Pocket.`, actor.id); return;
-    }
+    case 'POCKET': placePocketItem(room, actor, command.instanceId, command.pocketIndex, now); return;
     case 'ASSIGN_SAFE': {
       const safe = owned(actor, command.instanceId, true);
       requireRule(safe.itemId === 'safe' && Number.isInteger(command.pocketIndex) && actor.inventory.pockets[command.pocketIndex], 'NOT_ELIGIBLE', 'Choose a visible Safe and an existing Pocket.');
       actor.safeAssignments![safe.instanceId] = command.pocketIndex; syncEquipment(room, actor, now); return;
     }
     case 'REROLL_MARKET': {
-      requireRule(heldItems(actor).some((item) => item.itemId === 'brass-idol') && actor.abilities!.brassIdolRound !== room.round!.number, 'NOT_ELIGIBLE', 'Brass Idol reroll is unavailable.');
+      requireRule(canUsePrivateMarket(room, actor), 'NOT_ELIGIBLE', 'Resolve your Public Shop decision before entering the Black Market.');
+      requireRule(heldItems(actor).some(item => item.itemId === 'brass-idol'), 'NOT_ELIGIBLE', 'You need a Brass Idol to reroll an offer.');
+      requireRule(actor.abilities!.brassIdolRound !== room.round!.number, 'NOT_ELIGIBLE', 'You already used Brass Idol this Intermission.');
       const offers = shop.privateOffers[actor.id]!;
       const index = offers.findIndex((offer) => offer.id === command.offerId && !offer.purchasedBy);
-      requireRule(index >= 0 && !shop.privatePurchasedBy[actor.id], 'NOT_ELIGIBLE', 'Offer cannot be rerolled.');
+      requireRule(!shop.privatePurchasedBy[actor.id], 'NOT_ELIGIBLE', 'You already purchased from the Black Market this Intermission.');
+      requireRule(index >= 0, 'NOT_FOUND', 'This offer was bought or is no longer available to reroll.');
       const previousKey = offers[index]!.itemId === 'black-key';
       // Preserve the first guaranteed opportunity if its owner deliberately rerolls it.
       offers[index] = generateBlackOffer(room, offers.map((offer) => offer.itemId));
@@ -261,3 +302,16 @@ export function shopAction(room: RoomState, actor: PlayerState, command: GameCom
   }
 }
 import { stack as stackForOffer } from './inventory.js';
+
+/** Shared placement rules; the tutorial grants access without adding a shop phase. */
+export function placePocketItem(room: RoomState, actor: PlayerState, instanceId: string, pocketIndex: number, now: number): void {
+      const item = owned(actor, instanceId, true);
+      const pocket = actor.inventory.pockets[pocketIndex];
+      requireRule(Number.isInteger(pocketIndex) && pocket, 'INVALID_TARGET', 'That Pocket does not exist. Choose one of your available Pockets.');
+      requireRule(!pocket.item, 'NOT_ELIGIBLE', 'That Pocket is already occupied. Pocketed items stay locked until used.');
+      requireRule(ITEM_BY_ID[item.itemId]!.pocketEligible, 'NOT_ELIGIBLE', `${ITEM_BY_ID[item.itemId]!.name} must remain visible and cannot go into a Pocket.`);
+      pocket.item = removeItem(actor, item.instanceId);
+      event(room, now, 'POCKET_FILLED', `${actor.name} filled a Pocket.`, actor.id, [], {
+        [actor.id]: { kind: 'POCKET_FILLED', itemId: item.itemId, pocketIndex: pocketIndex, pocketSource: pocket.source },
+      });
+}
