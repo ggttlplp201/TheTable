@@ -1,18 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
+import { GAME_CONSTANTS, ROLES as ROLE_KITS } from '@the-table/content';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { RoleId } from '@the-table/game';
 import { AUDIO_CUE_IDS, createAudioEngine } from '@the-table/audio';
 import { isSpectatorView, ROLE_COPY, ROLES, type AnyRoomView, type ClientError, type RoomView, type SessionPayload, type SessionSnapshot, type VoiceCapability } from './protocol';
 import { TableClient } from './socket';
 import { MatchView } from './MatchView';
-import { ConnectionRestoreGate } from './reconnect';
+import { ConnectionRestoreGate, shouldForgetRestoreSession } from './reconnect';
+import { ReferenceItemArt, ReferencePortrait } from './ReferenceItemArt';
+import { EntryTableBackdrop } from './EntryTableBackdrop';
+import { ReferenceHandbook, ReferenceSettings } from './ReferenceInterfaces';
+import { HowToPlay } from './HowToPlay';
+import { useOwnedAudioEngineLifecycle } from './audio-lifecycle';
+
+import { readTutorialPreferences, saveTutorialPreferences, recordTutorialMetric } from './tutorial-storage';
+import './tutorial.css';
+const Tutorial = lazy(() => import('./Tutorial'));
 
 const STORAGE_KEY = 'the-table/session-v1';
 
-type Screen = 'connecting' | 'entry' | 'lobby' | 'playing';
+export type Screen = 'connecting' | 'entry' | 'lobby' | 'playing';
 type EntryMode = 'create' | 'join';
 
 function idempotencyKey(): string {
   return crypto.randomUUID();
+}
+
+/** The title and room lobby share the supplied "The Table" music bed. */
+export function preMatchMusic(screen: Screen): 'table' | undefined {
+  return screen === 'entry' || screen === 'lobby' ? 'table' : undefined;
 }
 
 function loadSession(): SessionSnapshot | undefined {
@@ -34,6 +49,9 @@ function saveSession(snapshot: SessionSnapshot) {
 }
 
 export function App() {
+  const [tutorial, setTutorial] = useState<{ chapter: number; key: number }>();
+  const [tutorialPrefs, setTutorialPrefs] = useState(readTutorialPreferences);
+  const startTutorial = (chapter = 1) => { setTutorialPrefs(saveTutorialPreferences({ skippedForNow: true })); setTutorial({ chapter, key: Date.now() }); };
   const [client] = useState(() => new TableClient());
   const [audio] = useState(() => createAudioEngine());
   const [audioStarted, setAudioStarted] = useState(false);
@@ -52,15 +70,40 @@ export function App() {
   const [connected, setConnected] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<ClientError>();
+  const audioStarting = useRef(false);
 
-  useEffect(() => () => { void audio.dispose(); }, [audio]);
+  useOwnedAudioEngineLifecycle(audio);
 
-  const enableAudio = () => {
-    if (audioStarted || audioUnavailable) return;
+  const enableAudio = useCallback(() => {
+    if (audioStarted || audioUnavailable || audioStarting.current) return;
+    audioStarting.current = true;
     void audio.start()
       .then(() => { setAudioStarted(true); audio.play(AUDIO_CUE_IDS.uiConfirm); })
-      .catch(() => setAudioUnavailable(true));
-  };
+      .catch(() => setAudioUnavailable(true))
+      .finally(() => { audioStarting.current = false; });
+  }, [audio, audioStarted, audioUnavailable]);
+
+  useEffect(() => {
+    if (audioStarted || audioUnavailable) return undefined;
+    const unlock = () => enableAudio();
+    window.addEventListener('pointerdown', unlock, { capture: true, once: true });
+    window.addEventListener('keydown', unlock, { capture: true, once: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlock, { capture: true });
+      window.removeEventListener('keydown', unlock, { capture: true });
+    };
+  }, [audioStarted, audioUnavailable, enableAudio]);
+
+  useEffect(() => {
+    if (!audioStarted) return;
+    const track = preMatchMusic(screen);
+    if (track) {
+      audio.setThreat(false);
+      audio.setMusic(track);
+    } else if (screen === 'connecting') {
+      audio.setMusic(undefined);
+    }
+  }, [audio, audioStarted, screen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,7 +116,12 @@ export function App() {
           return;
         }
         setScreen('connecting');
-        const response = await client.reconnect(session.code, session.reconnectToken);
+        let response = await client.reconnect(session.code, session.reconnectToken);
+        for (let attempt = 1; !response.ok && !shouldForgetRestoreSession(response.error.code) && attempt < 3 && restoreGate.current.isCurrent(generation) && !cancelled; attempt += 1) {
+          await new Promise(resolve => window.setTimeout(resolve, attempt * 600));
+          if (!restoreGate.current.isCurrent(generation) || cancelled) return;
+          response = await client.reconnect(session.code, session.reconnectToken);
+        }
         // Persist rotation even if an effect replay superseded this render. The
         // transport coalesces same-token reconnects, so no accepted credential is
         // lost between StrictMode cleanup and its replacement effect.
@@ -84,9 +132,13 @@ export function App() {
         }
         if (cancelled || !restoreGate.current.isCurrent(generation)) return;
         if (!response.ok) {
-          window.localStorage.removeItem(STORAGE_KEY);
+          if (shouldForgetRestoreSession(response.error.code)) window.localStorage.removeItem(STORAGE_KEY);
           setError(response.error);
-          setScreen('entry');
+          if (shouldForgetRestoreSession(response.error.code)) setScreen('entry');
+          else {
+            setScreen('connecting');
+            window.setTimeout(() => { if (!cancelled && restoreGate.current.isLatest(generation)) client.restart(); }, 1_200);
+          }
           return;
         }
         applySession(response.data);
@@ -140,7 +192,7 @@ export function App() {
 
   const currentPlayer = room?.public.players.find(player => player.id === playerId);
   const isHost = Boolean(room && playerId === room.public.hostPlayerId);
-  const canStart = Boolean(isHost && room && room.public.players.length >= 2 && room.public.players.every(player => player.roleId && player.ready));
+  const canStart = Boolean(isHost && room && room.public.players.length >= GAME_CONSTANTS.minimumPlayers && room.public.players.every(player => player.roleId && player.ready && player.connection === 'CONNECTED'));
 
   function applyView(next: AnyRoomView) {
     setView(previous => previous?.public.id === next.public.id && previous.public.revision > next.public.revision ? previous : next);
@@ -198,20 +250,44 @@ export function App() {
     if (!response.ok) setError(response.error); else if (audioStarted) audio.play(AUDIO_CUE_IDS.lobbyMatch);
   }
 
+  function returnHome() {
+    try { window.localStorage.removeItem(STORAGE_KEY); } catch { /* Navigation still works when storage is unavailable. */ }
+    setView(undefined);
+    setPlayerId(undefined);
+    setSessionReady(false);
+    setError(undefined);
+    setEntryMode('create');
+    setScreen('entry');
+    skipRestore.current = true;
+    client.disconnect();
+    client.connect();
+  }
+
+  async function leaveLobby() {
+    if (!room || room.public.status !== 'LOBBY' || working || !connected || !sessionReady) return;
+    setWorking(true);
+    setError(undefined);
+    const response = await client.leaveLobby();
+    setWorking(false);
+    if (response.ok) returnHome();
+    else setError(response.error);
+  }
+
   let content: React.ReactNode;
-  if (screen === 'connecting' && !view) content = <LoadingView connected={connected} error={error} onContinue={() => setScreen('entry')} />;
-  else if (screen === 'entry') content = <EntryView mode={entryMode} setMode={setEntryMode} name={name} setName={setName} joinCode={joinCode} setJoinCode={setJoinCode} error={error} working={working} connected={connected} onSubmit={submitEntry} />;
-  else if (view && view.public.status !== 'LOBBY' && playerId) content = <Shell connected={connected}><MatchView room={view} client={client} connected={connected && sessionReady} viewerId={playerId} voice={voice} audioEngine={audio} audioStarted={audioStarted} onEnableAudio={enableAudio} onView={applyView} /></Shell>;
+  if (tutorial) content = <Suspense fallback={<p className="loading-stage">Setting the table…</p>}><Tutorial key={tutorial.key} chapter={tutorial.chapter} audio={audio} audioStarted={audioStarted} onEnableAudio={enableAudio} onReplay={() => startTutorial(1)} onExit={join => { setTutorial(undefined); setTutorialPrefs(readTutorialPreferences()); setEntryMode(join ? 'join' : 'create'); setScreen('entry'); }} /></Suspense>;
+  else if (screen === 'connecting' && !view) content = <LoadingView connected={connected} error={error} onContinue={() => setScreen('entry')} />;
+  else if (screen === 'entry') content = <EntryView onTutorial={() => startTutorial(tutorialPrefs.tutorialCompleted ? 1 : tutorialPrefs.tutorialLastChapter)} tutorialResume={!tutorialPrefs.tutorialCompleted && tutorialPrefs.tutorialLastChapter > 1} mode={entryMode} setMode={setEntryMode} name={name} setName={setName} joinCode={joinCode} setJoinCode={setJoinCode} error={error} working={working} connected={connected} onSubmit={submitEntry} audio={audio} audioStarted={audioStarted} onEnableAudio={enableAudio} />;
+  else if (view && view.public.status !== 'LOBBY' && playerId) content = <Shell connected={connected}><MatchView room={view} client={client} connected={connected && sessionReady} viewerId={playerId} voice={voice} audioEngine={audio} audioStarted={audioStarted} onEnableAudio={enableAudio} onView={applyView} onReturnHome={returnHome} /></Shell>;
   else if (!room || !currentPlayer) content = <LoadingView connected={connected} error={error} onContinue={() => setScreen('entry')} />;
-  else content = <LobbyView room={room} currentPlayerId={currentPlayer.id} isHost={isHost} canStart={canStart} connected={connected} working={working} error={error} onClaim={claimRole} onReady={toggleReady} onStart={startMatch} />;
-  return <>{!audioStarted && <button className="button quiet global-audio" type="button" disabled={audioUnavailable} onClick={enableAudio}>{audioUnavailable ? 'Sound unavailable' : 'Enable sound'}</button>}{content}</>;
+  else content = <LobbyView room={room} currentPlayerId={currentPlayer.id} isHost={isHost} canStart={canStart} connected={connected && sessionReady} working={working} error={error} onClaim={claimRole} onReady={toggleReady} onStart={startMatch} onReturnHome={leaveLobby} />;
+  return <>{!audioStarted && <button className="button quiet global-audio" type="button" disabled={audioUnavailable} onClick={enableAudio}>{audioUnavailable ? 'Sound unavailable' : 'Enable sound'}</button>}{content}{!tutorial && !view && !loadSession() && !tutorialPrefs.tutorialCompleted && !tutorialPrefs.skippedForNow && <div className="tutorial-welcome-backdrop"><section className="tutorial-welcome" role="dialog" aria-modal="true" aria-label="New to The Table?"><h2>New to The Table?</h2><p>Learn the game against The Dealer.<br />About 6–8 minutes.</p><button className="tutorial-continue" type="button" onClick={() => startTutorial()}>PLAY TUTORIAL</button><button type="button" onClick={() => { setTutorialPrefs(saveTutorialPreferences({ skippedForNow: true })); recordTutorialMetric({ kind: 'skipped' }); }}>SKIP FOR NOW</button></section></div>}</>;
 }
 
 function Shell({ children, connected }: { children: React.ReactNode; connected: boolean }) {
   return <main className="app-shell">
     <header className="masthead">
       <a className="wordmark" href="/" aria-label="The Table home">THE TABLE</a>
-      <span className={connected ? 'connection connected' : 'connection'}>{connected ? 'Connected' : 'Reconnecting'}</span>
+      <span className={connected ? 'connection connected' : 'connection'}>{connected ? '● LINKED' : '◌ RECONNECTING'}</span>
     </header>
     {children}
   </main>;
@@ -228,80 +304,103 @@ function LoadingView({ connected, error, onContinue }: { connected: boolean; err
 }
 
 function EntryView(props: {
+  onTutorial: () => void; tutorialResume: boolean;
   mode: EntryMode; setMode: (mode: EntryMode) => void; name: string; setName: (value: string) => void; joinCode: string; setJoinCode: (value: string) => void;
   error?: ClientError | undefined; working: boolean; connected: boolean; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  audio: ReturnType<typeof createAudioEngine>; audioStarted: boolean; onEnableAudio: () => void;
 }) {
-  const { mode, setMode, name, setName, joinCode, setJoinCode, error, working, connected, onSubmit } = props;
+  const { mode, setMode, name, setName, joinCode, setJoinCode, error, working, connected, onSubmit, audio, audioStarted, onEnableAudio } = props;
+  const [creating, setCreating] = useState(false);
+  const [utility, setUtility] = useState<'rules' | 'items' | 'settings' | null>(null);
+  if (mode === 'join') return <Shell connected={connected}>
+    <section className="join-stage">
+      <form className="join-card" onSubmit={onSubmit} noValidate>
+        <label className="join-code-label">ROOM CODE
+          <span className={`room-code-boxes ${error ? 'error' : ''}`} aria-hidden="true">{Array.from({ length: 6 }, (_, index) => <b key={index}>{joinCode[index] ?? ''}</b>)}</span>
+          <input className="room-code-hidden" aria-label="Room Code" autoComplete="off" maxLength={6} value={joinCode} onChange={event => setJoinCode(event.target.value.toUpperCase())} required />
+        </label>
+        {error && <p className="join-error" role="alert">✕ {error.message.toUpperCase()}</p>}
+        <label>NAME AT THE TABLE<input autoComplete="nickname" maxLength={24} value={name} onChange={event => setName(event.target.value)} placeholder="VESNA_" required /></label>
+        <button className="join-submit" type="submit" disabled={working || !connected}>{working ? '⧗ KNOCKING…' : 'TAKE A SEAT'}</button>
+      </form>
+      <button className="join-back" type="button" onClick={() => setMode('create')}>← TITLE</button>
+    </section>
+  </Shell>;
   return <Shell connected={connected}>
     <section className="entry-layout">
+      <EntryTableBackdrop />
+      <span className="entry-version">RECOMMENDED: 3–4 PLAYERS</span>
       <div className="entry-copy">
-        <p className="kicker">A game of private motives</p>
-        <h1>Take your seat.</h1>
-        <p className="lede">Choose a role, guard your objective, and decide what the table gets to know.</p>
+        <h1>The Table</h1>
+        {!creating ? <div className="entry-menu" role="group" aria-label="Room choice"><button className="selected" type="button" onClick={() => setCreating(true)}>▶ CREATE ROOM</button><button type="button" onClick={() => setMode('join')}>JOIN ROOM</button><button type="button" onClick={props.onTutorial}>{props.tutorialResume ? 'RESUME TUTORIAL' : 'TUTORIAL'}</button></div> : <form className="entry-form entry-create-form" onSubmit={onSubmit} noValidate><label>NAME AT THE TABLE<input autoFocus autoComplete="nickname" maxLength={24} value={name} onChange={event => setName(event.target.value)} placeholder="VESNA_" required /></label>{error && <p className="form-error" role="alert">✕ {error.message.toUpperCase()}</p>}<button className="button primary" type="submit" disabled={working || !connected}>{working ? '⧗ KNOCKING…' : 'CREATE ROOM'}</button><button className="button quiet" type="button" onClick={() => setCreating(false)}>← BACK</button></form>}
+        <div className="entry-links"><button type="button" onClick={() => setUtility('rules')}>HOW TO PLAY</button><button type="button" onClick={() => setUtility('items')}>ITEM HANDBOOK</button><button type="button" onClick={() => setUtility('settings')}>SETTINGS · AUDIO</button></div>
       </div>
-      <form className="entry-form" onSubmit={onSubmit} noValidate>
-        <div className="segmented" role="tablist" aria-label="Room choice">
-          <button className={mode === 'create' ? 'selected' : ''} type="button" role="tab" aria-selected={mode === 'create'} onClick={() => setMode('create')}>Create room</button>
-          <button className={mode === 'join' ? 'selected' : ''} type="button" role="tab" aria-selected={mode === 'join'} onClick={() => setMode('join')}>Join room</button>
-        </div>
-        <label>Your name<input autoComplete="nickname" maxLength={24} value={name} onChange={event => setName(event.target.value)} placeholder="Name at the table" required /></label>
-        {mode === 'join' && <label>Room code<input className="code-input" autoComplete="off" maxLength={6} value={joinCode} onChange={event => setJoinCode(event.target.value.toUpperCase())} placeholder="ABC123" required /></label>}
-        {error && <p className="form-error" role="alert">{error.message}</p>}
-        <button className="button primary" type="submit" disabled={working || !connected}>{working ? 'Connecting' : mode === 'create' ? 'Create room' : 'Join room'}</button>
-      </form>
+      {utility && <div className={`entry-utility-overlay entry-utility-${utility}`} role="dialog" aria-modal="true" aria-label={utility === 'rules' ? 'How to play' : utility === 'items' ? 'Item handbook' : 'Settings'}>
+        <button className="entry-utility-close" type="button" onClick={() => setUtility(null)}>× CLOSE</button>
+        {utility === 'rules' ? <HowToPlay onTutorial={props.onTutorial} /> : utility === 'items' ? <ReferenceHandbook /> : <ReferenceSettings engine={audio} started={audioStarted} onStart={onEnableAudio} />}
+      </div>}
     </section>
   </Shell>;
 }
 
 function LobbyView(props: {
   room: RoomView; currentPlayerId: string; isHost: boolean; canStart: boolean; connected: boolean; working: boolean; error?: ClientError | undefined;
-  onClaim: (roleId: RoleId) => void; onReady: () => void; onStart: () => void;
+  onClaim: (roleId: RoleId) => void; onReady: () => void; onStart: () => void; onReturnHome: () => void;
 }) {
-  const { room, currentPlayerId, isHost, canStart, connected, working, error, onClaim, onReady, onStart } = props;
+  const { room, currentPlayerId, isHost, canStart, connected, working, error, onClaim, onReady, onStart, onReturnHome } = props;
   const currentPlayer = room.public.players.find(player => player.id === currentPlayerId)!;
-  const availableSeats = 4 - room.public.players.length;
-  const selectedRoles = new Set(room.public.players.flatMap(player => player.roleId ? [player.roleId] : []));
-  const startCopy = canStart ? 'Start match' : isHost ? 'Waiting for ready players' : 'Host starts when everyone is ready';
+  const startCopy = canStart ? 'Start match' : room.public.players.length < GAME_CONSTANTS.minimumPlayers ? 'Need at least 3 players' : isHost ? 'Waiting for ready players' : 'Host starts when everyone is ready';
+  const [choosingRole, setChoosingRole] = useState(!currentPlayer.roleId);
+  useEffect(() => { if (!currentPlayer.roleId) setChoosingRole(true); }, [currentPlayer.roleId]);
+
+  if (choosingRole) return <Shell connected={connected}>
+    <section className="role-select-stage">
+      <header><div><p className="kicker">ROOM {room.public.code}</p><h1>Choose your starting kit</h1></div><button className="button quiet lobby-home" type="button" disabled={working || !connected} onClick={onReturnHome}>← RETURN HOME</button></header>
+      <div className="role-select-grid">
+        {ROLES.map(roleId => {
+          const owner = room.public.players.find(player => player.roleId === roleId);
+          const selected = currentPlayer.roleId === roleId;
+          const unavailable = Boolean(owner && owner.id !== currentPlayerId);
+          const detail = ROLE_COPY[roleId];
+          return <button className={`role-select-card role-${roleId} ${selected ? 'selected' : ''}`} type="button" key={roleId}
+            onClick={() => { onClaim(roleId); setChoosingRole(false); }} disabled={working || !connected || unavailable} aria-pressed={selected}>
+            <span className="role-portrait" aria-hidden="true"><ReferencePortrait roleId={roleId} /></span>
+            <span className="role-name">{detail.name}</span>
+            <span className="role-kit" aria-label={detail.kit}>{ROLE_KITS[roleId].startingItems.map((itemId, itemIndex) => <ReferenceItemArt itemId={itemId} size={30} label="" key={`${itemId}-${itemIndex}`} />)}</span>
+            <span className="role-ability">{detail.ability}</span>
+            <span className="role-state">{unavailable ? `TAKEN · ${owner?.name.toUpperCase()}` : selected ? '▶ SELECTED' : 'AVAILABLE'}</span>
+          </button>;
+        })}
+      </div>
+      {error && <p className="form-error" role="alert">✕ {error.message.toUpperCase()}</p>}
+    </section>
+  </Shell>;
 
   return <Shell connected={connected}>
-    <section className="lobby-heading">
-      <div>
-        <p className="kicker">Room code</p>
-        <h1>{room.public.code}</h1>
-      </div>
-      <p>{room.public.players.length} of 4 seated. {availableSeats > 0 ? `${availableSeats} seat${availableSeats === 1 ? '' : 's'} open.` : 'The table is full.'}</p>
-    </section>
-    <section className="lobby-grid">
-      <div className="role-area">
-        <div className="section-intro"><h2>Choose a role</h2><p>Roles are unique. Your starting kit becomes public once the game begins.</p></div>
-        <div className="role-grid">
-          {ROLES.map(roleId => {
-            const owner = room.public.players.find(player => player.roleId === roleId);
-            const selected = currentPlayer.roleId === roleId;
-            const unavailable = Boolean(owner && owner.id !== currentPlayerId);
-            const detail = ROLE_COPY[roleId];
-            return <button className={`role-card ${selected ? 'selected' : ''}`} type="button" key={roleId} onClick={() => onClaim(roleId)} disabled={working || !connected || unavailable} aria-pressed={selected}>
-              <span className="role-name">{detail.name}</span>
-              <span className="role-kit">{detail.kit}</span>
-              <span className="role-ability">{unavailable ? `Chosen by ${owner?.name}` : detail.ability}</span>
-            </button>;
+    <section className="lobby-board">
+      <div className="lobby-main">
+        <header className="lobby-code"><div><p>ROOM CODE</p><h1>{room.public.code}</h1></div><div><button type="button" onClick={() => void navigator.clipboard?.writeText(room.public.code)}>⧉ COPY</button></div></header>
+        <div className="lobby-seat-list">
+          {Array.from({ length: 4 }, (_, seat) => {
+            const player = room.public.players.find(candidate => candidate.seat === seat);
+            if (!player) return <div className="lobby-seat empty" key={seat}><span className="seat-index">{['I', 'II', 'III', 'IV'][seat]}</span><i /><strong>EMPTY SEAT</strong><span>—</span><b>…</b></div>;
+            return <div className={`lobby-seat ${player.id === currentPlayerId ? 'self' : ''}`} key={seat}>
+              <span className="seat-index">{['I', 'II', 'III', 'IV'][player.seat] ?? player.seat + 1}</span><i />
+              <strong>{player.name.toUpperCase()} {player.id === room.public.hostPlayerId ? <small>· HOST</small> : null}{player.id === currentPlayerId ? <small> · YOU</small> : null}</strong>
+              <span>{player.roleId ? ROLE_COPY[player.roleId].name.toUpperCase() : 'CHOOSING ROLE'}</span>
+              <b>{player.ready ? '✓ READY' : '… NOT READY'}</b>
+            </div>;
           })}
         </div>
+        <button className="button quiet lobby-home" type="button" disabled={working || !connected} onClick={onReturnHome}>← RETURN HOME</button>
       </div>
       <aside className="lobby-side">
-        <div className="seats">
-          <h2>At the table</h2>
-          {room.public.players.map(player => <div className="seat" key={player.id}>
-            <span>{player.name}{player.id === currentPlayerId ? ' (you)' : ''}</span>
-            <span>{player.roleId ? ROLE_COPY[player.roleId].name : 'Choosing role'}{player.ready ? ' - ready' : ''}</span>
-          </div>)}
-        </div>
-        <div className="lobby-actions">
-          {error && <p className="form-error" role="alert">{error.message}</p>}
-          <button className="button primary" type="button" disabled={working || !connected || !currentPlayer.roleId} onClick={onReady}>{currentPlayer.ready ? 'Not ready' : 'Ready up'}</button>
-          <button className="button secondary" type="button" disabled={working || !connected || !canStart} onClick={onStart}>{startCopy}</button>
-          <p className="host-note">{isHost ? 'You can start once at least two players have selected a unique role and are ready.' : 'The host starts the match after all seated players are ready.'}</p>
-        </div>
+        <div className={`lobby-role-plaque role-${currentPlayer.roleId ?? 'none'}`}>{currentPlayer.roleId && <ReferencePortrait roleId={currentPlayer.roleId} />}<span>{currentPlayer.roleId ? ROLE_COPY[currentPlayer.roleId].name : 'No role'}</span></div>
+        <button className="button quiet" type="button" onClick={() => setChoosingRole(true)}>CHANGE ROLE</button>
+        <button className="button secondary" type="button" disabled={working || !connected || !currentPlayer.roleId} onClick={onReady}>{currentPlayer.ready ? 'NOT READY' : 'READY UP'}</button>
+        <button className="button primary" type="button" disabled={working || !connected || !canStart} onClick={onStart}>{startCopy.toUpperCase()}</button>
+        <p className="host-note">{room.public.players.filter(player => player.ready).length} OF {room.public.players.length} SEATED READY</p>
+        {error && <p className="form-error" role="alert">✕ {error.message.toUpperCase()}</p>}
       </aside>
     </section>
   </Shell>;

@@ -9,9 +9,10 @@ const ACK_TIMEOUT_MS = 10_000;
 export class TableClient {
   private readonly socket: Socket;
   private reconnectInFlight: { key: string; promise: Promise<Result<SessionPayload>> } | undefined;
+  private readonly reconnectAttempts = new Map<string, string>();
 
   constructor(serverUrl = import.meta.env.VITE_SERVER_URL ?? window.location.origin.replace(/:5173$/, ':3001')) {
-    this.socket = io(serverUrl, { autoConnect: false, transports: ['websocket', 'polling'] });
+    this.socket = io(serverUrl, { autoConnect: false, transports: ['websocket', 'polling'], reconnection: true, reconnectionAttempts: Infinity, reconnectionDelay: 500, reconnectionDelayMax: 5_000, timeout: 20_000 });
   }
 
   connect() {
@@ -20,6 +21,11 @@ export class TableClient {
 
   disconnect() {
     this.socket.disconnect();
+  }
+
+  restart() {
+    this.socket.disconnect();
+    this.socket.connect();
   }
 
   onConnection(listener: (connected: boolean) => void) {
@@ -85,10 +91,13 @@ export class TableClient {
   reconnect(code: string, reconnectToken: string) {
     const key = `${code}\u0000${reconnectToken}`;
     if (this.reconnectInFlight?.key === key) return this.reconnectInFlight.promise;
-    const promise = this.emit<SessionPayload>('room:reconnect', { code, reconnectToken });
+    const idempotencyKey = this.reconnectAttempts.get(key) ?? crypto.randomUUID();
+    this.reconnectAttempts.set(key, idempotencyKey);
+    const promise = this.emit<SessionPayload>('room:reconnect', { code, reconnectToken, idempotencyKey });
     this.reconnectInFlight = { key, promise };
-    void promise.then(() => {
+    void promise.then(result => {
       if (this.reconnectInFlight?.promise === promise) this.reconnectInFlight = undefined;
+      if (result.ok || result.error.code === 'INVALID_SESSION' || result.error.code === 'ROOM_NOT_FOUND') this.reconnectAttempts.delete(key);
     });
     return promise;
   }
@@ -99,6 +108,10 @@ export class TableClient {
 
   ready(ready: boolean, idempotencyKey: string, expectedRevision?: number) {
     return this.emit<RevisionAck>('lobby:ready', { ready, idempotencyKey, expectedRevision });
+  }
+
+  leaveLobby() {
+    return this.emit<{ left: true }>('lobby:leave', {});
   }
 
   start(idempotencyKey: string, expectedRevision?: number) {
@@ -151,3 +164,6 @@ export class TableClient {
     });
   }
 }
+
+/** Structural transport used by both the network match and the local Dealer lesson. */
+export type MatchClient = Pick<TableClient, 'command' | 'sendChat' | 'rematch' | 'sync' | 'signalVoice' | 'joinVoice' | 'leaveVoice' | 'onVoicePeers' | 'onVoiceSignal'>;

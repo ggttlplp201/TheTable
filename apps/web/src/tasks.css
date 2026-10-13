@@ -1,0 +1,40 @@
+.tasks-hud { position:absolute; right:16px; top:70px; width:260px; z-index:31; color:#d8ccb0; font-family:VT323,monospace; }
+/* The latest handoff reserves the upper-right corner for Tasks. Keep the
+   older supplementary seat ledger in the free upper-left region. */
+.match-viewport[data-viewer='player'] > .seat-ribbon { left:16px; right:auto; top:70px; }
+.match-viewport[data-modal='true'] > .tasks-hud { visibility:hidden; pointer-events:none; }
+.tasks-hud>button { position:relative; z-index:2; display:flex; gap:12px; align-items:center; justify-content:center; width:100%; padding:8px 10px; background:rgba(5,4,3,.72); border:2px solid rgba(216,204,176,.18); color:inherit; font:22px VT323,monospace; cursor:pointer; }
+.tasks-hud kbd { color:#8f8270; font:inherit; }
+.tasks-popup { position:absolute; top:0; right:0; width:260px; box-sizing:border-box; padding:52px 12px 12px; background:rgba(5,4,3,.72); border:2px solid rgba(216,204,176,.18); animation:tasks-open 200ms ease-out; transform-origin:top right; }
+.tasks-hud header { display:flex; justify-content:space-between; font-size:19px; letter-spacing:1px; }
+.tasks-hud header small { color:#8f8270; font-size:14px; }
+.tasks-hud p { color:#b8ab92; margin:8px 0; font-size:18px; }
+.tasks-hud b { color:#e0a040; display:inline-flex; align-items:center; vertical-align:middle; gap:4px; }
+.tasks-hud ul { padding:0; margin:0; list-style:none; }
+.tasks-hud li { display:flex; align-items:center; gap:10px; border-top:1px solid rgba(216,204,176,.12); padding:12px 0; position:relative; }
+.tasks-hud li>img,.task-icon { flex:0 0 28px; width:28px; height:28px; image-rendering:pixelated; }
+.tasks-hud li strong { display:block; font-size:22px; font-weight:normal; }
+.tasks-hud li span { display:block; font-size:18px; color:#b8ab92; }
+.tasks-hud li small { position:absolute; right:0; top:10px; font-size:13px; color:#a8c05a; }
+.tasks-hud li[data-status=CANCELLED],.tasks-hud li[data-status=EXPIRED] { opacity:.5; text-decoration:line-through; }
+.tasks-hud li[data-status=COMPLETED] strong { color:#cfe08d; }
+.tasks-completion { display:flex; align-items:center; justify-content:space-between; gap:4px; margin:0 0 8px; color:#cfe08d; font-size:22px; white-space:nowrap; }
+.tasks-completion strong { display:inline-block; font-weight:normal; animation:tasks-stamp 180ms cubic-bezier(.2,1.4,.5,1) both; }
+.tasks-completion b { opacity:0; }
+.tasks-complete[data-completion-stage="1"] .tasks-completion b,.tasks-complete[data-completion-stage="2"] .tasks-completion b { opacity:1; }
+.tasks-complete[data-completion-stage="0"] li[data-status=CANCELLED],.tasks-complete[data-completion-stage="1"] li[data-status=CANCELLED] { opacity:1; text-decoration:none; }
+.tasks-complete { border-color:#a47c3e; animation:tasks-fold 1.7s both; }
+.tasks-reveal { animation:tasks-fold 1.5s both; }
+@keyframes tasks-open { from { opacity:0; transform:scaleY(.94); } to { opacity:1; transform:scaleY(1); } }
+@keyframes tasks-stamp { from { opacity:0; transform:scale(1.35); } to { opacity:1; transform:scale(1); } }
+@keyframes tasks-fold { 0% { opacity:0; transform:scaleY(.94); } 12%,88% { opacity:1; transform:scaleY(1); } 100% { opacity:0; transform:scaleY(.92); } }
+@media(max-width:700px) { .tasks-hud { right:8px; top:70px; } }
+@media(prefers-reduced-motion:reduce) { .tasks-popup,.tasks-completion strong { animation:none; } }
+.turn-complete-beat { position:absolute; top:92px; left:50%; transform:translateX(-50%); z-index:30; pointer-events:none; color:#d8ccb0; font:22px VT323,monospace; }
+.turn-complete-beat span { animation:turn-complete .5s both; }
+.turn-complete-beat b { position:absolute; inset:0; text-transform:uppercase; white-space:nowrap; color:#e0a040; animation:turn-next .5s both; }
+.action-dock .contextual-action.end-turn { border-style:dashed; background:transparent; }
+@keyframes turn-complete { 0%,45% { opacity:1; } 50%,100% { opacity:0; } }
+@keyframes turn-next { 0%,50% { opacity:0; } 70%,100% { opacity:1; } }
+
+.match-viewport .action-buttons>.pass-turn {margin:0 0 0 18px;border:2px dashed rgba(216,204,176,.3);padding:10px 16px;color:#b8ab92;background:transparent;font-size:20px;box-shadow:none;}

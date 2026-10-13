@@ -1,4 +1,4 @@
-import { Group, Object3D, Texture } from 'three';
+import { Group, Object3D, Texture, type BufferGeometry, type Material, type Mesh } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   CHARACTER_IDS,
@@ -56,6 +56,10 @@ class RecordingContext {
   arc(x: number, y: number, radius: number, start: number, end: number): void { this.log.push(`arc:${x}:${y}:${radius}:${start}:${end}`); }
   fillText(text: string, x: number, y: number): void { this.log.push(`text:${text}:${x}:${y}`); }
 
+  save() {} restore() {} translate() {} rotate() {} drawImage() {} ellipse() {} fill() {}
+  createImageData(w: number, h: number) { return { data: new Uint8ClampedArray(w * h * 4) }; }
+  getImageData(_x: number, _y: number, w: number, h: number) { return this.createImageData(w, h); }
+  putImageData() {}
   createRadialGradient(): CanvasGradient {
     return new RecordingGradient((entry) => this.log.push(entry)) as unknown as CanvasGradient;
   }
@@ -125,12 +129,46 @@ describe('visual model smoke tests', () => {
   it('constructs every role and shopkeeper', () => {
     const kit = createKit();
     for (const id of CHARACTER_IDS) {
-      const character = kit.createCharacter(id, 0xe0a040, id, 'standing');
-      kit.animateCharacter(character, 1.25, 0.4);
-      expect(character.userData.characterId).toBe(id);
-      expectFiniteGraph(character);
+      for (const pose of ['standing', 'seated'] as const) {
+        const character = kit.createCharacter(id, 0xe0a040, id, pose);
+        for (const time of [0, 1.25, 5, 8.5]) {
+          kit.animateCharacter(character, time, 0.4);
+          expect(character.userData.characterId).toBe(id);
+          expectFiniteGraph(character);
+        }
+        expect(character.getObjectByName('head')).toBe(character.userData.P.head);
+        expect(character.userData.hands).toHaveLength(2);
+      }
     }
     kit.dispose();
+  });
+
+  it('renders ammo as three chalk outlines and a quantity-controlled reusable cartridge group', () => {
+    const kit = createKit(), ammo = kit.createAmmoSlot(2);
+    expect(ammo.getObjectByName('ammoChalk')?.visible).toBe(true);
+    expect(ammo.getObjectByName('ammoRound0')?.visible).toBe(true);
+    expect(ammo.getObjectByName('ammoRound1')?.visible).toBe(true);
+    expect(ammo.getObjectByName('ammoRound2')?.visible).toBe(false);
+    const children = [...ammo.children];
+    kit.setAmmoQuantity(ammo, 3); expect(ammo.getObjectByName('ammoRound2')?.visible).toBe(true);
+    kit.setAmmoQuantity(ammo, 0); expect(ammo.children.every(child => !child.visible)).toBe(true);
+    expect(ammo.children).toEqual(children); expectFiniteGraph(ammo); kit.dispose();
+  });
+
+  it('poses covered threats with no concealed item and restores the source resting pose', () => {
+    const kit = createKit(), character = kit.createCharacter('broker', 0x6a8ab8, 'Broker', 'seated');
+    kit.setCharacterThreat(character, 'cloth'); kit.animateCharacter(character, 0);
+    const right = character.getObjectByName('armRight')!;
+    expect(right.rotation.x).toBeCloseTo(-1.4); expect(right.rotation.z).toBeCloseTo(.12);
+    expect(character.getObjectByName('threat:cloth')).toBeDefined();
+    let concealedWeapon = false; character.traverse(object => { concealedWeapon ||= object.userData.itemId === 'pistol'; });
+    expect(concealedWeapon).toBe(false);
+    kit.setCharacterThreat(character, 'pistol'); kit.animateCharacter(character, 0);
+    expect(character.getObjectByName('held:cloth')?.visible).toBe(false);
+    expect(character.getObjectByName('held:pistol')?.visible).toBe(true);
+    kit.setCharacterThreat(character, null); kit.animateCharacter(character, 0);
+    expect(right.rotation.x).toBeCloseTo(-.4); expect(right.rotation.z).toBeCloseTo(-.12);
+    expect(character.getObjectByName('upper')?.rotation.x).toBe(0); expectFiniteGraph(character); kit.dispose();
   });
 
   it('builds data-free table and shop scenes', () => {
@@ -186,6 +224,29 @@ describe('presentation clips', () => {
 });
 
 describe('resource lifecycle', () => {
+  it('disposes shared character geometry, materials and accessory textures exactly once', () => {
+    const kit = createKit();
+    const resources = new Set<BufferGeometry | Material | Texture>();
+    for (const role of CHARACTER_IDS) {
+      for (const pose of ['standing', 'seated'] as const) {
+        kit.createCharacter(role, 0xe0a040, role, pose).traverse(object => {
+          const mesh = object as Mesh;
+          if (mesh.geometry) resources.add(mesh.geometry);
+          for (const material of Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : []) {
+            resources.add(material);
+            for (const value of Object.values(material)) if (value instanceof Texture) resources.add(value);
+          }
+        });
+      }
+    }
+    expect([...resources].some(resource => resource instanceof Texture)).toBe(true);
+    const calls = new Map([...resources].map(resource => [resource, 0]));
+    for (const resource of resources) resource.addEventListener('dispose', () => calls.set(resource, calls.get(resource)! + 1));
+    kit.dispose(); kit.dispose();
+    expect([...calls.values()].every(count => count === 1)).toBe(true);
+    expect(kit.resourceCount).toBe(0);
+  });
+
   it('disposes kit-owned geometry exactly once', () => {
     const kit = createKit();
     const model = kit.createItem('bag');

@@ -76,12 +76,12 @@ export interface SessionSnapshot {
 }
 
 export const ROLE_COPY: Record<RoleId, { name: string; kit: string; ability: string }> = {
-  enforcer: { name: 'Enforcer', kit: 'Pistol, Bullet, 2 coins', ability: 'Quick Draw fires your Pistol once without ammunition.' },
-  medic: { name: 'Medic', kit: 'Medicine, Antidote, 3 coins', ability: 'Your Medicine revives another player to 3 HP.' },
-  smuggler: { name: 'Smuggler', kit: 'Cloth, Bag, 4 coins', ability: 'See four private Black Market offers.' },
-  locksmith: { name: 'Locksmith', kit: 'Key, Lockpick, 3 coins', ability: 'Read the Standard Chest once each full round.' },
-  broker: { name: 'Broker', kit: 'Spyglass, 6 coins', ability: 'Gain 1 extra coin when reselling an item.' },
-  scavenger: { name: 'Scavenger', kit: 'Knife, Medicine, 3 coins', ability: 'Gain 1 coin after a forced Intermission discard.' },
+  enforcer: { name: 'Enforcer', kit: 'Pistol, Bullet, Cloth, 2 Gold', ability: 'Quick Draw fires your Pistol once without ammunition.' },
+  medic: { name: 'Medic', kit: 'Medicine, Antidote, Knife, 3 Gold', ability: 'Your Medicine revives another player to 3 HP.' },
+  smuggler: { name: 'Smuggler', kit: 'Cloth, Bag, Poison, 4 Gold', ability: 'See four private Black Market offers.' },
+  locksmith: { name: 'Locksmith', kit: 'Key, Lockpick, Knife, 3 Gold', ability: 'Read the Standard Chest once each full round.' },
+  broker: { name: 'Broker', kit: 'Spyglass, Handcuffs, Knife, 5 Gold', ability: 'Gain 1 extra Gold when reselling an item.' },
+  scavenger: { name: 'Scavenger', kit: 'Knife, Medicine, Crowbar, 3 Gold', ability: 'Gain 1 Gold after a forced Intermission discard.' },
 };
 
 export const ROLES = Object.keys(ROLE_COPY) as RoleId[];

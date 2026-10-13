@@ -6,7 +6,7 @@ product
 
 ## Users
 
-Two to four players sharing a realtime social game on desktop or phone, and verified spectators following the same match.
+Three or four players sharing a realtime social game on desktop, and verified spectators following the same match. The approved v14 revision, its Round Income/Wildcards patch, and GAME_RULES.md govern gameplay; supplied standalone HTML and art handoffs govern presentation.
 
 ## Product Purpose
 
@@ -24,7 +24,8 @@ Do not ship the prototype runtime or its conflicting gameplay data. Avoid contro
 
 - Keep the current decision and deadline easy to find.
 - Separate public facts from explicitly labeled private information.
-- Keep all actions available at 390px without horizontal overflow.
+- Preserve a full-viewport seated table without page scrolling or a persistent dashboard sidebar.
+- Keep free context, chat, and private drafts available while Downed or responding to a timed decision.
 - Render server state; keep only drafts and view preferences locally.
 
 ## Accessibility & Inclusion

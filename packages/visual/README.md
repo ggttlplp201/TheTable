@@ -85,7 +85,7 @@ Clip time is clamped to `[0, duration]`; animation completion must never gate an
 
 ## Match arrival
 
-`TableArrival(camera, seat, character?, onBeat?)` owns a 7.2-second cosmetic arrival. Pass a public `SeatVisual` for the viewer and the matching scene character. Its named chair pulls back while the viewer's body remains implicit; the camera approaches, sits, settles, looks across the room, and ends at the existing overview. `sampleArrival(seat, seconds)` is deterministic and scrubbable for inspection/tests. `update(seconds)` emits each semantic footstep/chair/settle beat once; `finish()` and `dispose()` restore the camera, chair and body without emitting remaining beats.
+`TableArrival(camera, seat, character?, onBeat?, body?)` owns a six-second cosmetic arrival plus a 1.4-second seated hold. Pass a public `SeatVisual` and matching first-person chair, legs, and hands in `body`. The camera approaches in a straight line, pauses, pulls the chair back, steps past its side, sits, and settles. Legs appear only during the sit. Gameplay pointer-look remains independent of this introductory timing. `sampleArrival(seat, seconds)` is deterministic and scrubbable for inspection/tests. `update(seconds)` emits each semantic footstep/chair/settle beat once; `finish()` and `dispose()` restore the camera and first-person props without emitting remaining beats.
 
 The caller owns eligibility, reduced motion, skipping and persistence. No arrival function has command, timer or room-state access. The web adapter keeps authoritative updates and all gameplay controls active throughout, avoids historical event replay, disposes on unmount/context loss, and uses static rendering for reduced motion.
 

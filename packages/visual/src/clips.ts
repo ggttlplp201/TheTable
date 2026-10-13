@@ -130,14 +130,24 @@ export const PRESENTATION_CLIPS = Object.freeze({
     pivot.rotation.z = -up * 0.05 + (time > 0.5 && time < 1.7 ? Math.sin(time * 22) * 0.012 : 0);
     const twist = segment(time, 0.5, 1.7);
     const pop = clamp((time - 1.7) / 0.55);
-    rotateNamed(model, 'cap', { y: -twist * PI * 3, z: -pop * PI * 2.5 });
-    positionNamed(model, 'cap', { x: pop * 0.12, y: 0.145 + twist * 0.012 + Math.sin(pop * PI) * 0.05 });
+    rotateNamed(model, 'cap', { x: 0, y: -twist * PI * 3, z: -pop * PI * 2.5 });
+    positionNamed(model, 'cap', { x: pop * 0.12, y: pop > 0 ? .157 + (env.floor - pivot.position.y + .038 - .157) * pop * pop + Math.sin(pop * PI) * .05 : .145 + twist * .012, z: pop * .03 });
     rotateNamed(model, 'seal', { x: -easeOut(clamp((time - 2) / 0.6)) * 2.3 });
+  }),
+  stimulant: clip(2, [['LIFT', 0], ['SNAP NECK', .55], ['DRINK', 1], ['SET DOWN', 1.55]], (pivot, model, time, env) => {
+    const raised = lift(time, 2);
+    pivot.position.y = raised * env.lift;
+    pivot.position.z = -segment(time, .55, 1.1) * .08 + segment(time, 1.15, 1.55) * .08;
+    pivot.rotation.x = raised * .16;
+    pivot.rotation.z = -segment(time, .9, 1.15) * .65 * (1 - segment(time, 1.25, 1.55));
+    const cap = model.children.find(part => part.position.y > .11);
+    if (cap) { cap.position.x += segment(time, .55, .72) * .08; cap.rotation.z = segment(time, .55, .72) * .8; }
   }),
   antidote: clip(3, [['LIFT', 0], ['FLIP', 0.4], ['FLICK', 1], ['INJECT', 1.4], ['SET DOWN', 2.4]], (pivot, model, time, env) => {
     const active = segment(time, 0.4, 0.9) * (1 - segment(time, 2.4, 2.9));
     const inject = segment(time, 1.6, 2.1);
     model.rotation.z = (PI / 2) * (1 - active);
+    model.rotation.x = Math.sin(time * 40) * .07 * bump(time, 1, 1.3);
     pivot.position.y = lift(time, 3) * env.lift + active * 0.1 - segment(time, 1.4, 1.6, easeOut) * 0.05 * (1 - segment(time, 2.1, 2.4));
     positionNamed(model, 'plunger', { y: 0.25 - inject * 0.06 });
     const dose = model.getObjectByName('dose');

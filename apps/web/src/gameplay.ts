@@ -47,6 +47,7 @@ export const ITEM_HELP: Record<string, string> = {
   poison: 'Deals 1 damage at the start of the next three living turns. Pauses while Downed.',
   antidote: 'Removes Poison. Can also help a Downed player without reviving them.',
   medicine: 'Heals 2 HP, or revives to 2 HP. A Medic revives another player to 3 HP.',
+  stimulant: 'Restores 2 HP. Healing above 5 becomes Temporary HP, up to +2. Cannot revive a Downed player.',
   armor: 'Visible equipment. Blocks one entire Knife or Pistol hit, then is consumed.',
   cloth: 'Consumed to cover one committed visible item in a Threat.',
   bag: 'Visible equipment. Grants a second Pocket.',
@@ -60,13 +61,13 @@ export const ITEM_HELP: Record<string, string> = {
   handcuffs: 'Prevents the target initiating Trade or Threat on their next normal turn.',
   'brass-idol': 'Rerolls one private Black Market offer once per Intermission.',
   'glass-eye': 'Privately checks one unprotected Pocket for a weapon once per round.',
-  'red-ledger': 'Discounts one Public Shop purchase by 1 Coin once per Intermission.',
+  'red-ledger': 'Discounts one Public Shop purchase by 1 Gold once per Intermission.',
   'passage-token': 'Keep this quest item for Escapist. Cannot be sold.',
 };
 export const OBJECTIVE_HELP: Record<string, string> = {
   escapist: 'Possess the Passage Token and survive until a later turn to leave.',
   collector: 'Hold two distinct Artifacts and keep them until you leave.',
-  tycoon: 'Have at least 12 Coins when you leave.',
+  tycoon: 'Hold at least 15 Gold and complete a successful Trade before you leave.',
   executioner: 'Personally cause your assigned target’s permanent death.',
   guardian: 'Keep your assigned target alive through Round 4. Their earlier successful exit also counts.',
   kingmaker: 'Your assigned target must complete their objective and successfully exit.',
@@ -80,13 +81,13 @@ export const OBJECTIVE_HELP: Record<string, string> = {
   graverobber: 'Loot at least one visible item from each of two different Downed players.',
   poisoner: 'Cause Poison to tick on two different players.',
   'chest-raider': 'Personally open both the Standard Chest and the Black Chest.',
-  merchant: 'Complete Trades with two different players. With two players, complete two Trades in different rounds.',
+  merchant: 'Complete Trades with two different players. ',
   'hidden-hand': 'Acquire an item through Pickpocket and an item through Downed loot.',
-  survivor: 'Remain alive after two others exit or permanently die. With two players, outlast your opponent.',
+  survivor: 'Remain alive after two others exit or permanently die. ',
   arsenal: 'Hold a Pistol, at least one Bullet, a Knife, and Armor until you leave.',
 };
 
-const NORMAL_USE_ITEMS = new Set(['knife', 'pistol', 'poison', 'handcuffs', 'spyglass', 'pickpocket', 'glass-eye', 'medicine', 'antidote', 'key', 'lockpick', 'crowbar', 'black-key']);
+const NORMAL_USE_ITEMS = new Set(['knife', 'pistol', 'poison', 'handcuffs', 'spyglass', 'pickpocket', 'glass-eye', 'medicine', 'stimulant', 'antidote', 'key', 'lockpick', 'crowbar', 'black-key']);
 const OPPONENT_ITEMS = new Set(['knife', 'pistol', 'poison', 'handcuffs', 'spyglass', 'pickpocket', 'glass-eye']);
 const CHEST_ITEMS = new Set(['key', 'lockpick', 'crowbar', 'black-key']);
 export const needsOpponent = (itemId: string) => OPPONENT_ITEMS.has(itemId);
@@ -102,7 +103,8 @@ export function useItemTargets(room: RoomView, itemId: string) {
   const owner = room.public.players.find(player => player.id === room.private.playerId)!;
   const seats = [...room.public.players].sort((a, b) => a.seat - b.seat).map(player => player.id);
   return room.public.players.filter(player => {
-    if (player.id === owner.id || usesChest(itemId) || owner.life === 'DOWNED') return false;
+    if (player.id === owner.id || usesChest(itemId) || owner.life === 'DOWNED' || player.connection !== 'CONNECTED') return false;
+    if (itemId === 'stimulant' && player.life !== 'ACTIVE') return false;
     if (needsOpponent(itemId) && player.life !== 'ACTIVE') return false;
     if (!needsOpponent(itemId) && player.life !== 'ACTIVE' && player.life !== 'DOWNED') return false;
     if (itemId !== 'knife') return true;

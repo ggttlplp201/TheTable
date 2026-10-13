@@ -1,0 +1,41 @@
+.action-draft-saved,
+.ability-spent,
+.market-item-lock,
+.pocket-placement-feedback {
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  padding: .55rem .7rem;
+  font-size: .78rem;
+  letter-spacing: .04em;
+}
+
+.action-draft-saved,
+.ability-spent {
+  color: #d8b77b;
+  background: rgba(31, 20, 14, .72);
+}
+
+.pocket-destination-prompt {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: .25rem .75rem;
+  align-items: center;
+  padding: .75rem;
+  border: 1px solid #b58b51;
+  background: rgba(17, 12, 10, .92);
+}
+
+.pocket-destination-prompt strong,
+.pocket-destination-prompt span {
+  grid-column: 1;
+}
+
+.pocket-destination-prompt button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.concede-choice {
+  border: 1px solid #8c3f35;
+  padding: .85rem;
+  background: rgba(38, 15, 13, .82);
+}

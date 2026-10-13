@@ -32,12 +32,14 @@ try {
       const room = mode === 'spectator' ? spectatorRoom() : ownerRoom();
       if (mode === 'shop') {
         room.public.round.phase = 'INTERMISSION';
-        room.private.capabilities = ['BUY', 'SELL', 'POCKET', 'ASSIGN_SAFE', 'FINISH_SHOPPING', 'CHAT'];
-        room.public.shop = { publicOffers: [{ id: 'public-knife', itemId: 'knife', price: 4 }], order: ['p1', 'p2'], activeShopperIndex: 0, publicPurchasedBy: {} };
+        delete room.public.turn;
+        room.private.capabilities = ['BUY', 'BUY_BLACK', 'SELL', 'POCKET', 'ASSIGN_SAFE', 'FINISH_SHOPPING', 'CHAT'];
+        room.public.shop = { id: 'browser-smoke-intermission', phase: 'PUBLIC', prepDeadlineAt: Date.now() - 1, publicDeadlineAt: Date.now() + 15000, privateUnlockedBy: { p1: true }, finishedBy: {}, publicOffers: [{ id: 'public-knife', itemId: 'knife', price: 4 }], order: ['p1', 'p2'], activeShopperIndex: 1, publicPurchasedBy: {}, publicSkippedBy: { p1: true } };
+        room.private.intermission = { privatePurchased: false, finished: false };
         room.private.blackMarket = [{ id: 'private-safe', itemId: 'safe', price: 5 }];
       }
       if (mode === 'response') {
-        room.private.capabilities = ['RESPOND_TRADE'];
+        room.private.capabilities = ['CHAT', 'RESPOND_TRADE'];
         room.public.pendingTrade = { id: 'trade', actorId: 'p2', targetId: 'p1', offeredItems: [], offeredCoins: 1, requestedItems: [], requestedCoins: 0, status: 'PENDING', deadlineAt: Date.now() + 30000 };
       }
       if (mode === 'overflow') {
@@ -97,6 +99,7 @@ try {
   assert.equal(sent[2].payload.committedItemId, 'p1-pistol');
   assert.equal(sent[2].payload.clothItemId, 'p1-cloth');
   await page.evaluate(() => window.preview('shop'));
+  await page.getByRole('navigation', { name: 'Market navigation' }).getByRole('button', { name: 'Black Market', exact: true }).click();
   await page.screenshot({ path: '/tmp/table-ui-markets-phone.png', fullPage: true });
   await page.getByRole('button', { name: 'Buy Safe', exact: true }).click();
   sent = await page.evaluate(() => window.sentCommands);

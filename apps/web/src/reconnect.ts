@@ -18,7 +18,15 @@ export class ConnectionRestoreGate {
     return this.activeGeneration === generation;
   }
 
+  isLatest(generation: number): boolean {
+    return this.generation === generation;
+  }
+
   complete(generation: number): void {
     if (this.activeGeneration === generation) this.activeGeneration = undefined;
   }
+}
+
+export function shouldForgetRestoreSession(code: string): boolean {
+  return code === 'INVALID_SESSION' || code === 'ROOM_NOT_FOUND';
 }

@@ -103,6 +103,9 @@ export function createPostPipeline(
     scene: postScene,
     camera: postCamera,
     texture: target.texture,
+    setGrain(amount) {
+      if (Number.isFinite(amount)) material.uniforms.grainAmount!.value = Math.max(0, Math.min(.4, amount));
+    },
     resize(nextWidth, nextHeight) {
       target.setSize(nextWidth, nextHeight);
       material.uniforms.resolution?.value.set(nextWidth, nextHeight);

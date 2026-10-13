@@ -3,6 +3,7 @@ export type AudioAudience = 'PUBLIC' | 'PRIVATE';
 export const AUDIO_CUE_IDS = {
   // Local controls and inventory handling are intentionally separate from
   // authoritative event cues: callers may play them before an action resolves.
+  taskReveal: 'task.reveal', taskStamp: 'task.stamp', taskCoin: 'task.coin', taskCancel: 'task.cancel', turnSwitch: 'turn.switch', tutorialPage: 'tutorial.page',
   uiSelect: 'ui.select',
   uiSetDown: 'ui.set-down',
   uiConfirm: 'ui.confirm',
@@ -14,6 +15,7 @@ export const AUDIO_CUE_IDS = {
   bullet: 'item.bullet',
   weaponPoison: 'item.poison',
   medicine: 'item.medicine',
+  stimulant: 'item.stimulant',
   antidote: 'item.antidote',
   armor: 'item.armor',
   cloth: 'item.cloth',
@@ -42,11 +44,17 @@ export const AUDIO_CUE_IDS = {
   responseWarning: 'turn.response-warning',
   door: 'world.door',
   footstep: 'world.footstep',
-  chair: 'world.chair', tableSettle: 'world.table-settle', coinScatter: 'world.coin-scatter',
+  chair: 'world.chair', chairScrape: 'world.chair-scrape', chairSettle: 'world.chair-settle', tableSettle: 'world.table-settle', coinScatter: 'world.coin-scatter',
   room: 'world.room',
   shop: 'world.shop',
   intro: 'intro.sting',
+  // Handling an item (pick up, hand over, pocket, buy, sell) by material. Never the item's use sound.
+  handleMetal: 'handle.metal', handleGlass: 'handle.glass', handleCloth: 'handle.cloth', handleWood: 'handle.wood', handlePaper: 'handle.paper', handleCoin: 'handle.coin',
 } as const;
+
+/** Music beds. 'threat' is a layer that sits on top of whichever bed is playing. */
+export const MUSIC_TRACK_IDS = ['table', 'shop', 'market', 'after'] as const;
+export type MusicTrackId = typeof MUSIC_TRACK_IDS[number];
 
 export type AudioCueId = typeof AUDIO_CUE_IDS[keyof typeof AUDIO_CUE_IDS];
 
@@ -58,7 +66,9 @@ export interface AudioStorage {
 export interface AudioParamLike {
   value: number;
   setValueAtTime?(value: number, when: number): void;
+  linearRampToValueAtTime?(value: number, when: number): void;
   exponentialRampToValueAtTime?(value: number, when: number): void;
+  cancelScheduledValues?(when: number): void;
 }
 
 export interface AudioNodeLike {
@@ -69,6 +79,7 @@ export interface AudioNodeLike {
 export interface OscillatorLike extends AudioNodeLike {
   type: string;
   frequency: AudioParamLike;
+  detune?: AudioParamLike;
   start(when?: number): void;
   stop(when?: number): void;
 }
@@ -91,7 +102,7 @@ export interface BufferLike {
 export interface BufferSourceLike extends AudioNodeLike {
   buffer: BufferLike | null;
   loop: boolean;
-  start(when?: number): void;
+  start(when?: number, offset?: number): void;
   stop?(when?: number): void;
 }
 
@@ -107,6 +118,10 @@ export interface AudioContextLike {
   createBiquadFilter(): FilterNodeLike;
   createBuffer(channels: number, length: number, sampleRate: number): BufferLike;
   createBufferSource(): BufferSourceLike;
+  /* Optional master-chain nodes. Missing nodes (tests, old browsers) fall back to a direct connection. */
+  createWaveShaper?(): AudioNodeLike & { curve: Float32Array | null };
+  createConvolver?(): AudioNodeLike & { buffer: BufferLike | null };
+  createDynamicsCompressor?(): AudioNodeLike & { threshold: AudioParamLike; ratio: AudioParamLike };
 }
 
 export type AudioContextFactory = () => AudioContextLike;
@@ -124,6 +139,8 @@ export interface AudioCueRequest {
   cue: AudioCueId;
   audience: AudioAudience;
   eventId?: string;
+  /** Cosmetic timing only; never delays the authoritative action. */
+  delaySeconds?: number;
 }
 
 export interface IntroState {
@@ -142,7 +159,11 @@ export interface IntroController {
 }
 
 export interface AudioEngineState {
+  music?: MusicTrackId | undefined;
+  threat?: boolean;
   volume: number;
+  roomVolume: number;
+  effectsVolume: number;
   muted: boolean;
   contextReady: boolean;
 }

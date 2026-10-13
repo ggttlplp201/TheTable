@@ -53,6 +53,11 @@ describe('TableClient', () => {
     expect(transport.socket.emit).toHaveBeenCalledWith('room:spectate', {}, expect.any(Function));
   });
 
+  it('leaves a pre-match lobby separately from the in-game leave-table action', async () => {
+    await new TableClient('http://table.test').leaveLobby();
+    expect(transport.socket.emit).toHaveBeenCalledWith('lobby:leave', {}, expect.any(Function));
+  });
+
   it('coalesces concurrent reconnects that use the same one-time token', async () => {
     const client = new TableClient('http://table.test');
 
@@ -64,11 +69,30 @@ describe('TableClient', () => {
     expect(transport.socket.emit).toHaveBeenCalledWith('room:reconnect', {
       code: 'ABC123',
       reconnectToken: 'single-use-token',
+      idempotencyKey: expect.any(String),
     }, expect.any(Function));
     await first;
 
     await client.reconnect('ABC123', 'single-use-token');
     expect(transport.socket.emit).toHaveBeenCalledTimes(2);
+  });
+
+  it('reuses the reconnect receipt key after a lost acknowledgement', async () => {
+    vi.useFakeTimers();
+    try {
+      transport.socket.emit.mockImplementationOnce(() => transport.socket);
+      const client = new TableClient('http://table.test');
+      const first = client.reconnect('ABC123', 'recoverable-token');
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(await first).toMatchObject({ ok: false, error: { code: 'TIMEOUT' } });
+      const firstPayload = transport.socket.emit.mock.calls[0]![1] as { idempotencyKey: string };
+
+      await client.reconnect('ABC123', 'recoverable-token');
+      const retryPayload = transport.socket.emit.mock.calls[1]![1] as { idempotencyKey: string };
+      expect(retryPayload.idempotencyKey).toBe(firstPayload.idempotencyKey);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('uses explicit opt-in presence before browser voice signaling', async () => {

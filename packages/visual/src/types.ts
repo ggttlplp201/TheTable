@@ -14,6 +14,7 @@ export const ITEM_MODEL_IDS = [
   'bullet',
   'poison',
   'medicine',
+  'stimulant',
   'antidote',
   'armor',
   'armorBroken',
@@ -42,6 +43,7 @@ export const CHARACTER_IDS = [
   'locksmith',
   'broker',
   'scavenger',
+  'dealer',
   'tallyman',
   'fence',
 ] as const;
@@ -112,6 +114,7 @@ export interface PostPipeline {
   readonly camera: Camera;
   readonly texture: Texture;
   resize(width: number, height: number): void;
+  setGrain(amount: number): void;
   render(scene: Scene, camera: Camera, timeSeconds?: number): void;
   dispose(): void;
 }

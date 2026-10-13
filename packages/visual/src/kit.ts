@@ -24,7 +24,10 @@ import {
   TorusGeometry,
   type ColorRepresentation,
 } from 'three';
+import * as THREE from 'three';
 import { ResourceTracker } from './dispose.js';
+import { install as installReferenceKit, type ReferenceKit, type ReferenceRig, type WildcardCardId } from './reference-kit.js';
+export type { WildcardCardId } from './reference-kit.js';
 import { createSeededRandom, deriveSeed, type RandomSource } from './random.js';
 import type {
   CanvasFactory,
@@ -52,6 +55,9 @@ export interface SurfaceMaterials {
   brass: MeshPhongMaterial;
   brassDouble: MeshPhongMaterial;
   brassPale: MeshPhongMaterial;
+  brassWorn: MeshPhongMaterial;
+  spine: MeshLambertMaterial;
+  iris: MeshLambertMaterial;
   wood: MeshLambertMaterial;
   bone: MeshLambertMaterial;
   white: MeshLambertMaterial;
@@ -124,6 +130,8 @@ export class VisualKit {
   }
 
   dispose(): void {
+    this.#reference?.releaseWildcardCache();
+    this.#reference = undefined;
     this.#resources.dispose();
   }
 
@@ -220,6 +228,53 @@ export class VisualKit {
     return model;
   }
 
+  /** The source's chalk three-round outline and physical cartridges occupy one slot. */
+  createAmmoSlot(quantity: number): Group {
+    const texture = this.texture('ammo-slot:chalk', 32, 32, context => {
+      context.clearRect(0, 0, 32, 32); context.strokeStyle = 'rgba(255,255,255,.88)'; context.lineWidth = 1;
+      for (const x of [7, 16, 25]) {
+        context.beginPath(); context.moveTo(x - 2.5, 27.5); context.lineTo(x - 2.5, 12);
+        context.quadraticCurveTo(x, 4, x + 2.5, 12); context.lineTo(x + 2.5, 27.5); context.closePath(); context.stroke();
+      }
+    });
+    const chalk = this.mesh(new PlaneGeometry(.2, .2), new MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false }), 0, .0008, 0, -PI / 2);
+    chalk.name = 'ammoChalk';
+    const group = this.group(chalk); group.name = 'ammoSlot';
+    for (let index = 0; index < 3; index++) {
+      const round = this.createItem('bullet'); round.name = `ammoRound${index}`;
+      round.rotation.x = -PI / 2; round.position.set(-.056 + index * .056, .013, .035); round.scale.setScalar(1.15); group.add(round);
+    }
+    this.setAmmoQuantity(group, quantity);
+    return group;
+  }
+
+  setAmmoQuantity(group: Group, quantity: number): void {
+    const count = Math.max(0, Math.min(3, Math.floor(quantity)));
+    group.userData.quantity = count;
+    group.getObjectByName('ammoChalk')!.visible = count > 0;
+    for (let index = 0; index < 3; index++) group.getObjectByName(`ammoRound${index}`)!.visible = index < count;
+  }
+
+  /** Covered props never instantiate the concealed item: public viewers get cloth only. */
+  setCharacterThreat(character: Group, kind: 'cloth' | 'pistol' | 'knife' | null): void {
+    if (character.userData.threat === kind) return;
+    const hand = character.getObjectByName('armRight')?.getObjectByName('hand');
+    if (!hand) return;
+    character.userData.threat = kind;
+    const cache = (character.userData.threatProps ??= {}) as Partial<Record<'cloth' | 'pistol' | 'knife', Group>>;
+    for (const prop of Object.values(cache)) prop.visible = false;
+    if (!kind) return;
+    let prop = cache[kind];
+    if (!prop) {
+      prop = this.createItem(kind); prop.name = `threat:${kind}`;
+      if (kind === 'cloth') { prop.scale.set(2.2, 1.9, 2.2); prop.position.y = -.12; }
+      else prop.rotation.z = -PI / 2;
+      const held = this.group(prop); held.scale.setScalar(1.3); held.position.set(0, -.05, .04); held.name = `held:${kind}`;
+      hand.add(held); cache[kind] = held; prop = held;
+    }
+    prop.visible = true;
+  }
+
   createPocket(open = false): Group {
     const m = this.materials;
     const lid = named(new Group(), 'lid');
@@ -287,133 +342,121 @@ export class VisualKit {
     return chest;
   }
 
+  /** Character models come from the design kit (reference-kit.js) so the table, shops and portraits are identical. */
+  #reference: ReferenceKit | undefined;
+  #referenceKit(): ReferenceKit {
+    if (!this.#reference) {
+      this.#reference = installReferenceKit({ canvasFactory: this.#canvasFactory, trackResource: (resource: { dispose(): void }) => this.#resources.track(resource) }, THREE);
+      // The design kit creates shared materials eagerly, including ones unused by this role.
+      for (const material of Object.values(this.#reference.m)) {
+        this.#resources.track(material);
+        const map = (material as Material & { map?: THREE.Texture | null }).map;
+        if (map) this.#resources.track(map);
+      }
+    }
+    return this.#reference;
+  }
+
+  /** Artwork is keyed through the handoff's original IDs so paper wear stays exact. */
+  wildcardTex(id: WildcardCardId | 'back' = 'back'): CanvasTexture {
+    return this.#resources.track(this.#referenceKit().wildcardTex(id));
+  }
+
+  /** Private/opponent placeholders use the shared back on both faces. */
+  wildcardCard(id: WildcardCardId | 'back' = 'back'): Group {
+    return this.#trackWildcard(this.#referenceKit().wildcardCard(id));
+  }
+
+  wildcardDeck(count = 14): Group {
+    return this.#trackWildcard(this.#referenceKit().wildcardDeck(count));
+  }
+
+  setWildcardGlow(card: Group, value: number): void {
+    this.#referenceKit().setWildcardGlow(card, value);
+  }
+
+  setWildcardFace(card: Group, id: WildcardCardId | 'back'): void {
+    this.#referenceKit().setWildcardFace(card, id);
+    this.wildcardTex(id);
+  }
+
+  createCoin(): Group { return this.#trackWildcard(this.#referenceKit().coinMesh()); }
+
+  createPlayerChair(): Group { return this.#trackWildcard(this.#referenceKit().playerChair()); }
+  createFirstPersonLegs(): Group { return this.#trackWildcard(this.#referenceKit().fpLegs()); }
+  createFirstPersonHands(): Group { return this.#trackWildcard(this.#referenceKit().fpHands()); }
+
+  #trackWildcard(root: Group): Group {
+    root.traverse(object => {
+      const mesh = object as Mesh;
+      if (mesh.geometry) this.#resources.track(mesh.geometry);
+      for (const material of Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : []) {
+        this.#resources.track(material);
+        for (const value of Object.values(material)) if (value instanceof THREE.Texture) this.#resources.track(value);
+      }
+    });
+    return root;
+  }
+
+  /** Supplied brass back-face hull, isolated to tutorial highlights. */
+  setTutorialOutline(object: Object3D, visible: boolean): void {
+    let hull = object.userData.tutorialHull as Group | undefined;
+    if (!hull && visible) {
+      hull = new Group();
+      const material = this.#resources.track(new MeshBasicMaterial({ color: 0xe0a040, side: THREE.BackSide }));
+      object.updateMatrixWorld(true);
+      const inverse = new THREE.Matrix4().copy(object.matrixWorld).invert();
+      object.traverse(child => {
+        if (!(child instanceof Mesh)) return;
+        const outline = new Mesh(child.geometry, material); outline.matrixAutoUpdate = false;
+        outline.matrix.copy(inverse).multiply(child.matrixWorld).multiply(new THREE.Matrix4().makeScale(1.09, 1.09, 1.09));
+        hull!.add(outline);
+      });
+      object.add(hull); object.userData.tutorialHull = hull;
+    }
+    if (hull) hull.visible = visible;
+  }
+
   createCharacter(role: CharacterId, seatColor: number, label = '', pose: CharacterPose = 'seated'): Group {
-    const m = this.materials;
-    const standing = pose === 'standing';
-    const palettes: Record<CharacterId, readonly [number, number, number]> = {
-      enforcer: [0x24282c, 0x6a5444, 0x1c1e20],
-      medic: [0x5e5c56, 0x7a6450, 0x34322e],
-      smuggler: [0x2c241e, 0x6e5a48, 0x221c18],
-      locksmith: [0x3a3026, 0x7a6450, 0x2a221c],
-      broker: [0x26282e, 0x6e5a48, 0x1e2024],
-      scavenger: [0x3c3c2a, 0x6a5444, 0x2e2a20],
-      tallyman: [0x4a3c2c, 0x7a6450, 0x2a221c],
-      fence: [0x1c1614, 0x3a2c22, 0x141010],
-    };
-    const palette = palettes[role];
-    const coat = this.flatMaterial(palette[0]);
-    const skin = this.flatMaterial(palette[1]);
-    const trousers = this.flatMaterial(palette[2]);
-    const boots = this.flatMaterial(0x151210);
-    const band = this.#resources.track(new MeshLambertMaterial({
-      color: seatColor,
-      emissive: seatColor,
-      emissiveIntensity: 0.2,
-    }));
-    const capsule = (radius: number, length: number, material: Material) =>
-      this.mesh(new CapsuleGeometry(radius, length, 3, 8), material);
-    const ellipsoid = (x: number, y: number, z: number, material: Material) => {
-      const shape = this.mesh(new SphereGeometry(1, 10, 8), material);
-      shape.scale.set(x, y, z);
-      return shape;
-    };
-
-    const root = new Group();
-    const upper = named(new Group(), 'upper');
-    upper.position.y = standing ? 0.98 : 0.76;
-    root.add(upper);
-    const head = named(new Group(), 'head');
-    head.position.y = 0.8;
-    upper.add(head);
-
-    const torso = this.mesh(new CylinderGeometry(0.3, 0.24, 0.72, 12), coat, 0, 0.36, 0);
-    torso.scale.z = 0.62;
-    const sash = this.mesh(new CylinderGeometry(0.25, 0.255, 0.07, 12), band, 0, 0.14, 0);
-    sash.scale.z = 0.66;
-    upper.add(torso, sash);
-    const shoulders = capsule(0.12, 0.52, coat);
-    shoulders.position.set(0, 0.68, 0);
-    shoulders.rotation.z = PI / 2;
-    upper.add(shoulders);
-
-    const face = ellipsoid(0.155, 0.18, 0.16, skin);
-    face.position.set(0, 0.17, 0);
-    head.add(face);
-    for (const x of [-0.062, 0.062]) {
-      const eye = ellipsoid(0.028, 0.016, 0.01, m.black);
-      eye.position.set(x, 0.19, 0.147);
-      head.add(eye);
+    const root = this.#referenceKit().character(role, seatColor, label, pose);
+    const rig = root.userData.P as ReferenceRig;
+    // Names and rest poses the runtimes and setCharacterThreat rely on.
+    rig.up.name = 'upper'; rig.head.name = 'head';
+    for (const [arm, name] of [[rig.aL, 'armLeft'], [rig.aR, 'armRight']] as const) {
+      arm.sh.name = name; arm.el.name = 'elbow'; arm.hand.name = 'hand';
+      arm.sh.userData.restX = arm.bx; arm.el.userData.restX = arm.be;
     }
-
-    const arms: Group[] = [];
-    for (const side of [-1, 1]) {
-      const shoulder = named(new Group(), side < 0 ? 'armLeft' : 'armRight');
-      shoulder.position.set(side * 0.38, 0.68, 0);
-      const upperArm = capsule(0.065, 0.3, coat);
-      upperArm.position.y = -0.2;
-      shoulder.add(upperArm);
-      const elbow = new Group();
-      elbow.position.y = -0.42;
-      const lowerArm = capsule(0.058, 0.28, coat);
-      lowerArm.position.y = -0.19;
-      elbow.add(lowerArm);
-      const hand = named(new Group(), 'hand');
-      hand.position.y = -0.4;
-      const palm = ellipsoid(0.055, 0.065, 0.045, skin);
-      hand.add(palm);
-      elbow.add(hand);
-      shoulder.add(elbow);
-      shoulder.rotation.z = standing ? side * 0.1 : -side * 0.12;
-      shoulder.userData.restX = standing ? 0 : -0.4;
-      elbow.userData.restX = standing ? -0.15 : -1.1;
-      upper.add(shoulder);
-      arms.push(shoulder);
-    }
-
-    if (standing) {
-      for (const side of [-1, 1]) {
-        const thigh = capsule(0.09, 0.36, trousers);
-        thigh.position.set(side * 0.13, 0.7, 0);
-        const shin = capsule(0.075, 0.32, trousers);
-        shin.position.set(side * 0.13, 0.3, 0);
-        const boot = ellipsoid(0.08, 0.06, 0.14, boots);
-        boot.position.set(side * 0.13, 0.05, 0.04);
-        root.add(thigh, shin, boot);
+    root.traverse(object => {
+      const mesh = object as Object3D & { geometry?: { dispose(): void }; material?: Material | Material[] };
+      if (mesh.geometry) this.#resources.track(mesh.geometry);
+      for (const material of Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : []) {
+        this.#resources.track(material);
+        const map = (material as Material & { map?: { dispose(): void } | null }).map; if (map) this.#resources.track(map);
       }
-    } else {
-      const chair = named(this.group(
-        this.mesh(new BoxGeometry(0.62, 0.06, 0.6), m.wood, 0, 0.5, 0),
-        this.mesh(new BoxGeometry(0.62, 1.1, 0.06), m.wood, 0, 1.05, -0.32),
-      ), 'chair');
-      for (const x of [-0.25, 0.25]) for (const z of [-0.24, 0.24]) {
-        chair.add(this.mesh(new BoxGeometry(0.055, 0.48, 0.055), m.wood, x, 0.24, z));
-      }
-      root.add(chair);
-    }
-
-    this.#decorateCharacter(root, role, upper, head, arms);
+    });
     root.userData.characterId = role;
+    root.userData.role = role;
     root.userData.pose = pose;
     root.userData.label = label;
-    root.userData.rig = { upper, head, arms };
+    root.userData.rig = { upper: rig.up, head: rig.head, arms: [rig.aL.sh, rig.aR.sh] };
+    root.userData.hands = [rig.aL.hand, rig.aR.hand];
     return root;
   }
 
   animateCharacter(character: Group, timeSeconds: number, phase = 0): void {
-    const rig = character.userData.rig as { upper: Group; head: Group; arms: Group[] } | undefined;
+    const rig = character.userData.P as ReferenceRig | undefined;
     if (!rig) return;
     const standing = character.userData.pose === 'standing';
-    const wave = Math.sin;
-    rig.upper.scale.y = 1 + wave(timeSeconds * 1.6 + phase) * 0.012;
-    rig.upper.rotation.z = wave(timeSeconds * 0.7 + phase) * 0.02;
-    rig.head.rotation.set(
-      wave(timeSeconds * 0.9 + phase) * 0.04,
-      wave(timeSeconds * 0.5 + phase) * (standing ? 0.25 : 0.18),
-      0,
-    );
-    rig.arms.forEach((arm, index) => {
-      arm.rotation.x = Number(arm.userData.restX ?? 0) + (standing ? wave(timeSeconds * 1.6 + phase) * (index ? -0.04 : 0.04) : 0);
-    });
+    // Runtimes may override rest poses (market keepers lean on the counter) through userData.restX.
+    for (const arm of [rig.aL, rig.aR]) { arm.bx = Number(arm.sh.userData.restX ?? arm.bx); arm.be = Number(arm.el.userData.restX ?? arm.be); }
+    rig.threat = (character.userData.threat as string | null | undefined) ?? null;
+    this.#referenceKit().idle(character, timeSeconds, phase, standing);
+    if (!rig.threat) { rig.aR.sh.rotation.z = standing ? .1 : -.12; rig.aL.sh.rotation.z = standing ? -.1 : .12; }
+  }
+
+  animateDownedCharacter(character: Group, elapsedSeconds: number, timeSeconds: number, phase = 0): void {
+    this.animateCharacter(character, timeSeconds, phase);
+    this.#referenceKit().downedAt(character, elapsedSeconds, timeSeconds);
   }
 
   #createMaterials(): SurfaceMaterials {
@@ -443,6 +486,9 @@ export class VisualKit {
       brass: phong(0xa47a38, 45, { specular: 0xd0a868 }),
       brassDouble: phong(0xa47a38, 45, { specular: 0xd0a868, side: DoubleSide }),
       brassPale: phong(0xc4a85a, 60, { specular: 0xe0d090 }),
+      brassWorn: phong(0x8a6c36, 25, { specular: 0x8a7a50 }),
+      spine: lambert(0x4a120e),
+      iris: lambert(0x3e7a70),
       wood: lambert(0xffffff, { map: woodTexture }),
       bone: lambert(0xd6c9ab),
       white: lambert(0xe6e1d6),
@@ -484,21 +530,25 @@ export class VisualKit {
         const chamber = named(this.mesh(new CylinderGeometry(0.04, 0.04, 0.075, 6), m.metal, 0.04, 0.09, 0, 0, 0, PI / 2), 'cylinder');
         const hammer = named(box(0.025, 0.03, 0.02, m.dark, -0.055, 0.14), 'hammer');
         return this.group(
-          this.mesh(new CylinderGeometry(0.022, 0.022, 0.2, 6), m.metal, 0.14, 0.1, 0, 0, 0, PI / 2),
+          this.mesh(new CylinderGeometry(0.022, 0.022, 0.2, 8), m.metal, 0.14, 0.1, 0, 0, 0, PI / 2),
           box(0.14, 0.075, 0.05, m.dark, 0.02, 0.09), chamber,
           this.mesh(new BoxGeometry(0.055, 0.13, 0.045), m.wood, -0.075, 0.025, 0, 0, 0, -0.35),
-          hammer,
+          this.mesh(new TorusGeometry(.024, .006, 4, 8, PI), m.dark, 0, .05, 0, 0, 0, PI),
+          hammer, box(.012, .02, .012, m.metal, .23, .125),
         );
       }
       case 'bullet':
-        return this.group(cylinder(0.011, 0.011, 0.04, m.brass, 10), cylinder(0.013, 0.013, 0.005, m.brass, 10), this.mesh(new ConeGeometry(0.011, 0.022, 10), m.copper, 0, 0.036));
+        return this.group(this.mesh(new CylinderGeometry(.011, .011, .04, 10), m.brass, 0, .025), this.mesh(new CylinderGeometry(.013, .013, .005, 10), m.brass, 0, .0025), this.mesh(new CylinderGeometry(.003, .011, .022, 10), m.copper, 0, .056));
       case 'poison': {
         const cork = named(this.mesh(new CylinderGeometry(0.021, 0.017, 0.045, 6), m.leather, 0, 0.27), 'cork');
         return this.group(
           this.mesh(new SphereGeometry(0.078, 9, 7), m.glassGreen, 0, 0.078),
           this.mesh(new CylinderGeometry(0.022, 0.024, 0.11, 7), m.glassGreen, 0, 0.19),
+          this.mesh(new CylinderGeometry(.031, .031, .012, 7), m.glassGreen, 0, .246),
           cork,
           this.mesh(new CylinderGeometry(0.034, 0.034, 0.014, 7), m.red, 0, 0.25),
+          this.mesh(new BoxGeometry(.05, .065, .004), m.bone, .035, .15, .055, 0, .3, .25),
+          this.mesh(new BoxGeometry(.022, .022, .006), m.red, .036, .15, .058, 0, .3, .25),
         );
       }
       case 'medicine': {
@@ -508,41 +558,68 @@ export class VisualKit {
           box(0.009, 0.004, 0.03, m.red, 0, 0.018),
         ), 'cap');
         cap.position.y = 0.145;
-        const seal = named(cylinder(0.031, 0.031, 0.004, m.silver, 12), 'seal');
+        const seal = named(this.group(this.mesh(new CylinderGeometry(.031, .031, .004, 12), m.silver, 0, 0, .031)), 'seal');
         seal.position.set(0, 0.132, -0.031);
         return this.group(
           this.mesh(new CylinderGeometry(0.055, 0.055, 0.11, 12), m.glassPale, 0, 0.055),
           this.mesh(new CylinderGeometry(0.057, 0.057, 0.05, 12), m.bone, 0, 0.055),
+          box(.04, .012, .01, m.red, 0, .055, .058),
+          box(.012, .04, .01, m.red, 0, .055, .058),
+          this.mesh(new CylinderGeometry(.03, .034, .02, 12), m.dark, 0, .12),
           seal, cap,
         );
       }
+      case 'stimulant':
+        return this.group(
+          this.mesh(new CylinderGeometry(.026, .026, .075, 10), m.glassAmber, 0, .0395),
+          this.mesh(new CylinderGeometry(.0275, .0275, .034, 10), m.bone, 0, .042),
+          box(.013, .004, .003, m.red, 0, .044, .028),
+          box(.004, .013, .003, m.red, 0, .044, .028),
+          this.mesh(new CylinderGeometry(.026, .012, .02, 10), m.glassAmber, 0, .087),
+          this.mesh(new CylinderGeometry(.008, .008, .018, 8), m.glassAmber, 0, .105),
+          this.mesh(new CylinderGeometry(.011, .011, .013, 8), m.dark, 0, .12),
+          this.mesh(new CylinderGeometry(.027, .027, .004, 10), m.dark, 0, .002),
+        );
       case 'antidote': {
         const dose = named(this.mesh(new CylinderGeometry(0.02, 0.02, 0.16, 8), m.glassAmber, 0, 0.13), 'dose');
-        const plunger = named(this.group(cylinder(0.007, 0.007, 0.07, m.metal, 6), cylinder(0.03, 0.03, 0.01, m.metal, 8)), 'plunger');
+        const plunger = named(this.group(cylinder(0.007, 0.007, 0.07, m.metal, 6), this.mesh(new CylinderGeometry(.03, .03, .01, 8), m.metal, 0, .04)), 'plunger');
         plunger.position.y = 0.25;
         return this.group(
           dose,
           this.mesh(new CylinderGeometry(0.024, 0.024, 0.16, 8), m.glassPale, 0, 0.13),
+          this.mesh(new CylinderGeometry(.025, .025, .015, 8), m.metal, 0, .05),
+          this.mesh(new CylinderGeometry(.025, .025, .015, 8), m.metal, 0, .21),
           box(0.08, 0.01, 0.025, m.metal, 0, 0.215),
           plunger,
+          this.mesh(new CylinderGeometry(.015, .009, .03, 6), m.silver, 0, .03),
           this.mesh(new CylinderGeometry(0.006, 0.006, 0.075, 4), m.silver, 0, -0.02),
+          this.mesh(new ConeGeometry(.006, .028, 4), m.silver, 0, -.071, 0, PI),
         );
       }
       case 'armor':
       case 'armorBroken': {
         const broken = id === 'armorBroken';
+        if (broken) return this.group(
+          this.mesh(new CylinderGeometry(.11, .1, .17, 6, 1, true, -1.1, 1), m.rustDouble, -.01, .085, 0, 0, 0, .06),
+          this.mesh(new CylinderGeometry(.11, .1, .12, 5, 1, true, .12, .98), m.rustDouble, .035, .05, .012, .1, 0, -.4),
+          this.mesh(new CylinderGeometry(.113, .113, .02, 6, 1, true, -1.1, 1), m.brassDouble, -.01, .165, 0, 0, 0, .06),
+          this.mesh(new BoxGeometry(.03, .2, .012), m.leather, -.105, .085, -.02, 0, -1),
+          box(.014, .012, .012, m.metal, .05, .006, .1), box(.018, .01, .012, m.metal, .1, .006, .07),
+        );
         const shell = this.mesh(new CylinderGeometry(0.11, 0.1, 0.17, broken ? 6 : 10, 1, true, -1.1, broken ? 1 : 2.2), broken ? m.rustDouble : m.metalDouble, 0, 0.085);
         return this.group(
           shell,
           this.mesh(new CylinderGeometry(0.113, 0.113, 0.02, 10, 1, true, -1.1, 2.2), m.brassDouble, 0, 0.165),
-          box(0.03, 0.2, 0.012, m.leather, -0.105, 0.085, -0.02),
-          box(0.03, 0.2, 0.012, m.leather, 0.105, 0.085, -0.02),
+          this.mesh(new CylinderGeometry(.103, .103, .02, 10, 1, true, -1.1, 2.2), m.brassDouble, 0, .008),
+          ...[[-.7, .13], [.7, .13], [-.7, .04], [.7, .04]].map(([angle, y]) => this.mesh(new SphereGeometry(.009, 4, 3), m.brass, Math.sin(angle!) * .112, y, Math.cos(angle!) * .112)),
+          this.mesh(new BoxGeometry(.03, .2, .012), m.leather, -.105, .085, -.02, 0, -1),
+          this.mesh(new BoxGeometry(.03, .2, .012), m.leather, .105, .085, -.02, 0, 1),
         );
       }
       case 'cloth': {
         const drape = this.mesh(new SphereGeometry(0.12, 8, 5, 0, PI * 2, 0, PI / 2), m.cloth);
         drape.scale.set(1.05, 0.55, 0.9);
-        return this.group(drape, box(0.12, 0.004, 0.006, m.bone, 0, 0.066, 0.02));
+        return this.group(drape, ...[.3, 1.9, 3.5, 5].map(angle => this.mesh(new BoxGeometry(.07, .008, .07), m.cloth, Math.cos(angle) * .12, .004, Math.sin(angle) * .11, 0, angle + PI / 4)), this.mesh(new BoxGeometry(.12, .004, .006), m.bone, 0, .066, .02, 0, .3));
       }
       case 'bag': {
         const body = box(0.2, 0.15, 0.09, m.leather, 0, 0.085, 0);
@@ -552,52 +629,63 @@ export class VisualKit {
         return this.group(body, flap, strap, box(0.035, 0.035, 0.012, m.brass, 0, 0.13, 0.065));
       }
       case 'safe': {
-        const door = named(this.group(box(0.196, 0.156, 0.014, m.metal, 0.1), cylinder(0.025, 0.025, 0.012, m.brass, 12)), 'door');
+        const dialModel = this.group(this.mesh(new CylinderGeometry(.025, .025, .012, 12), m.brass, 0, 0, 0, PI / 2), box(.004, .01, .004, m.black, 0, .019, .007));
+        const door = named(this.group(box(0.196, 0.156, 0.014, m.metal, 0.1), dialModel), 'door');
         door.position.set(-0.1, 0.08, 0.087);
         const dial = door.children[1];
         if (!dial) throw new Error('Safe dial construction failed.');
         dial.name = 'dial';
         dial.position.set(0.08, 0.012, 0.01);
         const handle = named(box(0.01, 0.04, 0.012, m.brass, 0.15, -0.01, 0.013), 'handle');
-        door.add(handle);
+        door.add(handle, box(.01, .03, .012, m.brass, .004, .045), box(.01, .03, .012, m.brass, .004, -.045));
         return this.group(
           box(0.2, 0.015, 0.16, m.dark, 0, 0.0075),
           box(0.2, 0.015, 0.16, m.dark, 0, 0.1525),
           box(0.015, 0.16, 0.16, m.dark, -0.0925, 0.08),
           box(0.015, 0.16, 0.16, m.dark, 0.0925, 0.08),
           box(0.2, 0.16, 0.015, m.dark, 0, 0.08, -0.0725),
-          door,
+          box(.17, .13, .004, m.velvet, 0, .08, -.063), door,
+          ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => box(.02, .008, .02, m.brass, a! * .085, -.004, b! * .065)),
         );
       }
       case 'spyglass': {
         const tube2 = named(this.mesh(new CylinderGeometry(0.025, 0.025, 0.1, 8), m.brass, 0.04, 0.036, 0, 0, 0, PI / 2), 'tube2');
         const tube3 = named(this.mesh(new CylinderGeometry(0.02, 0.02, 0.06, 8), m.brass, 0.11, 0.036, 0, 0, 0, PI / 2), 'tube3');
-        return this.group(this.mesh(new CylinderGeometry(0.03, 0.03, 0.12, 8), m.leather, -0.06, 0.036, 0, 0, 0, PI / 2), tube2, tube3);
+        return this.group(this.mesh(new CylinderGeometry(0.03, 0.03, 0.12, 8), m.leather, -0.06, 0.036, 0, 0, 0, PI / 2), tube2, tube3, this.mesh(new CylinderGeometry(.036, .03, .02, 8), m.brass, -.12, .036, 0, 0, 0, PI / 2), this.mesh(new CylinderGeometry(.03, .03, .005, 8), m.glassPale, -.131, .036, 0, 0, 0, PI / 2));
       }
       case 'pickpocket':
         return this.group(
           this.mesh(new CylinderGeometry(0.006, 0.006, 0.22, 5), m.metal, 0.03, 0.012, 0, 0, 0, PI / 2),
           this.mesh(new TorusGeometry(0.025, 0.005, 4, 8, PI * 1.2), m.metal, 0.14, 0.012, -0.025, PI / 2),
           this.mesh(new CylinderGeometry(0.016, 0.014, 0.09, 7), m.leather, -0.09, 0.014, 0, 0, 0, PI / 2),
+          ...[-.12, -.09, -.06].map(x => this.mesh(new CylinderGeometry(.017, .017, .006, 7), m.brass, x, .014, 0, 0, 0, PI / 2)),
         );
       case 'key':
       case 'blackKey': {
         const black = id === 'blackKey';
+        if (black) return this.group(
+          this.mesh(new OctahedronGeometry(.05, 0), m.black, -.09, .03),
+          named(this.mesh(new OctahedronGeometry(.016, 0), m.glowRed, -.09, .03, .036), 'gem'),
+          this.mesh(new TorusGeometry(.03, .006, 4, 10), m.brass, -.035, .02, 0, 0, PI / 2),
+          box(.15, .016, .016, m.black, .04, .02), box(.016, .016, .04, m.black, .08, .02, .025),
+          box(.016, .016, .02, m.black, .1, .02, .015), box(.016, .016, .05, m.black, .12, .02, .03),
+        );
         const material = black ? m.black : m.brass;
         const key = this.group(
-          this.mesh(new TorusGeometry(black ? 0.04 : 0.035, 0.01, 4, 10), material, -0.08, 0.02, 0, PI / 2),
-          box(black ? 0.16 : 0.13, 0.014, 0.014, material, 0.02, 0.02),
-          box(0.014, 0.014, 0.03, material, 0.06, 0.02, 0.02),
-          box(0.014, 0.014, 0.022, material, 0.09, 0.02, 0.016),
+          this.mesh(new TorusGeometry(.035, 0.01, 4, 10), material, -0.08, 0.01, 0, PI / 2),
+          box(.13, 0.014, 0.014, material, 0.02, 0.01),
+          box(0.014, 0.014, 0.03, material, 0.06, 0.01, 0.02),
+          box(0.014, 0.014, 0.022, material, 0.08, 0.01, 0.016),
         );
         if (black) key.add(named(this.mesh(new OctahedronGeometry(0.016), m.glowRed, -0.08, 0.03, 0.036), 'gem'));
         return key;
       }
       case 'lockpick': {
-        const roll = this.group(box(0.2, 0.012, 0.11, m.leather, 0, 0.006));
+        const roll = this.group(box(0.2, 0.012, 0.11, m.leather, 0, 0.006), this.mesh(new CylinderGeometry(.022, .022, .11, 8), m.leather, .1, .022, 0, PI / 2), box(.012, .014, .115, m.bone, -.07, .013));
         [-0.04, -0.01, 0.02, 0.05].forEach((x, index) => {
-          const pick = named(box(0.007, 0.006, 0.13, index % 2 ? m.silver : m.metal, 0, 0, -0.07), `pick${index}`);
+          const pick = named(this.group(box(0.007, 0.006, 0.13, index % 2 ? m.silver : m.metal, 0, 0, -0.07), this.mesh(new TorusGeometry(.009, .003, 3, 6), m.brass, 0, 0, 0, PI / 2)), `pick${index}`);
           pick.position.set(x, 0.017, 0.04);
+          pick.rotation.y = [0, .12, -.1, .06][index]!;
           roll.add(pick);
         });
         return roll;
@@ -606,31 +694,38 @@ export class VisualKit {
         return this.group(
           box(0.36, 0.022, 0.022, m.rust, 0, 0.015),
           this.mesh(new TorusGeometry(0.04, 0.012, 4, 8, PI), m.rust, -0.18, 0.015, 0.04, PI / 2, 0, PI / 2),
+          this.mesh(new BoxGeometry(.05, .008, .03), m.rust, .2, .012, 0, 0, .3),
         );
       case 'handcuffs': {
         const cuff = (side: number) => named(this.group(
-          this.mesh(new TorusGeometry(0.045, 0.01, 5, 12), m.metal),
+          this.mesh(new TorusGeometry(0.045, 0.01, 5, 12), m.metal, 0, 0, 0, PI / 2),
           box(0.022, 0.026, 0.032, m.metal, side * 0.045),
+          box(.012, .02, .014, m.dark, -side * .042),
         ), side < 0 ? 'cuffLeft' : 'cuffRight');
         const left = cuff(-1); left.position.set(-0.07, 0.012, 0);
         const right = cuff(1); right.position.set(0.07, 0.012, 0);
-        return this.group(left, right, this.mesh(new TorusGeometry(0.009, 0.003, 3, 6), m.metal, -0.01, 0.012));
+        return this.group(left, right, this.mesh(new TorusGeometry(0.009, 0.003, 3, 6), m.metal, -0.01, 0.012), this.mesh(new TorusGeometry(.009, .003, 3, 6), m.metal, .01, .012, 0, 0, PI / 2));
       }
       case 'brassIdol': {
-        const body = this.mesh(new SphereGeometry(0.05, 8, 6), m.brassPale, 0, 0.08);
+        const body = this.mesh(new SphereGeometry(0.05, 8, 6), m.brassWorn, 0, 0.08);
         body.scale.set(1, 1.15, 0.85);
         return this.group(
-          cylinder(0.05, 0.056, 0.025, m.brassPale, 8),
+          this.mesh(new CylinderGeometry(.05, .056, .025, 8), m.brassWorn, 0, .0125),
+          this.mesh(new CylinderGeometry(.04, .05, .015, 8), m.dark, 0, .032),
           body,
-          this.mesh(new SphereGeometry(0.032, 8, 6), m.brassPale, 0, 0.155),
+          this.mesh(new SphereGeometry(0.032, 8, 6), m.brassWorn, 0, 0.155),
+          this.mesh(new ConeGeometry(.012, .03, 4), m.brassWorn, -.022, .185, 0, 0, 0, .4),
+          this.mesh(new ConeGeometry(.012, .03, 4), m.brassWorn, .022, .185, 0, 0, 0, -.4),
           box(0.012, 0.006, 0.004, m.black, -0.011, 0.158, 0.03),
           box(0.012, 0.006, 0.004, m.black, 0.011, 0.158, 0.03),
+          this.mesh(new TorusGeometry(.03, .007, 4, 10), m.brassWorn, 0, .08, .03),
+          this.mesh(new OctahedronGeometry(.011, 0), m.red, 0, .1, .045),
         );
       }
       case 'glassEye':
         return this.group(
           this.mesh(new SphereGeometry(0.055, 10, 8), m.white, 0, 0.055),
-          this.mesh(new CylinderGeometry(0.026, 0.026, 0.01, 12), m.glassGreen, 0, 0.055, 0.05, PI / 2),
+          this.mesh(new CylinderGeometry(0.026, 0.026, 0.01, 12), m.iris, 0, 0.055, 0.05, PI / 2),
           this.mesh(new CylinderGeometry(0.012, 0.012, 0.012, 10), m.black, 0, 0.055, 0.056, PI / 2),
         );
       case 'redLedger':
@@ -638,50 +733,19 @@ export class VisualKit {
           box(0.16, 0.012, 0.2, m.red, 0, 0.006),
           box(0.15, 0.03, 0.19, m.bone, 0.004, 0.027),
           box(0.16, 0.012, 0.2, m.red, 0, 0.048),
-          box(0.014, 0.054, 0.2, m.leather, -0.08, 0.027),
+          box(0.014, 0.054, 0.2, m.spine, -0.08, 0.027),
+          box(.166, .058, .025, m.leather, 0, .027, -.04),
+          this.mesh(new CylinderGeometry(.024, .024, .008, 10), m.brass, .045, .056, .05),
+          box(.03, .004, .006, m.black, .045, .061, .05),
         );
       case 'passageToken':
         return this.group(
           this.mesh(new CylinderGeometry(0.075, 0.075, 0.014, 14), m.brass, 0, 0.007),
           this.mesh(new CylinderGeometry(0.06, 0.06, 0.004, 14), m.dark, 0, 0.016),
           box(0.04, 0.004, 0.05, m.brass, 0, 0.02, 0.01),
+          this.mesh(new CylinderGeometry(.02, .02, .0045, 8), m.brass, 0, .02, -.015),
         );
     }
   }
 
-  #decorateCharacter(root: Group, role: CharacterId, upper: Group, head: Group, arms: Group[]): void {
-    const m = this.materials;
-    const box = (x: number, y: number, z: number, material: Material) => this.mesh(new BoxGeometry(x, y, z), material);
-    if (role === 'enforcer') {
-      const jaw = box(0.22, 0.1, 0.05, m.metal); jaw.position.set(0, -0.08, 0.15); head.add(jaw);
-      const plate = this.mesh(new CylinderGeometry(0.31, 0.27, 0.42, 10, 1, true, -0.95, 1.9), m.metalDouble); plate.position.set(0, 0.42, 0); upper.add(plate);
-    } else if (role === 'medic') {
-      const wrap = this.mesh(new CylinderGeometry(0.165, 0.17, 0.04, 12), m.bone); wrap.position.set(0, 0.29, 0); head.add(wrap);
-      for (const x of [-0.11, 0, 0.11]) {
-        const vial = this.mesh(new CylinderGeometry(0.022, 0.022, 0.07, 6), x === 0 ? m.glassAmber : m.glassPale);
-        vial.position.set(x, 0.35 - x, 0.215); upper.add(vial);
-      }
-    } else if (role === 'smuggler' || role === 'fence') {
-      const hood = this.mesh(new SphereGeometry(0.205, 10, 8, PI / 2 + 0.85, PI * 2 - 1.7), this.flatMaterial(role === 'fence' ? 0x1e1816 : 0x2f2620, true));
-      hood.position.set(0, 0.19, -0.02); head.add(hood);
-      if (role === 'smuggler') {
-        const satchel = this.createItem('bag'); satchel.scale.setScalar(1.4); satchel.position.set(0.3, 0.18, 0.16); upper.add(satchel);
-      }
-    } else if (role === 'locksmith') {
-      const loupe = this.mesh(new TorusGeometry(0.045, 0.006, 4, 10), m.brass); loupe.position.set(0.062, 0.19, 0.17); head.add(loupe);
-      const ring = named(this.mesh(new TorusGeometry(0.055, 0.008, 4, 10), m.brass), 'keyRing'); ring.position.set(-0.24, 0.12, 0.2); upper.add(ring);
-    } else if (role === 'broker') {
-      const mask = this.mesh(new CylinderGeometry(0.164, 0.15, 0.11, 12, 1, true, -1.3, 2.6), this.flatMaterial(0xd6c9ab, true));
-      mask.position.set(0, 0.19, 0); head.add(mask);
-      const ledger = this.createItem('redLedger'); ledger.scale.setScalar(1.2); ledger.position.set(0, 0.1, 0.22); upper.add(ledger);
-    } else if (role === 'scavenger') {
-      const respirator = box(0.22, 0.1, 0.07, m.dark); respirator.position.set(0, -0.06, 0.13); head.add(respirator);
-      const frame = box(0.5, 0.5, 0.04, m.rust); frame.position.set(0, 0.45, -0.22); upper.add(frame);
-    } else if (role === 'tallyman') {
-      const visor = this.#resources.track(new MeshPhongMaterial({ color: 0x3a8a4a, transparent: true, opacity: 0.7, side: DoubleSide, emissive: 0x0a2010 }));
-      const pane = box(0.42, 0.1, 0.01, visor); pane.position.set(0, 0.28, 0.12); head.add(pane);
-    }
-    root.userData.role = role;
-    root.userData.hands = arms.map((arm) => arm.getObjectByName('hand'));
-  }
 }

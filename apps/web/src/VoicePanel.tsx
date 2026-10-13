@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AnyRoomView, VoiceCapability } from './protocol';
 import { isSpectatorView } from './protocol';
-import type { TableClient } from './socket';
+import type { MatchClient } from './socket';
 import { createBrowserVoiceAdapter, reconcileVoiceAvailability, VoiceMesh, type VoiceBrowserAdapter, type VoiceMeshSnapshot } from './voice';
 import { playerName } from './gameplay';
 
@@ -31,7 +31,7 @@ export function VoicePanel({
   browser = createBrowserVoiceAdapter(),
 }: {
   room: AnyRoomView;
-  client: TableClient;
+  client: MatchClient;
   connected: boolean;
   viewerId: string;
   capability: VoiceCapability;
