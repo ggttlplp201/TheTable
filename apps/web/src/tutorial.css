@@ -8,8 +8,6 @@
 .tutorial-guide header .tutorial-guide-drag:hover,.tutorial-guide header .tutorial-guide-drag:focus-visible { border-color:#e0a040; background:#201508; outline:none; }
 .tutorial-guide header .tutorial-guide-drag:active,.tutorial-guide[data-dragging='true'] header .tutorial-guide-drag { cursor:grabbing; background:#2b1b08; }
 .tutorial-guide[data-dragging='true'] { transition:none; will-change:left,top; }
-.tutorial-guide-show { position:fixed; z-index:130; top:22px; right:24px; padding:7px 11px; border:1px solid #736442; background:rgba(5,4,3,.9); color:#e0a040; font:15px/1 'VT323',monospace; letter-spacing:.08em; cursor:pointer; box-shadow:0 4px 14px #0009; }
-.tutorial-guide-show:hover,.tutorial-guide-show:focus-visible { border-color:#e0a040; background:#201508; outline:none; }
 .tutorial-exit { position:fixed; z-index:131; top:22px; left:24px; padding:8px 12px; border:1px solid #9f3e34; background:rgba(19,5,4,.92); color:#ef735f; font:16px/1 'VT323',monospace; letter-spacing:.08em; cursor:pointer; box-shadow:0 4px 14px #0009; }
 .tutorial-exit:hover,.tutorial-exit:focus-visible { border-color:#ef735f; background:#35100c; color:#ff8a77; outline:none; }
 .tutorial-exit:active { transform:translateY(1px); }
@@ -31,7 +29,9 @@ button.tutorial-continue { margin-top:10px; background:#e0a040; color:#130e07; b
 .tutorial-guide[data-guide-focus='revive'] { bottom:205px; }
 .tutorial-guide[data-guide-focus='market'] { left:24px; top:auto; bottom:190px; transform:none; }
 .tutorial-guide[data-guide-focus='chest'] { top:25%; bottom:auto; }
-.tutorial-guide[data-guide-focus='wildcard'],.tutorial-guide[data-guide-focus='trade'],.tutorial-guide[data-guide-focus='threat'] { bottom:104px; }
+.tutorial-guide[data-guide-focus='wildcard'] { bottom:104px; }
+.tutorial-guide[data-guide-focus='trade'] { left:50%; right:auto; top:112px; bottom:auto; transform:translateX(-50%); }
+.tutorial-guide[data-guide-focus='threat'] { left:auto; right:28px; top:112px; bottom:auto; transform:none; }
 .tutorial-complete { position:fixed; inset:0; display:grid; place-content:center; gap:18px; padding:32px; box-sizing:border-box; background:#090807; text-align:center; }
 .tutorial-complete h1 { margin:0 0 12px; color:#cfe08d; font:54px/1 'IM Fell English',serif; }
 .tutorial-complete button { width:min(420px,calc(100vw - 40px)); }
@@ -46,12 +46,14 @@ button.tutorial-continue { margin-top:10px; background:#e0a040; color:#130e07; b
 .tutorial-shell .dealer-nameplate { background:transparent; border:0; color:#e0a040; font-size:25px; letter-spacing:.08em; text-shadow:0 0 8px #000,0 2px #000; }
 .tutorial-shell .dealer-nameplate small { display:none; }
 .tutorial-shell[data-focus=wildcard] .wildcard-burn { opacity:.45; }
+.tutorial-shell[data-focus=threat] .tasks-hud { visibility:hidden; pointer-events:none; }
 .coin-amount { display:inline-flex; align-items:center; gap:3px; vertical-align:middle; white-space:nowrap; }
 .coin-amount img { flex:none; }
 .multiplayer-hint { position:fixed; z-index:95; right:24px; bottom:130px; max-width:240px; padding:14px 34px 14px 16px; background:rgba(5,4,3,.88); border:2px solid rgba(216,204,176,.18); box-shadow:0 8px 32px #0008; font-size:20px; }
 .multiplayer-hint strong { display:block; color:#e0a040; margin-bottom:6px; }
 .multiplayer-hint button { position:absolute; right:8px; top:8px; border:0; background:transparent; color:#d8ccb0; cursor:pointer; }
 @media(min-width:1101px) { .tutorial-shell .match-viewport:not([data-response=true]) .match-overlay-backdrop { padding-right:0; }.tutorial-shell[data-focus='response'] .match-viewport[data-response='true'] .forced-decision { padding-left:390px; padding-right:24px; } }
+@media(min-width:1240px) { .tutorial-shell:is([data-focus='trade'],[data-focus='threat']) .match-overlay-backdrop:has(.match-overlay[data-panel='TRADE'],.match-overlay[data-panel='THREAT']) { padding-right:370px; box-sizing:border-box; }.tutorial-shell[data-focus='trade']:has(.match-overlay[data-panel='TRADE']) .tutorial-guide[data-guide-focus='trade'],.tutorial-shell[data-focus='threat']:has(.match-overlay[data-panel='THREAT']) .tutorial-guide[data-guide-focus='threat'] { left:auto; right:28px; top:112px; transform:none; } }
 @media(max-width:1100px) { .tutorial-guide,.tutorial-guide[data-guide-focus] { left:50%; right:auto; top:auto; bottom:102px; width:min(360px,calc(100vw - 24px)); transform:translateX(-50%); } }
-@media(max-width:680px) { .tutorial-guide,.tutorial-guide[data-guide-focus] { bottom:78px; padding:9px 11px; }.tutorial-guide p { font-size:16px; }.tutorial-guide h2 { font-size:19px; margin:6px 0 3px; }.tutorial-guide small,.tutorial-chapters { display:none; }.tutorial-exit { top:12px; left:12px; }.tutorial-guide-show { top:12px; right:12px; }.tutorial-complete { padding:24px; }.tutorial-complete h1 { font-size:40px; } }
+@media(max-width:680px) { .tutorial-guide,.tutorial-guide[data-guide-focus] { bottom:78px; padding:9px 11px; }.tutorial-guide p { font-size:16px; }.tutorial-guide h2 { font-size:19px; margin:6px 0 3px; }.tutorial-guide small,.tutorial-chapters { display:none; }.tutorial-exit { top:12px; left:12px; }.tutorial-complete { padding:24px; }.tutorial-complete h1 { font-size:40px; } }
 @media(prefers-reduced-motion:reduce) { .tutorial-guide { transition:none; }.tutorial-shell :is(.self-hand,.self-vitals,.tasks-tab,.match-utility>button,.action-buttons>button,.downed-actions button,.threat-response button,.wildcard-use,.wildcard-draw-action,.scene-leave,.market-stock-tag) { animation:none!important; } }

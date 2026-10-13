@@ -28,7 +28,6 @@ export default function Tutorial({ chapter, audio, audioStarted, onEnableAudio, 
   const guideDrag = useRef<GuideDrag | null>(null);
   const [guidePosition, setGuidePosition] = useState<GuidePosition | null>(null);
   const [guideDragging, setGuideDragging] = useState(false);
-  const [guideHidden, setGuideHidden] = useState(false);
   const recorded = useRef(0);
   const completed = controller.step === 'complete';
   const { title, text, focus } = controller.instruction;
@@ -53,6 +52,11 @@ export default function Tutorial({ chapter, audio, audioStarted, onEnableAudio, 
     window.addEventListener('resize', keepGuideOnScreen);
     return () => window.removeEventListener('resize', keepGuideOnScreen);
   }, []);
+  useEffect(() => {
+    guideDrag.current = null;
+    setGuideDragging(false);
+    setGuidePosition(null);
+  }, [controller.step]);
   const exit = (join: boolean) => { if (!completed) recordTutorialMetric({ kind: 'abandoned', chapter: controller.chapter }); onExit(join); };
   const cameraTravel = useCallback((degrees: number) => { if (controller.look(degrees)) changed(); }, [controller, changed]);
   const beginGuideDrag = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -97,14 +101,14 @@ export default function Tutorial({ chapter, audio, audioStarted, onEnableAudio, 
   return <main className="tutorial-shell" data-focus={focus} data-step={controller.step}>
     {!completed && <MatchView room={client.view()} client={client} connected viewerId={HUMAN} voice={{ enabled: false, iceServers: [], relayConfigured: false }} audioEngine={audio} audioStarted={audioStarted} onEnableAudio={onEnableAudio} onView={changed} onCameraTravel={cameraTravel} guideFocus={focus} onReturnHome={() => exit(false)} />}
     {!completed && <button className="tutorial-exit" type="button" onClick={() => exit(false)}>← EXIT TUTORIAL</button>}
-    {!completed && !guideHidden ? <aside ref={guideRef} className="tutorial-guide" data-guide-focus={focus} data-dragged={guidePosition ? 'true' : undefined} data-dragging={guideDragging ? 'true' : undefined} style={guideStyle} aria-label="Dealer lesson">
-      <header><span>THE DEALER · {controller.chapter}/6</span><span className="tutorial-guide-controls"><button className="tutorial-guide-drag" type="button" aria-label="Move tutorial prompt. Drag, or use the arrow keys." title="Drag to move" onPointerDown={beginGuideDrag} onPointerMove={moveGuide} onPointerUp={endGuideDrag} onPointerCancel={endGuideDrag} onKeyDown={moveGuideWithKeyboard}>MOVE</button><button type="button" aria-label="Hide tutorial prompt" title="Hide tutorial prompt" onClick={() => setGuideHidden(true)}>×</button></span></header>
+    {!completed ? <aside ref={guideRef} className="tutorial-guide" data-guide-focus={focus} data-dragged={guidePosition ? 'true' : undefined} data-dragging={guideDragging ? 'true' : undefined} style={guideStyle} aria-label="Dealer lesson">
+      <header><span>THE DEALER · {controller.chapter}/6</span><span className="tutorial-guide-controls"><button className="tutorial-guide-drag" type="button" aria-label="Move tutorial prompt. Drag, or use the arrow keys." title="Drag to move" onPointerDown={beginGuideDrag} onPointerMove={moveGuide} onPointerUp={endGuideDrag} onPointerCancel={endGuideDrag} onKeyDown={moveGuideWithKeyboard}>MOVE</button></span></header>
       <div className="tutorial-chapters" aria-label={CHAPTERS[controller.chapter - 1]}>{CHAPTERS.map((name, index) => <i key={name} className={index + 1 <= controller.chapter ? 'done' : ''} title={name} />)}</div>
       <h2>{title}</h2><p>{text}</p>
       {CONTINUE.has(controller.step) && <button className="tutorial-continue" type="button" onClick={() => { controller.next(); changed(); }}>CONTINUE →</button>}
       {controller.step === 'practice' && <button className="tutorial-skip" type="button" onClick={() => { controller.skipPractice(); changed(); }}>Skip optional practice</button>}
       <small>TRAINING · TIMERS PAUSED</small>
-    </aside> : !completed ? <button className="tutorial-guide-show" type="button" onClick={() => setGuideHidden(false)}>SHOW TUTORIAL</button> : <section className="tutorial-complete" aria-label="Tutorial complete">
+    </aside> : <section className="tutorial-complete" aria-label="Tutorial complete">
       <h1>Tutorial completed</h1>
       <button className="tutorial-continue" type="button" onClick={() => exit(true)}>JOIN A GAME</button>
       <button type="button" onClick={() => exit(false)}>MAIN MENU</button>
