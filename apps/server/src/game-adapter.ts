@@ -1,6 +1,6 @@
 import {
   applyCommand, applyTimeout, getNextDeadline, projectAuthorizedRoom,
-  projectSpectatorRoom, RoomStore, setConnection, type RoomState,
+  projectSpectatorRoom, RoomError, RoomStore, setConnection, type RoomState,
 } from '@the-table/game';
 import { parseGameCommand } from './game-commands.js';
 import { ProtocolError, type GameCommand } from './protocol.js';
@@ -12,6 +12,7 @@ export interface Admission { room: RoomState; playerId: string }
 export interface GameAdapter {
   create(name: string, now: number): Admission;
   join(code: string, name: string, now: number): Admission;
+  leaveLobby(code: string, playerId: string, now: number): RoomState | undefined | Promise<RoomState | undefined>;
   read(code: string): RoomState | undefined;
   command(code: string, actorId: string, command: GameCommand, now: number): void | Promise<void>;
   setConnected(code: string, playerId: string, connected: boolean, now: number): void | Promise<void>;
@@ -30,7 +31,29 @@ export class RoomStoreAdapter implements GameAdapter {
   }
   join(code: string, name: string): Admission {
     const result = this.store.joinRoom(code, name);
+    // Lobby departures can leave a physical seat gap. Keep projections ordered
+    // by seat when a later join fills that gap without renumbering anyone.
+    result.room.players.sort((a, b) => a.seat - b.seat);
     return { room: result.room, playerId: result.player.id };
+  }
+  leaveLobby(code: string, playerId: string, now: number): RoomState | undefined {
+    const room = this.requireRoom(code);
+    if (room.status !== 'LOBBY') throw new RoomError('NOT_IN_LOBBY', 'Players can only leave their seat before the match starts.');
+    if (!room.players.some(player => player.id === playerId)) throw new RoomError('INVALID_SESSION', 'Player is not in this room.');
+
+    const next = structuredClone(room);
+    next.players = next.players.filter(player => player.id !== playerId).sort((a, b) => a.seat - b.seat);
+    if (next.players.length === 0) {
+      this.store.rooms.delete(code);
+      return undefined;
+    }
+    if (next.hostPlayerId === playerId) {
+      next.hostPlayerId = next.players.find(player => player.connection === 'CONNECTED')?.id ?? next.players[0]!.id;
+    }
+    next.revision += 1;
+    next.updatedAt = now;
+    this.store.rooms.set(code, next);
+    return next;
   }
   read(code: string): RoomState | undefined { return this.store.rooms.get(code); }
   command(code: string, actorId: string, command: GameCommand, now: number): void {

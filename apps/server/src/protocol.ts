@@ -9,7 +9,7 @@ const name = z.string().trim().min(1).max(24);
 const code = z.string().trim().toUpperCase().regex(/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/);
 export const createInput = z.object({ name }).strict();
 export const joinInput = z.object({ name, code }).strict();
-export const reconnectInput = z.object({ code, reconnectToken: z.string().min(40).max(200) }).strict();
+export const reconnectInput = z.object({ code, reconnectToken: z.string().min(40).max(200), idempotencyKey: z.string().min(16).max(100).regex(/^[A-Za-z0-9._:-]+$/).optional() }).strict();
 const metadata = {
   idempotencyKey: z.string().min(1).max(100).regex(/^[A-Za-z0-9._:-]+$/),
   expectedRevision: z.number().int().nonnegative().optional(),

@@ -20,6 +20,7 @@ export interface Clock {
 const systemClock: Clock = { now: Date.now, setTimeout, clearTimeout };
 interface Binding { code: string; playerId: string; generation: string }
 interface Receipt { fingerprint: string; reply: Reply }
+interface ReconnectReceipt { fingerprint: string; playerId: string; reconnectToken: string; expiresAt: number }
 interface ChatMessage { id: string; at: number; fromPlayerId: string; channel: 'GLOBAL' | 'PRIVATE'; toPlayerId?: string; text: string }
 const chatPayload = z.object({ text: z.string().trim().min(1).max(1000), toPlayerId: z.string().min(1).max(100).optional() }).strict();
 interface RoomRuntime {
@@ -29,6 +30,7 @@ interface RoomRuntime {
   members: Map<string, { socket: Socket; generation: string }>;
   voiceMembers: Set<string>;
   receipts: Map<string, Receipt>;
+  reconnectReceipts: Map<string, ReconnectReceipt>;
   messages: ChatMessage[];
   expiresAt: number;
   timer: Timer | undefined;
@@ -51,6 +53,7 @@ export interface RuntimeOptions {
 export class RoomRuntimeService {
   private readonly rooms = new Map<string, RoomRuntime>();
   private readonly bindings = new Map<string, Binding>();
+  private readonly lobbyDepartures = new WeakSet<Socket>();
   private readonly sessions = new Sessions();
   private readonly clock: Clock;
   private readonly options: Required<Omit<RuntimeOptions, 'clock' | 'voiceIceServers'>> & { voiceIceServers: VoiceIceServer[] };
@@ -145,15 +148,32 @@ export class RoomRuntimeService {
     });
     register('room:reconnect', raw => {
       const input = reconnectInput.parse(raw);
-      this.requireUnbound(socket);
       const context = this.context(input.code);
       return this.enqueue(context, async () => {
-        this.requireUnbound(socket);
         await this.synchronize(context);
+        for (const [key, receipt] of context.reconnectReceipts) if (receipt.expiresAt <= this.clock.now()) context.reconnectReceipts.delete(key);
+        const signature = fingerprint({ code: input.code, reconnectToken: input.reconnectToken });
+        const prior = input.idempotencyKey ? context.reconnectReceipts.get(input.idempotencyKey) : undefined;
+        if (prior) {
+          if (prior.fingerprint !== signature) throw new ProtocolError('IDEMPOTENCY_CONFLICT', 'This reconnect key was already used for another session.');
+          const binding = this.bindings.get(socket.id);
+          if (binding && (binding.code !== context.code || binding.playerId !== prior.playerId)) throw new ProtocolError('ALREADY_JOINED', 'This socket already belongs to a room.');
+          if (!binding) {
+            await this.game.setConnected(context.code, prior.playerId, true, this.clock.now());
+            this.bind(context, socket, prior.playerId);
+          }
+          this.refreshExpiry(context);
+          this.publish(context);
+          socket.emit('server:capabilities', { voice: this.voice });
+          return { playerId: prior.playerId, reconnectToken: prior.reconnectToken, view: this.view(context, prior.playerId), voice: this.voice };
+        }
+        this.requireUnbound(socket);
         const playerId = this.sessions.verify(context.code, input.reconnectToken);
         // Verify authority within the same queue as rotation and commands.
         await this.game.setConnected(context.code, playerId, true, this.clock.now());
         const reconnectToken = this.sessions.issue(context.code, playerId);
+        for (const [key, receipt] of context.reconnectReceipts) if (receipt.playerId === playerId) context.reconnectReceipts.delete(key);
+        if (input.idempotencyKey) context.reconnectReceipts.set(input.idempotencyKey, { fingerprint: signature, playerId, reconnectToken, expiresAt: this.clock.now() + 60_000 });
         this.bind(context, socket, playerId);
         this.refreshExpiry(context);
         this.publish(context);
@@ -170,6 +190,7 @@ export class RoomRuntimeService {
       const { ready, ...metadata } = readyInput.parse(raw);
       return this.command(socket, { ...metadata, type: 'READY', payload: { ready } });
     });
+    register('lobby:leave', raw => this.leaveLobby(socket, emptyInput.parse(raw ?? {})));
     register('match:start', raw => this.command(socket, { ...metadataInput.parse(raw), type: 'START_MATCH', payload: {} }));
     register('room:rematch', raw => this.command(socket, { ...metadataInput.parse(raw), type: 'REMATCH', payload: {} }));
     register('room:close', raw => this.command(socket, { ...metadataInput.parse(raw), type: 'CLOSE_ROOM', payload: {} }));
@@ -263,6 +284,37 @@ export class RoomRuntimeService {
     });
   }
 
+  private leaveLobby(socket: Socket, _input: unknown): Promise<unknown> {
+    const binding = this.bindings.get(socket.id);
+    if (!binding) {
+      if (socket.connected && this.lobbyDepartures.has(socket)) return Promise.resolve({ left: true });
+      return Promise.reject(new ProtocolError('INVALID_SESSION', 'Join or reconnect before leaving a lobby.'));
+    }
+    this.authorize(socket, binding);
+    const context = this.context(binding.code);
+    return this.enqueue(context, async () => {
+      const identity = this.authorize(socket, binding);
+      await this.synchronize(context);
+      const remaining = await this.game.leaveLobby(context.code, identity.playerId, this.clock.now());
+
+      this.sessions.revoke(context.code, identity.playerId);
+      this.bindings.delete(socket.id);
+      this.lobbyDepartures.add(socket);
+      context.members.delete(identity.playerId);
+      context.voiceMembers.delete(identity.playerId);
+      context.messages = context.messages.filter(message => message.fromPlayerId !== identity.playerId && message.toPlayerId !== identity.playerId);
+      const receiptPrefix = `${JSON.stringify([identity.playerId]).slice(0, -1)},`;
+      for (const key of context.receipts.keys()) if (key.startsWith(receiptPrefix)) context.receipts.delete(key);
+
+      if (!remaining) this.destroy(context, 'EMPTY_LOBBY');
+      else {
+        this.refreshExpiry(context);
+        this.publish(context);
+      }
+      return { left: true };
+    });
+  }
+
   private joinVoice(socket: Socket, _input: unknown): Promise<unknown> {
     const binding = this.authorize(socket);
     const context = this.context(binding.code);
@@ -320,7 +372,7 @@ export class RoomRuntimeService {
   }
 
   private newRoom(room: RoomState): RoomRuntime {
-    const context: RoomRuntime = { code: room.code, queue: Promise.resolve(), queued: 0, members: new Map(), voiceMembers: new Set(), receipts: new Map(), messages: [], expiresAt: 0, timer: undefined, closed: false };
+    const context: RoomRuntime = { code: room.code, queue: Promise.resolve(), queued: 0, members: new Map(), voiceMembers: new Set(), receipts: new Map(), reconnectReceipts: new Map(), messages: [], expiresAt: 0, timer: undefined, closed: false };
     this.rooms.set(room.code, context);
     return context;
   }
@@ -330,6 +382,7 @@ export class RoomRuntimeService {
     // Voice opt-in belongs to this browser session, never to a reconnect token.
     context.voiceMembers.delete(playerId);
     const generation = randomUUID();
+    this.lobbyDepartures.delete(socket);
     context.members.set(playerId, { socket, generation });
     this.bindings.set(socket.id, { code: context.code, playerId, generation });
     if (previous && previous.socket.id !== socket.id) {
@@ -482,6 +535,7 @@ export class RoomRuntimeService {
     }
     context.members.clear();
     context.receipts.clear();
+    context.reconnectReceipts.clear();
     context.messages = [];
     this.sessions.destroyRoom(context.code);
     this.game.destroy(context.code);

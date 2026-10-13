@@ -32,6 +32,19 @@ describe('untrusted command and credential boundaries', () => {
     for (let depth = 0; depth < 20; depth += 1) nested = { nested };
     expect(() => fingerprint(nested)).toThrow('too complex');
   });
+  it('accepts Wildcard decisions but never client-selected cards, randomness, or effects', () => {
+    for (const type of ['DRAW_WILDCARD', 'USE_WILDCARD', 'BURN_WILDCARD']) {
+      expect(parseGameCommand({ type, payload: {} })).toEqual({ type });
+      for (const payload of [{ cardId: 'windfall' }, { seed: 42 }, { playerId: 'other' }, { phase: 'DRAWN' }]) {
+        expect(() => parseGameCommand({ type, payload })).toThrow();
+      }
+    }
+    const payload = { targetId: 'other', instanceId: 'visible-item', ownInstanceId: 'my-item' };
+    expect(parseGameCommand({ type: 'RESOLVE_WILDCARD', payload })).toEqual({ type: 'RESOLVE_WILDCARD', ...payload });
+    for (const payload of [{ pocketIndex: -1 }, { pocketIndex: 2 }, { pocketIndex: 0.5 }, { cardId: 'seize' }, { coins: 10 }, { targetId: '' }]) {
+      expect(() => parseGameCommand({ type: 'RESOLVE_WILDCARD', payload })).toThrow();
+    }
+  });
   it('binds reconnect credentials to one room/player and invalidates them on rotation and deletion', () => {
     const sessions = new Sessions();
     const first = sessions.issue('ABCDEF', 'alice');

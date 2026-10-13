@@ -47,12 +47,21 @@ describe('browser-only deterministic server harness', () => {
       const admission = await request(host, 'room:create', { name: 'Host' });
       const code = admission.view.public.code as string;
       await request(guest, 'room:join', { code, name: 'Guest' });
+      const witness = await connect(url); sockets.push(witness);
+      await request(witness, 'room:join', { code, name: 'Witness' });
       for (const [index, socket] of sockets.entries()) {
-        await request(socket, 'lobby:claim-role', { roleId: index ? 'smuggler' : 'enforcer', idempotencyKey: `role-${index}` });
+        await request(socket, 'lobby:claim-role', { roleId: ['enforcer', 'smuggler', 'locksmith'][index], idempotencyKey: `role-${index}` });
         await request(socket, 'lobby:ready', { ready: true, idempotencyKey: `ready-${index}` });
       }
       await request(host, 'match:start', { idempotencyKey: 'start' });
       const room = () => harness.game.read(code)!;
+      // Setup also publishes atomically from its scheduled deadline.
+      const setupDeadline = room().setup!.deadlineAt;
+      await harness.clock.advanceTo(setupDeadline - 1);
+      expect(room().round!.phase).toBe('SETUP');
+      await harness.clock.advanceTo(setupDeadline);
+      expect(room().round!.phase).toBe('TURN');
+      expect(room().players.every(player => player.inventory.pockets[0]!.item)).toBe(true);
       const deadline = room().turn!.deadlineAt;
       const revision = room().revision;
       const published = new Promise<any>(resolve => host.on('room:view', view => {
@@ -66,6 +75,27 @@ describe('browser-only deterministic server harness', () => {
       expect(room().revision).toBe(revision + 1);
       await harness.clock.advanceTo(deadline);
       expect(room().revision).toBe(revision + 1);
+      // Every shopping boundary is scheduled by the server, with no client wake-up.
+      await harness.clock.advanceTo(room().turn!.deadlineAt);
+      await harness.clock.advanceTo(room().turn!.deadlineAt);
+      expect(room().shop!.phase).toBe('PREP');
+      const prepDeadline = room().shop!.prepDeadlineAt;
+      await harness.clock.advanceTo(prepDeadline - 1);
+      expect(room().shop!.phase).toBe('PREP');
+      await harness.clock.advanceTo(prepDeadline);
+      expect(room().shop!.phase).toBe('PUBLIC');
+      const order = [...room().shop!.order];
+      for (const playerId of order) {
+        expect(room().shop!.order[room().shop!.activeShopperIndex]).toBe(playerId);
+        await harness.clock.advanceTo(room().shop!.publicDeadlineAt!);
+        expect(room().shop!.publicSkippedBy![playerId]).toBe(true);
+        expect(room().shop!.privateUnlockedBy[playerId]).toBe(true);
+      }
+      expect(room().shop!.phase).toBe('GRACE');
+      await harness.clock.advanceTo(room().shop!.privateDeadlineAt!);
+      expect(room().round).toMatchObject({ number: 2, phase: 'TURN' });
+      expect(room().shop).toBeUndefined();
+      expect(room().events!.filter(event => event.kind === 'PUBLIC_SHOP_PASSED')).toHaveLength(3);
       expect(harness.errors).toEqual([]);
     } finally {
       sockets.forEach(socket => socket.disconnect());

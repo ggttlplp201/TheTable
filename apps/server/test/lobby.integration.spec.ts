@@ -66,6 +66,23 @@ function successful<T>(reply: Ack<T>): T {
 }
 
 describe('lobby Socket.IO contract', () => {
+  it('can join a valid room after a failed code attempt on the same connection', async () => {
+    const host = await client();
+    const created = successful(await emitAck<CreateReply>(host, 'room:create', { name: 'Host' }));
+    const guest = await client();
+    const missingCode = created.view.public.code === 'AAAAAA' ? 'BBBBBB' : 'AAAAAA';
+    expect(await emitAck(guest, 'room:join', { code: missingCode, name: 'Guest' })).toMatchObject({
+      ok: false, error: { code: 'ROOM_NOT_FOUND' },
+    });
+
+    const joined = successful(await emitAck<CreateReply>(guest, 'room:join', {
+      code: `  ${created.view.public.code.toLowerCase()}  `, name: 'Guest',
+    }));
+    expect(joined.view.public.code).toBe(created.view.public.code);
+    expect(joined.view.public.players.map(player => player.name)).toEqual(['Host', 'Guest']);
+    expect(joined.view.private.playerId).not.toBe(created.view.private.playerId);
+  });
+
   it.each([2, 3, 4])('lets %i independent clients join distinct seats and publishes one public revision', async (count) => {
     const host = await client();
     const created = successful(await emitAck<CreateReply>(host, 'room:create', { name: 'Host' }));

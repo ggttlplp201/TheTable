@@ -51,7 +51,12 @@ class TestGame extends RoomStoreAdapter {
     room.updatedAt = this.clock.now();
   }
   override setConnected(code: string, playerId: string, connected: boolean, now: number): void {
-    super.setConnected(code, playerId, connected, now);
+    // This transport double has no real match/objectives; keep its connection
+    // transition local instead of invoking production objective evaluation.
+    const room = this.read(code)!;
+    const player = room.players.find(candidate => candidate.id === playerId)!;
+    player.connection = connected ? 'CONNECTED' : 'DISCONNECTED';
+    room.revision += 1; room.updatedAt = now;
     if (!connected && this.pending.get(code)?.targetId === playerId) this.pending.delete(code);
   }
   override deadlines(code: string): Deadline[] { const pending = this.pending.get(code); return pending ? [pending.deadline] : []; }
@@ -200,6 +205,20 @@ describe('realtime privacy and session authority', () => {
     expect((await command(replacement, 'new-socket-action')).ok).toBe(true);
   });
 
+  it('replays an accepted reconnect acknowledgement without rotating the token twice', async () => {
+    const f = await pair();
+    const replacement = await f.connect();
+    const requestId = 'restore-ack-loss';
+    const first = await success(replacement, 'room:reconnect', { code: f.code, reconnectToken: f.host.reconnectToken, idempotencyKey: requestId });
+    const replaySocket = await f.connect();
+    const replay = await success(replaySocket, 'room:reconnect', { code: f.code, reconnectToken: f.host.reconnectToken, idempotencyKey: requestId });
+    expect(replay.reconnectToken).toBe(first.reconnectToken);
+    expect(replay.playerId).toBe(first.playerId);
+    expect(replay.view.private.playerId).toBe(first.playerId);
+    await eventually(() => expect(replacement.connected).toBe(false));
+    expect((await command(replaySocket, 'after-lost-ack')).ok).toBe(true);
+  });
+
   it('fences an old socket command queued behind a reconnect', async () => {
     const f = await pair();
     let release!: () => void;
@@ -238,6 +257,97 @@ describe('realtime privacy and session authority', () => {
 });
 
 describe('serialized mutations, idempotency and lifecycle', () => {
+  it('releases a guest lobby seat, role, name and reconnect authority for reuse', async () => {
+    const f = await pair({ voiceEnabled: true });
+    await success(f.b, 'lobby:claim-role', { idempotencyKey: 'guest-role', roleId: 'medic' });
+    const peerUpdates: Array<{ playerIds: string[] }> = [];
+    f.a.on('voice:peers', value => peerUpdates.push(value));
+    await success(f.a, 'voice:join');
+    await success(f.b, 'voice:join');
+
+    expect(await success(f.b, 'lobby:leave')).toEqual({ left: true });
+    expect(await success(f.b, 'lobby:leave')).toEqual({ left: true });
+    expect(f.game.read(f.code)!.players.map(player => player.id)).toEqual([f.host.view.private.playerId]);
+    await eventually(() => expect(peerUpdates.at(-1)?.playerIds).toEqual([f.host.view.private.playerId]));
+
+    const stale = await f.connect();
+    expect((await request(stale, 'room:reconnect', { code: f.code, reconnectToken: f.guest.reconnectToken })).error.code).toBe('INVALID_SESSION');
+
+    const rejoined = await success(f.b, 'room:join', { code: f.code, name: 'Bob' });
+    expect(rejoined.view.public.players.find((player: any) => player.name === 'Bob').seat).toBe(1);
+    expect((await request(f.b, 'lobby:claim-role', { idempotencyKey: 'reused-role', roleId: 'medic' })).ok).toBe(true);
+  });
+
+  it('hands host ownership to the lowest-seat connected player without renumbering seats', async () => {
+    const f = await pair();
+    const c = await f.connect();
+    const carol = await success(c, 'room:join', { code: f.code, name: 'Carol' });
+
+    expect(await success(f.a, 'lobby:leave')).toEqual({ left: true });
+    const room = f.game.read(f.code)!;
+    expect(room.hostPlayerId).toBe(f.guest.view.private.playerId);
+    expect(room.players.map(player => [player.id, player.seat])).toEqual([
+      [f.guest.view.private.playerId, 1],
+      [carol.view.private.playerId, 2],
+    ]);
+    expect((await success(f.b, 'room:sync')).view.public.hostPlayerId).toBe(f.guest.view.private.playerId);
+
+    const replacement = await success(f.a, 'room:join', { code: f.code, name: 'Alice Again' });
+    expect(replacement.view.public.players.find((player: any) => player.name === 'Alice Again').seat).toBe(0);
+    expect(f.game.read(f.code)!.players.map(player => player.seat)).toEqual([0, 1, 2]);
+  });
+
+  it('skips a disconnected lower seat when selecting the next host', async () => {
+    const f = await pair();
+    const c = await f.connect();
+    const carol = await success(c, 'room:join', { code: f.code, name: 'Carol' });
+    f.b.disconnect();
+    await eventually(() => expect(f.game.read(f.code)!.players.find(player => player.id === f.guest.view.private.playerId)?.connection).toBe('DISCONNECTED'));
+
+    await success(f.a, 'lobby:leave');
+    const room = f.game.read(f.code)!;
+    expect(room.hostPlayerId).toBe(carol.view.private.playerId);
+    expect(room.players.map(player => [player.seat, player.connection])).toEqual([
+      [1, 'DISCONNECTED'],
+      [2, 'CONNECTED'],
+    ]);
+    expect((await success(c, 'room:sync')).view.public.hostPlayerId).toBe(carol.view.private.playerId);
+  });
+
+  it('destroys an empty lobby and lets the same socket create another room', async () => {
+    const f = await fixture();
+    const a = await f.connect();
+    const original = await success(a, 'room:create', { name: 'Alice' });
+    const originalCode = original.view.public.code as string;
+
+    expect(await success(a, 'lobby:leave')).toEqual({ left: true });
+    expect(f.server.runtime.roomCount).toBe(0);
+    expect(f.game.read(originalCode)).toBeUndefined();
+
+    const replacement = await success(a, 'room:create', { name: 'Alice' });
+    expect(replacement.view.public.code).not.toBe(originalCode);
+    const stale = await f.connect();
+    expect((await request(stale, 'room:reconnect', { code: originalCode, reconnectToken: original.reconnectToken })).error.code).toBe('ROOM_NOT_FOUND');
+  });
+
+  it('rejects lobby leave after the match starts without changing the seat or session', async () => {
+    const f = await pair();
+    await command(f.a, 'start', 'START_MATCH');
+    const before = structuredClone(f.game.read(f.code)!);
+
+    const rejected = await request(f.b, 'lobby:leave');
+    expect(rejected.error.code).toBe('NOT_IN_LOBBY');
+    expect(f.game.read(f.code)).toEqual(before);
+    expect((await request(f.b, 'room:sync')).ok).toBe(true);
+
+    f.b.disconnect();
+    await eventually(() => expect(f.game.read(f.code)!.players.find(player => player.id === f.guest.view.private.playerId)?.connection).toBe('DISCONNECTED'));
+    const replacement = await f.connect();
+    const reconnected = await success(replacement, 'room:reconnect', { code: f.code, reconnectToken: f.guest.reconnectToken });
+    expect(reconnected.playerId).toBe(f.guest.view.private.playerId);
+    expect(reconnected.view.public.players.find((player: any) => player.id === reconnected.playerId).seat).toBe(1);
+  });
+
   it('serializes simultaneous role claims and rejects stale revisions', async () => {
     const f = await pair();
     const results = await Promise.all([f.a, f.b].map(socket => request(socket, 'lobby:claim-role', { idempotencyKey: 'role', roleId: 'medic' })));
@@ -373,5 +483,24 @@ describe('serialized mutations, idempotency and lifecycle', () => {
     expect((await request(f.a, 'voice:signal', { toPlayerId: f.guest.view.private.playerId, signal })).error.code).toBe('VOICE_FORBIDDEN');
     expect((await request(f.a, 'voice:signal', { toPlayerId: outsider.view.private.playerId, signal })).error.code).toBe('VOICE_FORBIDDEN');
     expect(outsiderSignals).toEqual([]);
+  });
+
+  it('keeps Downed text and opted-in voice available without admitting spectators', async () => {
+    const f = await pair({ voiceEnabled: true });
+    const hostId = f.host.view.private.playerId;
+    const guestId = f.guest.view.private.playerId;
+    const downed = f.game.read(f.code)!.players[1]!;
+    downed.life = 'DOWNED'; downed.hp = 0;
+    downed.downed = { aggressorId: hostId, downedAt: f.clock.now(), eventId: 'test-down', expiresRound: 1, expiresSeat: 0 };
+    await success(f.b, 'chat:send', { idempotencyKey: 'downed-text', text: 'Please help me.', toPlayerId: hostId });
+    expect(JSON.stringify((await success(f.a, 'room:sync')).view.messages)).toContain('Please help me.');
+    await success(f.a, 'voice:join'); await success(f.b, 'voice:join');
+    const signals: unknown[] = [];
+    f.a.on('voice:signal', signal => signals.push(signal));
+    await success(f.b, 'voice:signal', { toPlayerId: hostId, signal: { type: 'offer', sdp: 'rescue-negotiation' } });
+    await eventually(() => expect(signals).toHaveLength(1));
+    expect(signals[0]).toMatchObject({ fromPlayerId: guestId });
+    expect((await request(f.b, 'room:spectate')).error.code).toBe('SPECTATOR_FORBIDDEN');
+    expect(f.errors).toEqual([]);
   });
 });
