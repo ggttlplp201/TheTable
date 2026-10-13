@@ -274,7 +274,7 @@ export function App() {
   }
 
   let content: React.ReactNode;
-  if (tutorial) content = <Suspense fallback={<p className="loading-stage">Setting the table…</p>}><Tutorial key={tutorial.key} chapter={tutorial.chapter} audio={audio} audioStarted={audioStarted} onEnableAudio={enableAudio} onReplay={() => startTutorial(1)} onExit={join => { setTutorial(undefined); setTutorialPrefs(readTutorialPreferences()); setEntryMode(join ? 'join' : 'create'); setScreen('entry'); }} /></Suspense>;
+  if (tutorial) content = <Suspense fallback={<p className="loading-stage">Setting the table…</p>}><Tutorial key={tutorial.key} chapter={tutorial.chapter} audio={audio} audioStarted={audioStarted} onEnableAudio={enableAudio} onExit={join => { setTutorial(undefined); setTutorialPrefs(readTutorialPreferences()); setEntryMode(join ? 'join' : 'create'); setScreen('entry'); }} /></Suspense>;
   else if (screen === 'connecting' && !view) content = <LoadingView connected={connected} error={error} onContinue={() => setScreen('entry')} />;
   else if (screen === 'entry') content = <EntryView onTutorial={() => startTutorial(tutorialPrefs.tutorialCompleted ? 1 : tutorialPrefs.tutorialLastChapter)} tutorialResume={!tutorialPrefs.tutorialCompleted && tutorialPrefs.tutorialLastChapter > 1} mode={entryMode} setMode={setEntryMode} name={name} setName={setName} joinCode={joinCode} setJoinCode={setJoinCode} error={error} working={working} connected={connected} onSubmit={submitEntry} audio={audio} audioStarted={audioStarted} onEnableAudio={enableAudio} />;
   else if (view && view.public.status !== 'LOBBY' && playerId) content = <Shell connected={connected}><MatchView room={view} client={client} connected={connected && sessionReady} viewerId={playerId} voice={voice} audioEngine={audio} audioStarted={audioStarted} onEnableAudio={enableAudio} onView={applyView} onReturnHome={returnHome} /></Shell>;
@@ -312,8 +312,11 @@ function EntryView(props: {
   const { mode, setMode, name, setName, joinCode, setJoinCode, error, working, connected, onSubmit, audio, audioStarted, onEnableAudio } = props;
   const [creating, setCreating] = useState(false);
   const [utility, setUtility] = useState<'rules' | 'items' | 'settings' | null>(null);
+  const playButtonPress = (event: React.MouseEvent<HTMLElement>) => {
+    if (audioStarted && (event.target as HTMLElement).closest('button:not(:disabled)')) audio.play(AUDIO_CUE_IDS.uiSelect);
+  };
   if (mode === 'join') return <Shell connected={connected}>
-    <section className="join-stage">
+    <section className="join-stage" onClickCapture={playButtonPress}>
       <form className="join-card" onSubmit={onSubmit} noValidate>
         <label className="join-code-label">ROOM CODE
           <span className={`room-code-boxes ${error ? 'error' : ''}`} aria-hidden="true">{Array.from({ length: 6 }, (_, index) => <b key={index}>{joinCode[index] ?? ''}</b>)}</span>
@@ -327,7 +330,7 @@ function EntryView(props: {
     </section>
   </Shell>;
   return <Shell connected={connected}>
-    <section className="entry-layout">
+    <section className="entry-layout" onClickCapture={playButtonPress}>
       <EntryTableBackdrop />
       <span className="entry-version">RECOMMENDED: 3–4 PLAYERS</span>
       <div className="entry-copy">

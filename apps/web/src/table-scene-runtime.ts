@@ -124,7 +124,9 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     const plates = new Map(seats.filter(seat => seat.id !== options.viewerId).map(seat => {
       const plate = document.createElement('div'); plate.className = `scene-nameplate${seat.role === 'dealer' ? ' dealer-nameplate' : ''}`;
       const name = document.createElement('span'), role = document.createElement('small');
-      name.textContent = seat.label ?? ''; role.textContent = seat.role.toUpperCase(); plate.append(name, role); target.append(plate);
+      name.textContent = seat.role === 'dealer' ? 'THE DEALER' : seat.label ?? '';
+      if (seat.role !== 'dealer') { role.textContent = seat.role.toUpperCase(); plate.append(name, role); } else plate.append(name);
+      target.append(plate);
       cleanups.push(() => plate.remove()); return [seat.id, plate] as const;
     }));
     let shortHeader: { left: number; right: number; bottom: number } | undefined;
@@ -205,7 +207,6 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     let lookX = 0, lookY = 0, currentLookX = 0, currentLookY = 0, dragX = 0, dragY = 0, dragOriginX = 0, dragOriginY = 0, dragging = false, moved = false;
     let lastFrame = performance.now();
     let falling: { startedAt: number; position: Vector3; rotation: Quaternion; destination: Quaternion } | undefined;
-    let previousLookYaw = 0;
     const syncCamera = (delta: number, now: number) => {
       // Reference .06/frame interpolation, normalized so high-refresh displays feel the same.
       const blend = motion.matches ? 1 : 1 - Math.pow(.94, delta * 60);
@@ -242,9 +243,6 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       if (scopeFigure && zoom > 0) { scopeTarget.set(0, 1, .6); scopeFigure.localToWorld(scopeTarget); scopeAim.copy(cameraAim).lerp(scopeTarget, zoom); camera.lookAt(scopeAim); }
       const fov = revealingOrder ? camera.fov + (42 - camera.fov) * blend : 58 - 38 * zoom;
       if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
-      const yaw = Math.atan2(cameraAim.x - camera.position.x, camera.position.z - cameraAim.z);
-      if (dragging || moved && focus === 'seat') options.onCameraTravel?.(Math.abs(yaw - previousLookYaw) * 180 / Math.PI);
-      previousLookYaw = yaw;
       target.dataset.presentationFov = String(fov);
       target.dataset.presentationFocus = revealingOrder ? 'order' : options.viewerId === undefined ? 'spectator' : room.players.find(player => player.id === options.viewerId)?.life === 'DOWNED' ? falling ? 'falling' : 'downed' : target.clientWidth >= 801 ? focus : 'seat';
     };
@@ -270,6 +268,7 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     const pointerMove = (event: PointerEvent) => {
       if (options.viewerId === undefined || (!interactionsEnabled && ownerWildcard?.phase !== 'TARGETING') || (arrival && !arrival.finished)) return;
       const bounds = renderer.domElement.getBoundingClientRect();
+      const previousInputLookX = lookX;
       if (dragging) {
         lookX = Math.max(-1, Math.min(1, lookX - (event.clientX - dragX) / Math.max(1, bounds.width) * 1.7));
         lookY = Math.max(-1, Math.min(1, lookY + (event.clientY - dragY) / Math.max(1, bounds.height) * 1.3));
@@ -278,6 +277,7 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
         lookX = Math.max(-1, Math.min(1, ((event.clientX - bounds.left) / bounds.width) * 2 - 1));
         lookY = Math.max(-1, Math.min(1, ((event.clientY - bounds.top) / bounds.height) * 2 - 1));
       }
+      if (focus === 'seat' && event.pointerType === 'mouse') options.onCameraTravel?.(Math.abs(lookX - previousInputLookX) * 45);
       const intent = dragging ? undefined : semanticHit(event);
       const wildcardEligible = intent?.kind === 'WILDCARD' && canInteractWithWildcardDeck(room, options.viewerId, wildcardDrawEnabled);
       renderer.domElement.style.cursor = dragging ? 'grabbing' : intent && (intent.kind !== 'WILDCARD' || wildcardEligible) ? 'pointer' : 'grab';
@@ -508,10 +508,11 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       }
       selectionLight.intensity = selectedItem && inventoryModels.get(selectedItem)?.anchor.visible ? 1.8 : 0;
       if (room.mode === 'tutorial') {
-        for (const [id, character] of characters) kit.setTutorialOutline(character, tutorialFocus === 'dealer' && id === 'dealer');
-        for (const [kind, chest] of chests) kit.setTutorialOutline(chest, tutorialFocus === 'chest' && kind === 'STANDARD');
-        kit.setTutorialOutline(coins, tutorialFocus === 'coins');
-        kit.setTutorialOutline(wildcardDeck.root, tutorialFocus === 'wildcard' && !ownerWildcard);
+        const pulse = motion.matches ? 1 : (Math.sin(now / 380) + 1) / 2;
+        for (const [id, character] of characters) kit.setTutorialOutline(character, tutorialFocus === 'dealer' && id === 'dealer', pulse);
+        for (const [kind, chest] of chests) kit.setTutorialOutline(chest, tutorialFocus === 'chest' && kind === 'STANDARD', pulse);
+        kit.setTutorialOutline(coins, tutorialFocus === 'coins', pulse);
+        kit.setTutorialOutline(wildcardDeck.root, tutorialFocus === 'wildcard' && !ownerWildcard, pulse);
       }
       camera.updateMatrixWorld();
       // Inherit projected coordinates into React overlays without a per-frame React render.

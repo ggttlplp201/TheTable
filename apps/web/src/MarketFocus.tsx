@@ -10,6 +10,10 @@ import { blackMarketUnlocked, BLACK_MARKET_LOCK_REASON, finishIntermissionState,
 import './market-focus.css';
 import './market-v14.css';
 
+export function nextMarketViewAfterPurchase(market: MarketView, accepted: boolean): MarketView | undefined {
+  return accepted && market === 'PUBLIC' ? 'BLACK' : undefined;
+}
+
 export function MarketFocus({ room, send, busy, initialView = 'PUBLIC', onClose, onViewChange }: ActionProps & { initialView?: MarketView; onClose: () => void; onViewChange?: (view: MarketView) => void }) {
   const [requestedView, setView] = useState<MarketView>(initialView), [ledger, setLedger] = useState(false), [inventory, setInventory] = useState(false);
   const [now, setNow] = useState(Date.now);
@@ -33,14 +37,17 @@ export function MarketFocus({ room, send, busy, initialView = 'PUBLIC', onClose,
   const canReroll = view === 'BLACK' && hasIdol && !idolUsed && unlocked && !phase.unavailable && hasCapability(room, 'REROLL_MARKET');
   const discount = ledgerAvailable(room) && ledger;
   const canPass = phase.publicTurn && !phase.unavailable && hasCapability(room, 'SKIP_PUBLIC_SHOP');
-  const buy = (offer: ShopOffer) => {
+  const buy = async (offer: ShopOffer) => {
     if (busy || view === 'SELL') return;
     const state = offerState(room, view, offer, discount);
     if (!state.canBuy) { setFeedback(state.reason ?? ''); return; }
     setFeedback('');
-    void send({ type: 'BUY', market: view, offerId: offer.id, ...(view === 'PUBLIC' && discount ? { useRedLedger: true } : {}) });
+    const market = view;
+    const accepted = await send({ type: 'BUY', market, offerId: offer.id, ...(market === 'PUBLIC' && discount ? { useRedLedger: true } : {}) });
+    const next = nextMarketViewAfterPurchase(market, accepted);
+    if (next) setView(next);
   };
-  purchase.current = id => { const offer = offers.find(offer => offer.id === id); if (offer) buy(offer); };
+  purchase.current = id => { const offer = offers.find(offer => offer.id === id); if (offer) void buy(offer); };
   const signature = offers.map(offer => `${offer.id}:${offer.itemId}:${offer.price}:${offer.purchasedBy ?? ''}`).join('|');
   useEffect(() => { setView(initialView); }, [initialView]);
   useEffect(() => {
@@ -70,7 +77,7 @@ export function MarketFocus({ room, send, busy, initialView = 'PUBLIC', onClose,
     void import('./market-scene-runtime').then(({ createMarketScene }) => {
       if (cancelled) return;
       runtime = createMarketScene(target, { view, stock: offers.map(offer => ({ id: offer.id, itemId: marketModelId(offer.itemId), price: offer.price, sold: Boolean(offer.purchasedBy) })), selectedItem: chosen ? marketModelId(chosen.itemId) : undefined,
-        onAnchors: value => { if (!cancelled) setAnchors(value); }, onOffer: id => purchase.current(id) });
+        onAnchors: value => { if (!cancelled) setAnchors(value); }, onOffer: id => purchase.current(id), onOfferHover: id => { if (!cancelled) setHovered(id); } });
     }).catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; runtime?.dispose(); };
   }, [view, signature, view === 'SELL' ? chosen?.instanceId : undefined]);
@@ -94,9 +101,9 @@ export function MarketFocus({ room, send, busy, initialView = 'PUBLIC', onClose,
     {failed && <p className="market-render-error" role="status">The counter view is unavailable. The offers below remain connected.</p>}
     {view !== 'SELL' && <div className="market-stock" aria-label={view === 'BLACK' ? 'Private offers' : 'Public stock'}>{offers.map((offer, index) => {
       const state = offerState(room, view, offer, discount, now);
-      return <div className={`market-stock-tag${offer.purchasedBy ? ' sold' : ''}`} key={offer.id} style={position(`offer:${offer.id}`, .18 + index * .19, .76)} onMouseEnter={() => setHovered(offer.id)} onMouseLeave={() => setHovered(null)}>
+      return <div className={`market-stock-tag${offer.purchasedBy ? ' sold' : ''}`} key={offer.id} style={position(`offer:${offer.id}`, .18 + index * .19, .76)}>
         <span className="market-stock-name">{itemName(offer.itemId)}</span>
-        <button type="button" disabled={busy || !state.canBuy} aria-describedby={state.reason ? `offer-reason-${offer.id}` : undefined} aria-label={`Buy ${itemName(offer.itemId)}`} onFocus={() => setHovered(offer.id)} onBlur={() => setHovered(null)} onClick={() => buy(offer)} title={state.reason ?? `${state.price} Gold · ${ITEM_HELP[offer.itemId]}`}>{state.canBuy ? <>BUY · <CoinAmount amount={state.price} /></> : state.label}</button>
+        <button type="button" disabled={busy || !state.canBuy} aria-describedby={state.reason ? `offer-reason-${offer.id}` : undefined} aria-label={`Buy ${itemName(offer.itemId)}`} onClick={() => void buy(offer)} title={state.reason}>{state.canBuy ? <>BUY · <CoinAmount amount={state.price} /></> : state.label}</button>
         {state.reason && <span id={`offer-reason-${offer.id}`} className="sr-only">{state.reason}</span>}
         {view === 'BLACK' && index === 3 && <small>SMUGGLER</small>}
         {view === 'BLACK' && hasIdol && <button className="market-reroll" type="button" disabled={busy || !canReroll || Boolean(offer.purchasedBy)} onClick={() => { if (canReroll && !busy && !marketPhaseState(room).unavailable) void send({ type: 'REROLL_MARKET', offerId: offer.id }); }} aria-label={`Reroll ${itemName(offer.itemId)} with Brass Idol`} title={idolUsed ? 'Brass Idol — used this Intermission' : 'Replace this private offer with Brass Idol'}>↻ REROLL</button>}

@@ -338,6 +338,8 @@ export interface ActionEventPresentation {
   chestKind?: ChestState['kind'];
   market?: 'PUBLIC';
   resolution?: 'MANUAL' | 'TIMEOUT' | 'DISCONNECT';
+  /** Public Threat result after resolution; covered commitments are no longer secret then. */
+  threatOutcome?: 'COMPLIED' | 'REFUSED_VALID' | 'BLUFF_CALLED' | 'CANCELLED';
 }
 export interface ActionEvent {
   /** Authoritative event round, retained when a transition also advances the round. */

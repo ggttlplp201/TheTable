@@ -130,7 +130,7 @@ export function refreshChests(room: RoomState, now: number): void {
     const unlock = chest.kind === 'STANDARD' ? 1 : 3;
     if ((chest.availability === 'HIDDEN' && room.round!.number >= unlock) || (chest.availability === 'OPENED' && room.round!.number >= chest.refreshRound!)) {
       generateChest(room, chest);
-      event(room, now, 'CHEST_REFRESHED', `${chest.kind === 'STANDARD' ? 'Standard' : 'Black'} Chest is available.`);
+      event(room, now, 'CHEST_REFRESHED', `${chest.kind === 'STANDARD' ? 'Standard' : 'Black'} Chest is available.`, undefined, [], undefined, { chestKind: chest.kind });
     }
   }
 }

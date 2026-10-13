@@ -1,4 +1,5 @@
 .tasks-hud { position:absolute; right:16px; top:70px; width:260px; z-index:31; color:#d8ccb0; font-family:VT323,monospace; }
+.match-viewport[data-market='true'] > .tasks-hud { top:116px; }
 /* The latest handoff reserves the upper-right corner for Tasks. Keep the
    older supplementary seat ledger in the free upper-left region. */
 .match-viewport[data-viewer='player'] > .seat-ribbon { left:16px; right:auto; top:70px; }

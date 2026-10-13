@@ -41,6 +41,8 @@ import type {
 } from './types.js';
 
 type Context2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+const TUTORIAL_OUTLINE_DARK = new Color(0x211408);
+const TUTORIAL_OUTLINE_LIGHT = new Color(0xe0a040);
 
 export interface VisualKitOptions {
   seed?: number | string;
@@ -399,11 +401,12 @@ export class VisualKit {
   }
 
   /** Supplied brass back-face hull, isolated to tutorial highlights. */
-  setTutorialOutline(object: Object3D, visible: boolean): void {
+  setTutorialOutline(object: Object3D, visible: boolean, pulse = 1): void {
     let hull = object.userData.tutorialHull as Group | undefined;
     if (!hull && visible) {
       hull = new Group();
-      const material = this.#resources.track(new MeshBasicMaterial({ color: 0xe0a040, side: THREE.BackSide }));
+      const material = this.#resources.track(new MeshBasicMaterial({ color: 0xe0a040, side: THREE.BackSide, transparent: true }));
+      object.userData.tutorialHullMaterial = material;
       object.updateMatrixWorld(true);
       const inverse = new THREE.Matrix4().copy(object.matrixWorld).invert();
       object.traverse(child => {
@@ -414,7 +417,15 @@ export class VisualKit {
       });
       object.add(hull); object.userData.tutorialHull = hull;
     }
-    if (hull) hull.visible = visible;
+    if (hull) {
+      hull.visible = visible;
+      const material = object.userData.tutorialHullMaterial as MeshBasicMaterial | undefined;
+      if (visible && material) {
+        const amount = Math.max(0, Math.min(1, pulse));
+        material.color.copy(TUTORIAL_OUTLINE_DARK).lerp(TUTORIAL_OUTLINE_LIGHT, amount);
+        material.opacity = .48 + amount * .52;
+      }
+    }
   }
 
   createCharacter(role: CharacterId, seatColor: number, label = '', pose: CharacterPose = 'seated'): Group {

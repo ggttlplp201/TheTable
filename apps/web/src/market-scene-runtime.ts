@@ -9,6 +9,7 @@ export function createMarketScene(target: HTMLElement, options: {
   view: MarketView; stock: MarketStock[]; selectedItem?: ItemModelId | undefined;
   onAnchors: (anchors: Record<string, ProjectedAnchor>) => void;
   onOffer: (offerId: string) => void;
+  onOfferHover?: (offerId: string | null) => void;
 }) {
   const renderer = new WebGLRenderer({ antialias: false, alpha: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(1); renderer.shadowMap.enabled = true; renderer.shadowMap.type = BasicShadowMap;
@@ -63,6 +64,19 @@ export function createMarketScene(target: HTMLElement, options: {
     if (object?.visible && object.userData.offerId) options.onOffer(String(object.userData.offerId));
   };
   renderer.domElement.addEventListener('click', click);
+  const offerAt = (event: PointerEvent): string | null => {
+    if (marketEntryProgress(performance.now() - entryStartedAt, reduced) < 1) return null;
+    const bounds = target.getBoundingClientRect(); pointer.set((event.clientX - bounds.left) / bounds.width * 2 - 1, 1 - (event.clientY - bounds.top) / bounds.height * 2);
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObjects([...bundle.interactive], true).find(hit => hit.object.visible);
+    let object = hit?.object;
+    while (object && !object.userData.offerId) object = object.parent ?? undefined;
+    return object?.visible && object.userData.offerId ? String(object.userData.offerId) : null;
+  };
+  const hover = (event: PointerEvent) => options.onOfferHover?.(offerAt(event));
+  const leave = () => options.onOfferHover?.(null);
+  renderer.domElement.addEventListener('pointermove', hover);
+  renderer.domElement.addEventListener('pointerleave', leave);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const draw = (time: number) => {
     if (disposed) return;
@@ -87,7 +101,7 @@ export function createMarketScene(target: HTMLElement, options: {
   };
   frame = requestAnimationFrame(draw);
   return { dispose() {
-    disposed = true; cancelAnimationFrame(frame); observer.disconnect(); renderer.domElement.removeEventListener('click', click);
+    disposed = true; cancelAnimationFrame(frame); observer.disconnect(); renderer.domElement.removeEventListener('click', click); renderer.domElement.removeEventListener('pointermove', hover); renderer.domElement.removeEventListener('pointerleave', leave);
     scene.traverse(object => { if ('isLight' in object && 'dispose' in object && typeof object.dispose === 'function') object.dispose(); });
     post.dispose(); kit.dispose(); renderer.dispose(); renderer.domElement.remove();
   } };

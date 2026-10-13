@@ -116,7 +116,11 @@ export function resolveThreat(room: RoomState, comply: boolean, now: number, can
     room.match!.history.threats.push({ actorId: actor.id, targetId: target.id, complied: comply, covered: proposal.mode === 'COVERED', validWeapon, assetsReceived: comply && (proposal.demandedItems.length > 0 || proposal.demandedCoins > 0), resolution: timedOut ? 'TIMEOUT' : 'MANUAL' });
   }
   event(room, now, cancelled ? 'THREAT_CANCELLED' : comply ? 'THREAT_COMPLIED' : 'THREAT_REFUSED', `${cancelled ? 'Threat cancelled.' : timedOut ? `${target.name} automatically complied when the Threat expired.` : `${target.name} ${comply ? 'complied' : 'refused'}.`}${proposal.mode === 'COVERED' ? ` The covered item was ${ITEM_BY_ID[committed.itemId]!.name}.` : ''}`, actor.id, [target.id], undefined,
-    { resolution: cancelled ? 'DISCONNECT' : timedOut ? 'TIMEOUT' : 'MANUAL', ...(!cancelled && proposal.mode === 'COVERED' ? { itemId: committed.itemId } : {}) });
+    {
+      resolution: cancelled ? 'DISCONNECT' : timedOut ? 'TIMEOUT' : 'MANUAL',
+      threatOutcome: cancelled ? 'CANCELLED' : comply ? 'COMPLIED' : validWeapon ? 'REFUSED_VALID' : 'BLUFF_CALLED',
+      ...(!cancelled && proposal.mode === 'COVERED' ? { itemId: committed.itemId } : {}),
+    });
   delete room.pendingThreat; resumeTurn(room, now);
 }
 

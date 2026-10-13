@@ -19,7 +19,45 @@ export interface InspectionReveal {
   pocket?: InspectionPocket;
 }
 
+export interface ThreatResolutionReveal {
+  eventId: string;
+  heading: string;
+  detail: string;
+  itemId?: string;
+}
+
+export interface SpawnAnnouncement { eventId: string; heading: string; detail: string }
+
 const record = (value: unknown): Record<string, unknown> | undefined => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+
+export function latestThreatResolution(room: AnyRoomView, viewerId: string): ThreatResolutionReveal | undefined {
+  const event = [...(room.public.events ?? [])].reverse().find(entry => ['THREAT_COMPLIED', 'THREAT_REFUSED', 'THREAT_CANCELLED'].includes(entry.kind) && (entry.actorId === viewerId || entry.targetIds.includes(viewerId)));
+  if (!event || !event.actorId) return;
+  const actor = playerName(room.public, event.actorId).toUpperCase();
+  const target = playerName(room.public, event.targetIds[0]).toUpperCase();
+  const owner = event.actorId === viewerId;
+  const outcome = event.presentation?.threatOutcome ?? (event.kind === 'THREAT_COMPLIED' ? 'COMPLIED' : event.kind === 'THREAT_CANCELLED' ? 'CANCELLED' : undefined);
+  const heading = outcome === 'COMPLIED' ? 'THREAT SUCCEEDED'
+    : outcome === 'REFUSED_VALID' ? owner ? 'THREAT VALID · TARGET REFUSED' : 'YOU REFUSED · THREAT WAS REAL'
+    : outcome === 'BLUFF_CALLED' ? owner ? 'THREAT FAILED · BLUFF CALLED' : 'BLUFF CALLED · THREAT FAILED'
+    : outcome === 'CANCELLED' ? 'THREAT CANCELLED' : 'THREAT RESOLVED';
+  const detail = outcome === 'COMPLIED' ? `${target} COMPLIED WITH ${actor}`
+    : outcome === 'REFUSED_VALID' ? `${target} REFUSED ${actor} · THE WEAPON TRIGGERED`
+    : outcome === 'BLUFF_CALLED' ? `${target} CALLED ${actor}’S BLUFF · NO ATTACK`
+    : event.publicText.toUpperCase();
+  return { eventId: event.id, heading, detail, ...(event.presentation?.itemId ? { itemId: event.presentation.itemId } : {}) };
+}
+
+export function latestSpawnAnnouncement(room: AnyRoomView): SpawnAnnouncement | undefined {
+  const candidates = (room.public.events ?? []).filter(entry => entry.kind === 'WILDCARD_DECK_UNLOCKED' || (entry.kind === 'CHEST_REFRESHED' && entry.presentation?.chestKind === 'BLACK'));
+  const event = candidates.at(-1);
+  if (!event) return;
+  const paired = candidates.find(candidate => candidate.id !== event.id && candidate.at === event.at);
+  if (paired) return { eventId: `${paired.id}:${event.id}`, heading: 'BLACK CHEST + WILDCARDS HAVE ENTERED PLAY', detail: 'The Black Chest needs a Black Key. Draw Wildcard is now available on eligible turns and spends a Primary Action.' };
+  return event.kind === 'WILDCARD_DECK_UNLOCKED'
+    ? { eventId: event.id, heading: 'WILDCARDS HAVE ENTERED PLAY', detail: 'A DRAW WILDCARD action is now available on eligible turns.' }
+    : { eventId: event.id, heading: 'THE BLACK CHEST HAS APPEARED', detail: 'A Black Key opens it as a Primary Action.' };
+}
 
 /** Never derive an inspection from another player's inventory or spectator god view. */
 export function latestOwnInspection(room: AnyRoomView, viewerId: string): InspectionReveal | undefined {
@@ -111,6 +149,14 @@ export function InspectionRevealView({ inspection }: { inspection: InspectionRev
   </div>;
 }
 
+export function ThreatResolutionView({ result }: { result: ThreatResolutionReveal }) {
+  return <section className="threat-result-reveal" role="status" aria-live="assertive" aria-label="Threat result">
+    {result.itemId && <div className="threat-cloth-reveal" aria-label={`The covered item was ${itemName(result.itemId)}`}><ReferenceItemArt itemId={result.itemId} size={132} label="" /><span aria-hidden="true" /></div>}
+    <strong>{result.heading}</strong><p>{result.detail}</p>
+    {result.itemId && <small>UNDER THE CLOTH · {itemName(result.itemId).toUpperCase()}</small>}
+  </section>;
+}
+
 export function PrivateInspectionHistory({ room, viewerId }: { room: AnyRoomView; viewerId: string }) {
   if (isSpectatorView(room) || room.private.playerId !== viewerId) return null;
   const inspections = (room.private.inspections ?? []).flatMap(inspection => {
@@ -131,6 +177,19 @@ export function MatchResolutionOverlays({ room, viewerId }: { room: AnyRoomView;
   const exit = successfulExit(room, viewerId);
   const [dismissedExit, setDismissedExit] = useState<string>();
   const exitButton = useRef<HTMLButtonElement>(null);
+  const latestThreat = latestThreatResolution(room, viewerId);
+  const observedThreat = useRef(latestThreat?.eventId);
+  const [threat, setThreat] = useState<ThreatResolutionReveal>();
+  const latestSpawn = latestSpawnAnnouncement(room);
+  const observedSpawn = useRef(latestSpawn?.eventId);
+  const [spawn, setSpawn] = useState<SpawnAnnouncement>();
+
+  useEffect(() => {
+    observedThreat.current = latestThreat?.eventId;
+    observedSpawn.current = latestSpawn?.eventId;
+    setThreat(undefined);
+    setSpawn(undefined);
+  }, [identity]);
 
   useEffect(() => {
     if (previousIdentity.current !== identity) {
@@ -144,8 +203,22 @@ export function MatchResolutionOverlays({ room, viewerId }: { room: AnyRoomView;
   }, [identity, latest?.eventId]);
 
   useEffect(() => { if (exit && exit.eventId !== dismissedExit) exitButton.current?.focus({ preventScroll: true }); }, [exit?.eventId, dismissedExit]);
+  useEffect(() => {
+    if (!latestThreat || latestThreat.eventId === observedThreat.current) return;
+    observedThreat.current = latestThreat.eventId; setThreat(latestThreat);
+    const timer = window.setTimeout(() => setThreat(undefined), 4800);
+    return () => window.clearTimeout(timer);
+  }, [latestThreat?.eventId]);
+  useEffect(() => {
+    if (!latestSpawn || latestSpawn.eventId === observedSpawn.current) return;
+    observedSpawn.current = latestSpawn.eventId; setSpawn(latestSpawn);
+    const timer = window.setTimeout(() => setSpawn(undefined), 5000);
+    return () => window.clearTimeout(timer);
+  }, [latestSpawn?.eventId]);
   return <>
     {!isSpectatorView(room) && room.public.status !== 'RESULTS' && inspection?.identity === identity && <InspectionRevealView key={inspection.reveal.eventId} inspection={inspection.reveal} />}
+    {room.public.status !== 'RESULTS' && threat && <ThreatResolutionView key={threat.eventId} result={threat} />}
+    {room.public.status !== 'RESULTS' && spawn && <aside className="table-spawn-announcement" role="status" aria-live="polite"><strong>{spawn.heading}</strong><span>{spawn.detail}</span></aside>}
     {exit && exit.eventId !== dismissedExit && <section className="scene-exit-confirmation" role="dialog" aria-modal="true" aria-label="You left the table">
       <button ref={exitButton} type="button" aria-label="Return to the table as a spectator" onClick={() => setDismissedExit(exit.eventId)} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setDismissedExit(exit.eventId); } }}>
         <span>⤴ ESCAPED · {exit.place} OUT</span><strong>You left the table</strong><small>Score locked · your contract is revealed to all · click to return</small>

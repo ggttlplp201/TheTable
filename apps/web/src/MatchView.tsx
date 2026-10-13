@@ -24,7 +24,7 @@ import { useOwnedAudioEngineLifecycle } from './audio-lifecycle';
 import { ObjectiveIntroduction, objectiveRevealKey } from './ObjectiveIntroduction';
 import { OrderReveal, useOrderReveal } from './OrderReveal';
 import { usePresentedHealth } from './use-presented-health';
-import { WildcardDecision, WildcardDraw, WildcardPublicFeedback } from './Wildcard';
+import { WildcardDecision, WildcardPublicFeedback } from './Wildcard';
 import { wildcardTargets } from './wildcard-presentation';
 import './v14-player.css';
 import { TurnFeedback } from './TurnFeedback';
@@ -435,6 +435,7 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
   const [chatRecipient, setChatRecipient] = useState('GLOBAL');
   const [cameraHint, setCameraHint] = useState(true);
   const [concedeConfirm, setConcedeConfirm] = useState(false);
+  const [threatMenuOpen, setThreatMenuOpen] = useState(false);
   const [marketView, setMarketView] = useState<'PUBLIC' | 'BLACK' | 'SELL'>('PUBLIC');
   const onMarketView = useCallback((view: 'PUBLIC' | 'BLACK' | 'SELL') => { setMarketView(view); setMusicScene(view === 'BLACK' ? 'market' : 'shop'); }, []);
   const marketOpen = !spectator && intermission && panel === 'MARKETS';
@@ -449,7 +450,7 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
   useEffect(() => { setObjectiveReveal(current => current.key === revealKey ? current : { key: revealKey, phase: revealKey ? 'WAITING' : 'DONE', sawArrival: false }); }, [revealKey]);
   const objectiveBlocking = objectiveReveal.phase !== 'DONE';
   const actualOrderReveal = useOrderReveal(room.public, cue => { if (audio.started) audio.engine.play(cue); });
-  const orderReveal = room.public.mode === 'tutorial' && actualOrderReveal?.phase !== 'income' ? undefined : actualOrderReveal;
+  const orderReveal = actualOrderReveal;
   const presentationBlocking = objectiveBlocking || Boolean(orderReveal);
   useEffect(() => {
     if (presentationBlocking || !cameraHint) return;
@@ -512,6 +513,10 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
     return () => window.removeEventListener('keydown', shortcuts);
   }, [action.busy, action.send, forcedDecision, intermission, panel, presentationBlocking, results, room, sceneChest, sceneItem, spectator]);
   const openIntent = (intent: SceneIntent) => {
+    if (intent.kind === 'WILDCARD' && hasCapability(room, 'DRAW_WILDCARD') && !action.busy) {
+      void action.send({ type: 'DRAW_WILDCARD' });
+      return;
+    }
     if (wildcardTargeting) {
       const targetId = intent.kind === 'PLAYER' ? intent.playerId : intent.kind === 'ITEM' ? intent.ownerId : undefined;
       if (targetId && aimTargets.includes(targetId)) setWildcardTargetId(targetId);
@@ -614,19 +619,19 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
       {[...(room.public.events ?? [])].filter(event => event.publicText).slice(-3).map(event => <span key={event.id}>{event.publicText}</span>)}
     </button>}
 
-    {!presentationBlocking && !spectator && !results && !intermission && !wildcardPending && <nav className="action-dock" aria-label="Your actions">
+    {!presentationBlocking && !spectator && !results && !intermission && !wildcardPending && <nav className="action-dock" aria-label="Your actions" data-threat-menu={threatMenuOpen || undefined} onPointerLeave={() => setThreatMenuOpen(false)}>
       <div className="action-buttons">
-        {hasCapability(room, 'TRADE') && <button type="button" aria-label="[1] ⇄ Trade" aria-keyshortcuts="1" onClick={() => showPanel('TRADE')}><kbd aria-hidden="true">1</kbd>⇄ Trade</button>}
-        {hasCapability(room, 'THREAT') && <button type="button" className="threat" aria-label="[2] ⚠ Threaten" aria-keyshortcuts="2" onClick={() => showPanel('THREAT')}><kbd aria-hidden="true">2</kbd>⚠ Threaten</button>}
-        {hasCapability(room, 'USE_ITEM') && <button type="button" aria-label="[3] ◈ Use item" aria-keyshortcuts="3" onClick={() => showPanel('USE_ITEM')}><kbd aria-hidden="true">3</kbd>◈ Use item</button>}
-        {hasCapability(room, 'LOOT_DOWNED') && <button type="button" className="immediate-loot" onClick={() => showPanel('DOWNED', { targetPlayerId: room.public.turn?.immediateLoot?.targetId, immediateLoot: true })}>Take immediate loot</button>}
-        {hasCapability(room, 'SKIP_LOOT') && <button type="button" className="end-turn" disabled={action.busy} onClick={() => void action.send({ type: 'SKIP_LOOT' })}>Skip loot</button>}
-        {hasCapability(room, 'PASS_TURN') && !room.public.turn?.primaryUsed && <button type="button" aria-keyshortcuts="Space" className="end-turn pass-turn" disabled={action.busy} onClick={() => void action.send({ type: 'PASS_TURN' })}><kbd aria-hidden="true">␣</kbd>PASS TURN</button>}
+        {hasCapability(room, 'TRADE') && <button type="button" aria-label="[1] ⇄ Trade" aria-keyshortcuts="1" onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => showPanel('TRADE')}><kbd aria-hidden="true">1</kbd>⇄ Trade</button>}
+        {hasCapability(room, 'THREAT') && <button type="button" className="threat" aria-label="[2] ⚠ Threaten" aria-keyshortcuts="2" onPointerEnter={() => setThreatMenuOpen(true)} onClick={() => showPanel('THREAT')}><kbd aria-hidden="true">2</kbd>⚠ Threaten</button>}
+        {hasCapability(room, 'USE_ITEM') && <button type="button" aria-label="[3] ◈ Use item" aria-keyshortcuts="3" onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => showPanel('USE_ITEM')}><kbd aria-hidden="true">3</kbd>◈ Use item</button>}
+        {hasCapability(room, 'DRAW_WILDCARD') && <button type="button" className="wildcard-draw-action" disabled={action.busy} onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => void action.send({ type: 'DRAW_WILDCARD' })}>✦ Draw Wildcard · Primary Action</button>}
+        {hasCapability(room, 'LOOT_DOWNED') && <button type="button" className="immediate-loot" onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => showPanel('DOWNED', { targetPlayerId: room.public.turn?.immediateLoot?.targetId, immediateLoot: true })}>Take immediate loot</button>}
+        {hasCapability(room, 'SKIP_LOOT') && <button type="button" className="end-turn" disabled={action.busy} onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => void action.send({ type: 'SKIP_LOOT' })}>Skip loot</button>}
+        {hasCapability(room, 'PASS_TURN') && !room.public.turn?.primaryUsed && <button type="button" aria-keyshortcuts="Space" className="end-turn pass-turn" disabled={action.busy} onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => void action.send({ type: 'PASS_TURN' })}><kbd aria-hidden="true">␣</kbd>PASS TURN</button>}
       </div>
       <div className="action-extras">
-        {hasCapability(room, 'THREAT') && <div className="action-mode-strip" aria-label="Threat modes"><span>⚠ THREATEN ▸</span><button type="button" onClick={() => showPanel('THREAT', { threatMode: 'OPEN' })}>OPEN DEMAND</button><button type="button" onClick={() => showPanel('THREAT', { threatMode: 'COVERED' })}>UNDER CLOTH</button></div>}
+        {hasCapability(room, 'THREAT') && <div className="action-mode-strip" aria-label="Threat modes" onPointerEnter={() => setThreatMenuOpen(true)}><span>⚠ THREATEN ▸</span><button type="button" onClick={() => showPanel('THREAT', { threatMode: 'OPEN' })}>OPEN DEMAND</button><button type="button" onClick={() => showPanel('THREAT', { threatMode: 'COVERED' })}>UNDER CLOTH</button></div>}
         <div className="contextual-actions">
-        {hasCapability(room, 'DRAW_WILDCARD') && <button type="button" className="contextual-action wildcard-draw-action" disabled={action.busy} onClick={() => showPanel('WILDCARD')}>✦ Draw Wildcard</button>}
         {hasCapability(room, 'DOWNED_INTERACTION') && room.public.players.some(player => player.id !== viewerId && player.life === 'DOWNED') && <button type="button" className="contextual-action" onClick={() => showPanel('DOWNED')}>Help / loot</button>}
         {hasCapability(room, 'INSPECT_CHEST') && <button type="button" className="contextual-action" onClick={() => showPanel('CHESTS')}>Inspect chest</button>}
         {hasCapability(room, 'LEAVE_TABLE') && <button type="button" className="contextual-action exit" onClick={() => showPanel('OBJECTIVE')}>Exit ready</button>}
@@ -642,7 +647,6 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
     </div>
 
     {!presentationBlocking && !(wildcardPending && panel === 'WILDCARD') && panel && panel !== 'MARKETS' && !results && <MatchOverlay panel={panel} tone={panel === 'THREAT' ? 'danger' : panel === 'OBJECTIVE' ? 'paper' : 'neutral'} title={panelTitle(panel)} onClose={closePanel}>
-      {!spectator && actionProps && panel === 'WILDCARD' && <WildcardDraw {...actionProps} />}
       {!spectator && actionProps && panel === 'USE_ITEM' && <UseItemForm key={sceneSelection.itemInstanceId ?? 'default-item'} {...actionProps} preferredItemId={sceneSelection.itemInstanceId} preferredTargetId={sceneSelection.targetPlayerId} />}
       {!spectator && actionProps && panel === 'TRADE' && <TradeForm key={`${sceneSelection.targetPlayerId ?? 'default-trade'}:${sceneSelection.requestedItemInstanceId ?? 'no-item'}`} {...actionProps} preferredTargetId={sceneSelection.targetPlayerId} preferredRequestedItemId={sceneSelection.requestedItemInstanceId} onCancel={closePanel} />}
       {!spectator && actionProps && panel === 'THREAT' && <ThreatForm key={`${sceneSelection.targetPlayerId ?? 'default-threat'}:${sceneSelection.threatMode ?? 'OPEN'}`} {...actionProps} preferredTargetId={sceneSelection.targetPlayerId} preferredMode={sceneSelection.threatMode} onCancel={closePanel} />}
