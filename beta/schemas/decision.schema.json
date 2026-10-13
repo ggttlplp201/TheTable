@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Single UI action decision",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "observationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "intent": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1500
+    },
+    "action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "click"
+            },
+            "controlId": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "type",
+            "controlId"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "fill"
+            },
+            "controlId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 2000
+            }
+          },
+          "required": [
+            "type",
+            "controlId",
+            "text"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "select"
+            },
+            "controlId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "option": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "type",
+            "controlId",
+            "option"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "check"
+            },
+            "controlId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "checked": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "type",
+            "controlId",
+            "checked"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "press"
+            },
+            "key": {
+              "enum": [
+                "Escape",
+                "Tab",
+                "Enter",
+                "Space",
+                "ArrowUp",
+                "ArrowDown",
+                "ArrowLeft",
+                "ArrowRight",
+                "Shift+Tab",
+                "PageUp",
+                "PageDown",
+                "Home",
+                "End",
+                "1",
+                "2",
+                "3"
+              ]
+            },
+            "controlId": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "scroll"
+            },
+            "deltaX": {
+              "type": "number",
+              "minimum": -1200,
+              "maximum": 1200
+            },
+            "deltaY": {
+              "type": "number",
+              "minimum": -1200,
+              "maximum": 1200
+            }
+          },
+          "required": [
+            "type",
+            "deltaX",
+            "deltaY"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "wait"
+            },
+            "ms": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 5000
+            }
+          },
+          "required": [
+            "type",
+            "ms"
+          ]
+        }
+      ]
+    },
+    "noMeaningfulAction": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "observationId",
+    "intent",
+    "action",
+    "noMeaningfulAction"
+  ]
+}

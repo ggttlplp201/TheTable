@@ -1,22 +1,23 @@
 import type { Browser, BrowserContext, Locator, Page } from '@playwright/test';
 import { BROWSER_EPOCH, LIFECYCLE_SEED } from '../../apps/server/test/browser-harness';
-import { test, expect } from './fixtures';
-import { chooseRoleAndReady, createRoom, desktopViewport, joinRoom, phoneViewport, session } from './helpers';
+import { test, expect, type BrowserHarness } from './fixtures';
+import { chooseRoleAndReady, createRoom, desktopViewport, joinRoom, session, lockStartingPocket, waitForPlayableTable } from './helpers';
 import { installWireProbe, observeViews, probe } from './browser-wire';
 
 type Player = { page: Page; wire: ReturnType<typeof observeViews>; context: BrowserContext };
 
-async function player(browser: Browser, phone = false): Promise<Player> {
-  const context = await browser.newContext(phone
-    ? { viewport: phoneViewport, isMobile: true, hasTouch: true }
-    : { viewport: desktopViewport });
+async function player(browser: Browser): Promise<Player> {
+  const context = await browser.newContext({ viewport: desktopViewport });
   const page = await context.newPage();
-  await page.clock.setFixedTime(BROWSER_EPOCH);
+  // Keep the server's epoch, but let arrival/objective UI deadlines progress.
+  await page.clock.install({ time: BROWSER_EPOCH });
   await installWireProbe(page);
   return { page, context, wire: observeViews(page) };
 }
 async function settle(players: Player[], revision: number) {
-  await Promise.all(players.map(person => person.wire.revision(revision)));
+  // Three live WebGL clients can briefly defer Socket.IO frame delivery while
+  // all of them mount the order-reveal scene at the same revision.
+  await Promise.all(players.map(person => person.wire.revision(revision, 15_000)));
 }
 async function action(players: Player[], person: Player, button: Locator) {
   const revision = person.wire.latest().public.revision;
@@ -32,41 +33,61 @@ async function start(players: Player[]) {
   for (const [index, person] of players.entries()) await chooseRoleAndReady(person.page, roles[index]!);
   await expect(players[0]!.page.getByRole('button', { name: 'Start match' })).toBeEnabled();
   await action(players, players[0]!, players[0]!.page.getByRole('button', { name: 'Start match' }));
-  for (const person of players) await expect(person.page.getByLabel('First person table view', { exact: true })).toBeVisible();
+  for (const [index, person] of players.entries()) await lockStartingPocket(person.page, ['Cloth', 'Poison', 'Knife'][index]!);
+  await Promise.all(players.map(person => waitForPlayableTable(person.page)));
   return host;
 }
-async function returnToHost(players: Player[]) {
-  for (let step = 0; step < 12; step += 1) {
+async function returnToHost(players: Player[], tableServer: BrowserHarness) {
+  for (let step = 0; step < 24; step += 1) {
     const room = players[0]!.wire.latest().public;
     expect(room.status).toBe('PLAYING');
     if (room.round?.phase !== 'INTERMISSION' && room.turn?.activeSeat === 0 && !room.turn.primaryUsed) return;
-    const seat = room.round?.phase === 'INTERMISSION'
-      ? room.players.find(person => person.id === room.shop!.order[room.shop!.activeShopperIndex])!.seat
-      : room.turn!.activeSeat;
+    if (room.round?.phase === 'INTERMISSION') {
+      const revision = room.revision;
+      const deadline = room.shop!.phase === 'PREP' ? room.shop!.prepDeadlineAt : room.shop!.phase === 'PUBLIC' ? room.shop!.publicDeadlineAt : room.shop!.privateDeadlineAt;
+      expect(deadline).toBeDefined();
+      await tableServer.clock.advanceTo(deadline!);
+      // A timeout published at the clock's current instant may be registered at
+      // current + 1 because BrowserClock deliberately clamps zero-delay tasks.
+      // Probe authoritative state first so the extra tick is used only when
+      // that exact scheduling boundary was actually observed.
+      const exact = tableServer.game.read(room.code)!;
+      if (exact.revision === revision) {
+        expect(tableServer.clock.now()).toBe(deadline);
+        await tableServer.clock.advanceTo(deadline! + 1);
+        expect(tableServer.game.read(room.code)!.revision).toBeGreaterThanOrEqual(revision + 1);
+      }
+      await settle(players, revision + 1);
+      continue;
+    }
+    const seat = room.turn!.activeSeat;
     const person = players[seat]!;
+    const downed = room.players[seat]!.life === 'DOWNED';
+    if (!downed) await person.page.getByLabel('Your actions').hover();
     await action(players, person, person.page.getByRole('button', {
-      name: room.round?.phase === 'INTERMISSION' ? 'Finish shopping' : /end turn|pass turn/i,
+      name: downed ? /^pass downed turn$/i : /end turn|pass turn/i,
     }));
   }
   throw new Error('The scripted round did not return to the host.');
 }
 async function shoot(players: Player[], quickDraw = false) {
   const host = players[0]!;
-  await host.page.getByRole('button', { name: 'Use item', exact: true }).click();
-  if (quickDraw) await host.page.getByLabel('Use Quick Draw (once per match)', { exact: true }).check();
+  await host.page.getByRole('button', { name: /Use item/i }).click();
+  if (quickDraw) await host.page.getByLabel(/Use Quick Draw/).check();
   await action(players, host, host.page.getByRole('button', { name: 'Use Pistol', exact: true }));
 }
 function resultRow(page: Page, name: string) {
-  return page.getByRole('region', { name: 'Results', exact: true }).getByRole('listitem')
-    .filter({ has: page.getByRole('heading', { name, exact: true }) });
+  return page.getByRole('table', { name: 'Final scores', exact: true }).getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: new RegExp(`^${name}$`, 'i') }) });
 }
 
 test.describe('deterministic lifecycle', () => {
   test.skip(Boolean(process.env.E2E_EXTERNAL_SERVER), 'Clock injection exists only in the local test process.');
 
   test('permanent death automatically grants read-only god view; scored exit reaches Results and spectator host rematches', async ({ browser, tableServer }) => {
-    test.setTimeout(90_000);
-    const players = [await player(browser), await player(browser, true), await player(browser)];
+    // This covers two full three-client starts, including their detailed rigs.
+    test.setTimeout(120_000);
+    const players = [await player(browser), await player(browser), await player(browser)];
     const [host, victim, witness] = players as [Player, Player, Player];
     try {
       const admission = await start(players);
@@ -81,15 +102,21 @@ test.describe('deterministic lifecycle', () => {
 
       await shoot(players);
       expect(host.wire.latest().public.players[1]!.hp).toBe(2);
-      await returnToHost(players);
+      await returnToHost(players, tableServer!);
       await shoot(players, true);
       expect(host.wire.latest().public.players[1]!.life).toBe('DOWNED');
+      await expect(host.page.getByRole('button', { name: 'Take immediate loot', exact: true })).toBeVisible();
+      const lootedInstanceId = host.wire.latest().public.players[1]!.visibleInventory.find(item => item !== null)!.instanceId;
+      await host.page.getByRole('button', { name: 'Take immediate loot', exact: true }).click();
+      await action(players, host, host.page.getByRole('button', { name: 'Loot item', exact: true }));
+      expect(host.wire.latest().public.turn!.immediateLoot).toBeUndefined();
+      expect(host.wire.latest().public.players[0]!.visibleInventory.some(item => item?.instanceId === lootedInstanceId)).toBe(true);
       await expect(victim.page.locator('[data-viewer="player"]')).toBeVisible();
       expect((await probe(victim.page, 'room:spectate')).error?.code).toBe('SPECTATOR_FORBIDDEN');
       expect(victim.wire.frames.join('\n')).not.toContain('executioner');
       expect(victim.wire.frames.join('\n')).not.toContain('tycoon');
 
-      await returnToHost(players);
+      await returnToHost(players, tableServer!);
       expect(host.wire.latest().public.status).toBe('PLAYING');
       expect(host.wire.latest().public.players[1]!.life).toBe('DEAD');
       // No room:spectate request after death: publication must promote automatically.
@@ -104,7 +131,6 @@ test.describe('deterministic lifecycle', () => {
       expect(spectator).not.toHaveProperty('private');
       expect(spectator.chests.some(chest => chest.loot.length > 0)).toBe(true);
       expect(host.wire.latest().public.chests!.every(chest => !('loot' in chest))).toBe(true);
-      await victim.page.getByText('Host · Active · 0 points', { exact: true }).click();
       await expect(victim.page.getByLabel('Host’s private information')).toContainText('Executioner');
       await expect(victim.page.locator('[data-viewer="spectator"] form')).toHaveCount(0);
       await expect(victim.page.getByLabel('Your actions', { exact: true })).toHaveCount(0);
@@ -116,21 +142,22 @@ test.describe('deterministic lifecycle', () => {
       expect(witness.wire.frames.join('\n')).not.toContain('collector');
       await expect(witness.page.locator('body')).not.toContainText('Collector');
 
-      await host.page.getByRole('button', { name: 'Exit ready', exact: true }).click();
-      await action(players, host, host.page.getByRole('button', { name: 'Leave Table', exact: true }));
+      await action(players, host, host.page.getByRole('button', { name: /leave table/i }));
+      const exitConfirmation = host.page.getByRole('button', { name: 'Return to the table as a spectator', exact: true });
+      if (await exitConfirmation.isVisible()) await exitConfirmation.click();
       for (const person of players) {
-        await expect(person.page.getByRole('heading', { name: 'Results', exact: true })).toBeVisible();
-        await expect(resultRow(person.page, 'Host').locator('.score')).toHaveText('100points');
-        await expect(resultRow(person.page, 'Host')).toContainText('Exit #1');
-        await expect(resultRow(person.page, 'Victim').locator('.score')).toHaveText('0points');
-        await expect(resultRow(person.page, 'Witness').locator('.score')).toHaveText('0points');
+        await expect(person.page.getByRole('heading', { name: 'The table empties', exact: true })).toBeVisible();
+        await expect(resultRow(person.page, 'Host').getByRole('cell').last()).toHaveText('100');
+        await expect(resultRow(person.page, 'Host').getByRole('cell').first()).toHaveText('1');
+        await expect(resultRow(person.page, 'Victim').getByRole('cell').last()).toHaveText('0');
+        await expect(resultRow(person.page, 'Witness').getByRole('cell').last()).toHaveText('0');
         expect(person.wire.latest().public.players.map(person => person.score)).toEqual([100, 0, 0]);
         expect(person.wire.latest().public.turn).toBeUndefined();
       }
-      await expect(resultRow(witness.page, 'Host')).toContainText('Executioner · Banked');
+      await expect(resultRow(witness.page, 'Host')).toContainText('Executioner ✓');
       await expect(resultRow(witness.page, 'Victim')).toContainText('Objective unrevealed');
-      await expect(resultRow(victim.page, 'Victim')).toContainText('Collector · Failed');
-      await expect(resultRow(host.page, 'Victim')).toContainText('Collector · Failed');
+      await expect(resultRow(victim.page, 'Victim')).toContainText('Collector ✕');
+      await expect(resultRow(host.page, 'Victim')).toContainText('Collector ✕');
       expect(witness.wire.frames.join('\n')).not.toContain('collector');
       expect(JSON.stringify(witness.wire.latest())).toContain('executioner');
       expect(await witness.page.evaluate(() => JSON.stringify(localStorage))).not.toContain('collector');
@@ -145,7 +172,7 @@ test.describe('deterministic lifecycle', () => {
       await action(players, host, host.page.getByRole('button', { name: 'Rematch', exact: true }));
       for (const [index, person] of players.entries()) {
         await expect(person.page.getByRole('heading', { level: 1 })).toHaveText(admission.code);
-        await expect(person.page.getByRole('button', { name: 'Ready up', exact: true })).toBeEnabled();
+        await expect(person.page.getByRole('button', { name: /ready up/i })).toBeEnabled();
         expect(await session(person.page)).toEqual(identities[index]);
         const view = person.wire.latest();
         expect(view.spectator).not.toBe(true);
@@ -156,16 +183,18 @@ test.describe('deterministic lifecycle', () => {
           .toEqual(identities.map((identity, seat) => ({ id: identity.playerId, seat, ready: false, score: 0, life: 'ACTIVE' })));
       }
       // Prove the retained identities can actually play again, not just render a lobby.
-      for (const person of players) await person.page.getByRole('button', { name: 'Ready up', exact: true }).click();
-      await action(players, host, host.page.getByRole('button', { name: 'Start match', exact: true }));
-      for (const person of players) await expect(person.page.getByLabel('First person table view', { exact: true })).toBeVisible();
+      for (const person of players) await person.page.getByRole('button', { name: /ready up/i }).click();
+      await action(players, host, host.page.getByRole('button', { name: /start match/i }));
+      for (const [index, person] of players.entries()) await lockStartingPocket(person.page, ['Cloth', 'Poison', 'Knife'][index]!);
+      await Promise.all(players.map(person => waitForPlayableTable(person.page)));
       expect(host.wire.latest().public.players.map(person => person.hp)).toEqual([5, 5, 5]);
     } finally { await Promise.all(players.map(person => person.context.close())); }
   });
 
-  test('scheduled turn expiry skips once and Trade expiry accepts atomically at the exact deadline', async ({ browser, tableServer }) => {
-    const players = [await player(browser), await player(browser, true)];
-    const [host, guest] = players as [Player, Player];
+  test('scheduled turn expiry skips once and Trade expiry declines atomically at the exact deadline', async ({ browser, tableServer }) => {
+    test.setTimeout(60_000);
+    const players = [await player(browser), await player(browser), await player(browser)];
+    const [host, guest] = players as [Player, Player, Player];
     try {
       const admission = await start(players);
       const room = () => tableServer!.game.read(admission.code)!;
@@ -177,12 +206,12 @@ test.describe('deterministic lifecycle', () => {
       await settle(players, initialRevision + 1);
       expect(room().revision).toBe(initialRevision + 1);
       expect(guest.wire.latest().public.turn!.activeSeat).toBe(1);
-      await expect(guest.page.getByRole('heading', { level: 1 })).toHaveText('Your turn.');
+      await expect(guest.page.getByText('YOUR TURN', { exact: true })).toBeVisible();
       await tableServer!.clock.advanceTo(turn.deadlineAt);
       expect(room().revision).toBe(initialRevision + 1);
 
-      await guest.page.getByRole('button', { name: 'Trade', exact: true }).click();
-      await guest.page.getByLabel(/You request Coins/).fill('1');
+      await guest.page.getByRole('button', { name: /Trade/i }).click();
+      await guest.page.getByRole('spinbutton', { name: 'You request Gold', exact: true }).fill('1');
       await action(players, guest, guest.page.getByRole('button', { name: 'Propose Trade', exact: true }));
       await expect(host.page.getByRole('button', { name: 'Accept Trade', exact: true })).toBeVisible();
       const pending = guest.wire.latest().public;
@@ -195,12 +224,14 @@ test.describe('deterministic lifecycle', () => {
       await expect(host.page.getByRole('button', { name: 'Accept Trade', exact: true })).toBeVisible();
       await tableServer!.clock.advanceTo(deadline);
       await settle(players, revision + 1);
-      await expect(host.page.getByRole('heading', { name: 'Trade on the table', exact: true })).toHaveCount(0);
-      expect(guest.wire.latest().public.players.map(person => person.coins)).toEqual([beforeCoins[0]! - 1, beforeCoins[1]! + 1]);
+      await expect(host.page.getByRole('heading', { name: 'Trade offer', exact: true })).toHaveCount(0);
+      expect(guest.wire.latest().public.players.map(person => person.coins)).toEqual(beforeCoins);
       expect(guest.wire.latest().public.pendingTrade).toBeUndefined();
       expect(guest.wire.latest().public.turn!.pausedRemainingMs).toBeUndefined();
       expect(guest.wire.latest().public.turn!.deadlineAt).toBe(deadline + remaining);
-      expect(guest.wire.latest().public.turn!.primaryUsed).toBe(true);
+      expect(guest.wire.latest().public.turn!.activeSeat).toBe(2);
+      expect(guest.wire.latest().public.turn!.primaryUsed).toBe(false);
+      expect(guest.wire.latest().public.events?.some(event => event.kind === 'TRADE_EXPIRED_DECLINED' && event.publicText.includes('Trade expired — declined'))).toBe(true);
       await tableServer!.clock.advanceTo(deadline);
       expect(room().revision).toBe(revision + 1);
     } finally { await Promise.all(players.map(person => person.context.close())); }

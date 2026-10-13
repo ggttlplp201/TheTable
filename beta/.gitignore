@@ -1,0 +1,21 @@
+replays/
+.env
+.env.*
+!.env.example
+batch.json
+validation/
+last-run-status.json
+
+batch.lock
+
+inventory/
+
+*-status.json
+
+# Full UI recorder credentials and duplicate raw encodings
+/full-ui/player-*-connection.json
+/full-ui/match-*/raw-video/
+
+# Full-resolution local recordings exceed GitHub's regular file-size limit.
+# Keep reports, replays, metrics, and screenshots in Git; retain videos locally.
+/full-ui/match-*/player-*-video.webm

@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Independent player feedback report",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "questionnaireVersion": {
+      "enum": [
+        "round-income-wildcards",
+        "compact-tasks-tutorial-v2"
+      ]
+    },
+    "playerId": {
+      "type": "string",
+      "enum": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ]
+    },
+    "persona": {
+      "type": "string"
+    },
+    "interviewedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "incomplete"
+      ]
+    },
+    "answers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1
+          },
+          "answer": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "question",
+          "answer"
+        ]
+      }
+    },
+    "rawResponse": {
+      "type": "string"
+    },
+    "attempts": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sourceObservationIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "playerId",
+    "persona",
+    "interviewedAt",
+    "status",
+    "answers",
+    "rawResponse",
+    "attempts",
+    "errors",
+    "sourceObservationIds"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "complete"
+          }
+        }
+      },
+      "then": {
+        "if": {
+          "required": [
+            "questionnaireVersion"
+          ]
+        },
+        "then": {
+          "if": {
+            "properties": {
+              "questionnaireVersion": {
+                "const": "compact-tasks-tutorial-v2"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "answers": {
+                "minItems": 47,
+                "maxItems": 47
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "answers": {
+                "minItems": 28,
+                "maxItems": 28
+              }
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "answers": {
+              "minItems": 18,
+              "maxItems": 18
+            }
+          }
+        }
+      }
+    }
+  ]
+}

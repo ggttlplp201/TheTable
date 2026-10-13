@@ -1,0 +1,349 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "The Table UI evidence replay package",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "matchId": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "smoke",
+            "full",
+            "validation"
+          ]
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "assignments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "playerId": {
+                "type": "string",
+                "enum": [
+                  "a",
+                  "b",
+                  "c",
+                  "d"
+                ]
+              },
+              "persona": {
+                "type": "string",
+                "enum": [
+                  "a",
+                  "b",
+                  "c",
+                  "d"
+                ]
+              },
+              "seat": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3
+              },
+              "rolePreference": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "playerId",
+              "persona",
+              "seat",
+              "rolePreference"
+            ]
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "rulesFingerprint": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "matchId",
+        "kind",
+        "startedAt",
+        "assignments",
+        "rulesFingerprint",
+        "model"
+      ]
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "blocked",
+        "failed"
+      ]
+    },
+    "endedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "feedbackComplete": {
+      "type": "boolean"
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "text": {
+            "type": "string"
+          },
+          "firstObservedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "roundObserved": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "round": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "observers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "a",
+                "b",
+                "c",
+                "d"
+              ]
+            },
+            "uniqueItems": true,
+            "minItems": 1
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "id",
+          "sequence",
+          "text",
+          "firstObservedAt",
+          "roundObserved",
+          "round",
+          "observers",
+          "evidence"
+        ]
+      }
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string",
+            "enum": [
+              "a",
+              "b",
+              "c",
+              "d"
+            ]
+          },
+          "capturedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "round": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "screenshotPath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "playerId",
+          "capturedAt",
+          "round",
+          "evidence"
+        ]
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "playerId": {
+            "type": "string",
+            "enum": [
+              "a",
+              "b",
+              "c",
+              "d"
+            ]
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "screenshotPath": {
+            "type": "string"
+          },
+          "intendedAction": {}
+        },
+        "required": [
+          "at",
+          "reason"
+        ]
+      }
+    },
+    "playerArtifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "playerId": {
+            "type": "string",
+            "enum": [
+              "a",
+              "b",
+              "c",
+              "d"
+            ]
+          },
+          "observations": {
+            "type": "string"
+          },
+          "actions": {
+            "type": "string"
+          },
+          "feedback": {
+            "type": "string"
+          },
+          "video": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "playerId",
+          "observations",
+          "actions",
+          "feedback",
+          "video"
+        ]
+      },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "exitOrder": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 4
+          },
+          "role": {
+            "type": "string"
+          },
+          "objective": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "exitOrder",
+          "role",
+          "objective",
+          "result",
+          "score"
+        ]
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "metadata",
+    "status",
+    "endedAt",
+    "feedbackComplete",
+    "events",
+    "observations",
+    "failures",
+    "playerArtifacts",
+    "results",
+    "limitations"
+  ]
+}

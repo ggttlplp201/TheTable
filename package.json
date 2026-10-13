@@ -7,11 +7,18 @@
     "dev": "pnpm --parallel --filter @the-table/server --filter @the-table/web dev",
     "test:e2e": "playwright test",
     "test": "pnpm -r --if-present test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "beta:run": "tsx beta/runner/cli.ts run",
+    "beta:preflight": "tsx beta/runner/cli.ts preflight",
+    "beta:validate-ui": "tsx beta/runner/cli.ts validate-ui",
+    "beta:report": "tsx beta/runner/cli.ts report",
+    "beta:typecheck": "tsc -p beta/tsconfig.json",
+    "beta:test": "vitest run beta/tests"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "tsx": "^4.20.6"
   }
 }

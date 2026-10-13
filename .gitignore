@@ -9,3 +9,12 @@ playwright-report
 test-results
 *.log
 .DS_Store
+.vercel
+.env*
+/audit/screenshots/
+/exports/
+/reference/sidejobs-tutorial/
+/handbook.md
+/beta/full-ui*/
+/beta/aggregate-metrics.json
+/beta/*-status.json

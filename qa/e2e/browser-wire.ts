@@ -15,8 +15,8 @@ export function observeViews(page: Page) {
   return {
     views, frames,
     latest: () => views.at(-1)!,
-    async revision(revision: number) {
-      await expect.poll(() => views.at(-1)?.public.revision).toBeGreaterThanOrEqual(revision);
+    async revision(revision: number, timeout = 5_000) {
+      await expect.poll(() => views.at(-1)?.public.revision, { timeout }).toBeGreaterThanOrEqual(revision);
     },
   };
 }

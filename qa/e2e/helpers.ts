@@ -8,24 +8,27 @@ export type Session = { code: string; reconnectToken: string; playerId: string }
 
 export async function waitForEntry(page: Page) {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Take your seat.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'The Table', exact: true })).toBeVisible();
+  const skipTraining = page.getByRole('button', { name: 'SKIP FOR NOW', exact: true });
+  if (await skipTraining.isVisible()) await skipTraining.click();
 }
 
 export async function createRoom(page: Page, name: string): Promise<Session> {
   await waitForEntry(page);
-  await page.getByLabel('Your name').fill(name);
-  await page.getByRole('button', { name: 'Create room' }).last().click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^[A-Z0-9]{6}$/);
+  await page.getByRole('button', { name: /create room/i }).click();
+  await page.getByLabel(/name at the table/i).fill(name);
+  await page.getByRole('button', { name: /^create room$/i }).click();
+  await expect(page.getByRole('heading', { name: 'Choose your starting kit', exact: true })).toBeVisible();
   return session(page);
 }
 
 export async function joinRoom(page: Page, code: string, name: string): Promise<Session> {
   await waitForEntry(page);
-  await page.getByRole('tab', { name: 'Join room' }).click();
-  await page.getByLabel('Your name').fill(name);
-  await page.getByLabel('Room code').fill(code);
-  await page.getByRole('button', { name: 'Join room' }).last().click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(code);
+  await page.getByRole('button', { name: /^join room$/i }).click();
+  await page.getByLabel(/name at the table/i).fill(name);
+  await page.getByLabel(/room code/i).fill(code);
+  await page.getByRole('button', { name: /take a seat/i }).click();
+  await expect(page.getByRole('heading', { name: 'Choose your starting kit', exact: true })).toBeVisible();
   return session(page);
 }
 
@@ -35,22 +38,45 @@ export async function session(page: Page): Promise<Session> {
 
 export async function chooseRoleAndReady(page: Page, role: string) {
   await page.getByRole('button', { name: new RegExp(`^${role}`) }).click();
-  await page.getByRole('button', { name: 'Ready up' }).click();
+  await page.getByRole('button', { name: /ready up/i }).click();
 }
 
-export async function startTwoPlayerLobby(desktop: Page, phone: Page) {
+/** The scene mounts before arrival and the private-objective presentation finish. */
+export async function waitForPlayableTable(page: Page) {
+  // Several software-rendered clients share one GPU in this harness. Wait for
+  // the setup acknowledgement and scene mount with the same budget as arrival.
+  await expect(page.getByLabel('First person table view', { exact: true })).toBeVisible({ timeout: 25_000 });
+  // Arrival and the 12-second contract reveal run consecutively.
+  await expect(page.getByLabel('At the table', { exact: true })).toBeVisible({ timeout: 40_000 });
+  await expect(page.locator('.objective-introduction')).toHaveCount(0);
+  await expect(page.locator('.table-arrival')).toHaveCount(0);
+}
+
+export async function lockStartingPocket(page: Page, itemName: string) {
+  await expect(page.getByLabel('Private match setup', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: `Pocket ${itemName}`, exact: true }).first().click();
+  await page.getByRole('button', { name: 'Lock Pocket choice', exact: true }).click();
+}
+
+export async function startThreePlayerLobby(desktop: Page, phone: Page) {
   const host = await createRoom(desktop, 'Desktop Host');
   await joinRoom(phone, host.code, 'Phone Player');
+  const thirdContext = await desktop.context().browser()!.newContext({ viewport: desktopViewport });
+  const third = await thirdContext.newPage();
+  await joinRoom(third, host.code, 'Third Player');
+  await chooseRoleAndReady(third, 'Smuggler');
   await chooseRoleAndReady(desktop, 'Enforcer');
   await chooseRoleAndReady(phone, 'Medic');
-  await expect(desktop.getByText('Desktop Host (you)')).toBeVisible();
-  await expect(phone.getByText('Desktop Host', { exact: true })).toBeVisible();
-  await expect(desktop.getByText('Phone Player', { exact: true })).toBeVisible();
-  await expect(phone.getByText('Phone Player (you)')).toBeVisible();
+  await expect(desktop.locator('.lobby-seat').filter({ hasText: 'DESKTOP HOST' })).toBeVisible();
+  await expect(phone.locator('.lobby-seat').filter({ hasText: 'DESKTOP HOST' })).toBeVisible();
+  await expect(desktop.locator('.lobby-seat').filter({ hasText: 'PHONE PLAYER' })).toBeVisible();
+  await expect(phone.locator('.lobby-seat').filter({ hasText: 'PHONE PLAYER' })).toBeVisible();
   await desktop.getByRole('button', { name: 'Start match' }).click();
-  await expect(desktop.getByLabel('First person table view')).toBeVisible();
-  await expect(phone.getByLabel('First person table view')).toBeVisible();
-  return host;
+  await lockStartingPocket(desktop, 'Cloth');
+  await lockStartingPocket(phone, 'Knife');
+  await lockStartingPocket(third, 'Poison');
+  await Promise.all([waitForPlayableTable(desktop), waitForPlayableTable(phone)]);
+  return { ...host, thirdContext };
 }
 
 export function captureSocketFrames(page: Page) {
