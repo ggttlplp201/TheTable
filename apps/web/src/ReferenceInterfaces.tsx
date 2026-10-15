@@ -1,5 +1,5 @@
 import { CoinAmount } from './ReferenceItemArt';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AudioEngine } from '@the-table/audio';
 import type { AnyRoomView, PlayerCommand } from './protocol';
 import { isSpectatorView, ROLE_COPY } from './protocol';
@@ -8,6 +8,7 @@ import { hasCapability, ITEM_BY_ID, ITEM_HELP, itemName, OBJECTIVE_BY_ID, OBJECT
 import { ReferenceItemArt } from './ReferenceItemArt';
 import { HandbookModel } from './ReferenceAnimatedItem';
 import { HandbookCharacterThumbnail } from './ReferencePortrait';
+import { tableSealURL } from './reference-game-kit.js';
 
 import { readTutorialPreferences, saveTutorialPreferences } from './tutorial-storage';
 
@@ -19,55 +20,55 @@ function readDisplaySettings() {
 }
 
 type HandbookCharacter = {
-  id: string; group: string; name: string; epithet: string; tint: number; no: string; stamp: string;
+  id: string; group: string; name: string; epithet: string; tint: number; no: string; stamp: string; stampCol: string;
   fields: string[][]; lore: string[]; behaviour: string;
   gold?: number; ability?: string; uses?: string; abilityText?: string; kit?: string[];
 };
 // Case records are the supplied Handbook's CHARS, including its deliberate redactions.
 const R_ = '█';
 const CHARS: HandbookCharacter[] = [
-  { id: 'enforcer', group: 'AT THE TABLE', name: 'Enforcer', epithet: 'The Debt Collector', tint: 0x7a3a2a, gold: 2, no: '0117', stamp: 'IN SESSION',
-    fields: [['NAME', 'Augustin Marr'], ['AGE', '47'], ['SEX', 'M'], ['HEIGHT', '6′4″'], ['FORMERLY', 'Debt collector, Lower Quay'], ['OFFENCE', 'When the Gold ran short, took payment in fingers. Kept them in jars, labelled.'], ['VICTIMS', R_], ['SENTENCE', 'The Table, until paid in full']],
-    lore: ['Brought in still wearing the jaw cage his last debtor\'s family welded on him. He insists it was a gift.', 'There is a wind-up key in the back of his skull. If it runs down, he stops mid-sentence and stares at the felt. Someone at the Table always winds it. Nobody will say who.'],
-    behaviour: 'Hums nursery rhymes while counting. Laughs a half-second after everyone else.',
+  { id: 'enforcer', group: 'AT THE TABLE', name: 'Enforcer', epithet: 'The Debt Collector', tint: 0x7a3a2a, gold: 2, no: '0117', stamp: 'IN SESSION', stampCol: '#7c1f19',
+    fields: [['NAME', 'Augustin Marr'], ['AGE', '47'], ['SEX', 'Male'], ['HEIGHT', '6′4″'], ['FORMERLY', 'Collector for a private lender, Lower Quay'], ['OFFENCE', 'Recovered debts by force. Three debtors died in his custody; the ledgers recorded them as settled.'], ['STATUS', 'Seated. Match ' + R_ + '.']],
+    lore: ['Marr kept every pair of cuffs he ever closed. The Table returned them to him, locked, and he has not asked for the keys.', 'The face was taken in the first session. What replaced it is loaded and points wherever he looks. He has never been seen to fire it at the Table, and he has never been seen to lower it.'],
+    behaviour: 'Speaks rarely. Watches hands rather than faces. Counts chambers when no one is talking.',
     ability: 'Quick Draw', uses: 'ONCE PER MATCH', abilityText: 'Fire the Pistol without a Bullet.', kit: ['pistol', 'bullet', 'cloth'] },
-  { id: 'medic', group: 'AT THE TABLE', name: 'Medic', epithet: 'The Plague Nurse', tint: 0x6a7a5a, gold: 3, no: '0203', stamp: 'IN SESSION',
-    fields: [['NAME', 'Sister ' + R_], ['AGE', '39'], ['SEX', 'F'], ['HEIGHT', '5′7″'], ['FORMERLY', 'Night nurse, St. Ottilie fever ward'], ['OFFENCE', 'Chose which patients deserved the medicine. Sold the rest. 41 beds emptied in one winter.'], ['VICTIMS', '41'], ['SENTENCE', 'The Table, one seat per bed']],
-    lore: ['The syringes in her wimple are not hers. She says each one is a patient she meant to come back for.', 'She still does rounds between turns: takes pulses, writes them on her apron, crosses them out. The IV bag on her back has been dripping since she arrived. It has never emptied.'],
-    behaviour: 'Whispers dosages under her breath. Smiles when someone is Downed.',
+  { id: 'medic', group: 'AT THE TABLE', name: 'Medic', epithet: 'The Night Nurse', tint: 0x6a7a5a, gold: 3, no: '0203', stamp: 'IN SESSION', stampCol: '#7c1f19',
+    fields: [['NAME', 'Sister ' + R_], ['AGE', '39'], ['SEX', 'Female'], ['HEIGHT', '5′7″'], ['FORMERLY', 'Ward sister, St. Ottilie fever hospital'], ['OFFENCE', 'During the outbreak, rationed the remaining medicine by her own judgement of who deserved it. Falsified the records of those she refused.'], ['STATUS', 'Seated. Match ' + R_ + '.']],
+    lore: ['The syringes she wears were drawn for patients she chose not to treat. There are forty-one. The Table did not miscount.', 'She is still a capable nurse, and will revive anyone at the Table without being asked. Survivors report that she checks their pulse for longer than is necessary.'],
+    behaviour: 'Keeps notes on every player. Calm when others are wounded; uneasy when they are not.',
     ability: 'Field Dressing', uses: 'PASSIVE', abilityText: 'Revive another player straight to 3 HP.', kit: ['medicine', 'antidote', 'knife'] },
-  { id: 'smuggler', group: 'AT THE TABLE', name: 'Smuggler', epithet: 'The Ferryman', tint: 0x3a4a5a, gold: 4, no: '0088', stamp: 'IN SESSION',
-    fields: [['NAME', R_], ['AGE', R_ + ' (appears 60s)'], ['SEX', 'M'], ['HEIGHT', '5′11″'], ['FORMERLY', 'Night ferryman, the Black Reach'], ['OFFENCE', 'Charged a toll at mid-river. Those who could not pay finished the crossing underwater.'], ['VICTIMS', 'Uncounted'], ['SENTENCE', 'The Table, until the river gives them back']],
-    lore: ['He wears two coins over his eyes, the fare he never paid himself. He sees well enough.', 'A fishing line runs from a hook in his lip straight up into the dark above the lamp. It goes taut when he lies. Weeds still drip from his hood onto the felt.'],
-    behaviour: 'Hums the tide. Pauses, as if listening to something under the table.',
+  { id: 'smuggler', group: 'AT THE TABLE', name: 'Smuggler', epithet: 'The Contraband Runner', tint: 0x3a4a5a, gold: 4, no: '0088', stamp: 'IN SESSION', stampCol: '#7c1f19',
+    fields: [['NAME', R_], ['AGE', R_], ['SEX', 'Male'], ['HEIGHT', '5′11″'], ['FORMERLY', 'Night boatman, the Black Reach docks'], ['OFFENCE', 'Ran cargo past the harbour customs for eleven years. Scuttled his boat with its crew aboard when the patrol closed in, to sink the evidence.'], ['STATUS', 'Seated. Match ' + R_ + '.']],
+    lore: ['He came up from the scuttled hull still in the suit he wore to sink it. The Table bolted the helmet shut and let the sea keep growing on him; coral roots through the canvas, and the sores open when he moves.', 'He still carries contraband in a net at his hip, and he trades as though the patrol is a minute away. Nothing he hands over has ever been what it appeared to be.'],
+    behaviour: 'Never sits with his back to the door. Listens to the room before every Trade.',
     ability: 'Private Stock', uses: 'PASSIVE', abilityText: 'See 4 Black Market offers instead of 3.', kit: ['cloth', 'poison'] },
-  { id: 'locksmith', group: 'AT THE TABLE', name: 'Locksmith', epithet: 'The Tinker', tint: 0x8a6a3a, gold: 3, no: '0154', stamp: 'IN SESSION',
-    fields: [['NAME', 'Edda Voss'], ['AGE', '52'], ['SEX', 'F'], ['HEIGHT', '5′3″'], ['FORMERLY', 'Master locksmith, Guild of the Ward'], ['OFFENCE', 'Sealed a family inside the house she was paid to secure. Let herself in every night to watch them.'], ['DURATION', '212 nights'], ['SENTENCE', 'The Table, locked in until released']],
-    lore: ['Seven keys are pushed into her scalp like a crown. She claims each opens something in this room, and won\'t say what.', 'The padlock over her mouth was her own idea. She only takes it off to taste a lock.'],
-    behaviour: 'Taps on wood to hear what is hollow. Counts everyone\'s pockets twice.',
+  { id: 'locksmith', group: 'AT THE TABLE', name: 'Locksmith', epithet: 'Master of Wards', tint: 0x8a6a3a, gold: 3, no: '0154', stamp: 'IN SESSION', stampCol: '#7c1f19',
+    fields: [['NAME', 'Edda Voss'], ['AGE', '52'], ['SEX', 'Female'], ['HEIGHT', '5′3″'], ['FORMERLY', 'Master locksmith, Guild of the Ward'], ['OFFENCE', 'Paid by a landlord to secure an overdue tenancy. Fitted the locks from the outside, with the family still inside, and did not return.'], ['STATUS', 'Seated. Match ' + R_ + '.']],
+    lore: ['She is kept veiled now, behind a porcelain mask with a keyhole set in its brow. Her arms were refitted with gears at every joint, and they turn whether she wants them to or not. The wreath on her head is made of the keys she never gave back.', 'Voss is meticulous and unhurried. She is the only player on record to have opened every chest the Table has offered her.'],
+    behaviour: 'Examines every lock in the room on arrival. Lowers the loupe when someone lies.',
     ability: 'Tumbler Sense', uses: 'ONCE PER ROUND', abilityText: 'Look inside a Chest before anyone opens it.', kit: ['key', 'lockpick', 'knife'] },
-  { id: 'broker', group: 'AT THE TABLE', name: 'Broker', epithet: 'The Ledger-Keeper', tint: 0x4a3a5a, gold: 5, no: '0009', stamp: 'IN SESSION',
-    fields: [['NAME', 'Mr. ' + R_], ['AGE', '58'], ['SEX', 'M'], ['HEIGHT', '6′1″'], ['FORMERLY', 'Financier, Exchange Row'], ['OFFENCE', 'Bought the debts of a whole street, then raised the interest until he owned the people too.'], ['ASSETS', R_], ['SENTENCE', 'The Table, until his books balance']],
-    lore: ['The receipt has not stopped printing from his mouth since he arrived. It lists everyone at the Table, and what they cost.', 'He wears a second porcelain face on the back of his head. It watches behind him. He says it\'s cheaper than trust.'],
-    behaviour: 'Head tilted, always. Agrees to every Trade, then says the price again.',
+  { id: 'broker', group: 'AT THE TABLE', name: 'Broker', epithet: 'The Financier', tint: 0x4a3a5a, gold: 5, no: '0009', stamp: 'IN SESSION', stampCol: '#7c1f19',
+    fields: [['NAME', 'Mr. ' + R_], ['AGE', '58'], ['SEX', 'Male'], ['HEIGHT', '6′1″'], ['FORMERLY', 'Private financier, Exchange Row'], ['OFFENCE', 'Bought the debts of an entire district, raised the interest, and collected the houses. Forty families evicted over one winter.'], ['STATUS', 'Seated. Match ' + R_ + '.']],
+    lore: ['He wears a porcelain face for business. The one behind it is the one he used at home; it has not spoken since he arrived.', 'His mouth now takes only coin. He is the oldest seat at the Table still playing, and he has never once been short of Gold.'],
+    behaviour: 'Agrees quickly. Restates every price before accepting it.',
     ability: 'Margin', uses: 'PASSIVE', abilityText: 'Sell items back for 1 more Gold, up to base price − 1.', kit: ['spyglass', 'handcuffs', 'knife'] },
-  { id: 'scavenger', group: 'AT THE TABLE', name: 'Scavenger', epithet: 'The Rag Picker', tint: 0x5a6a3a, gold: 3, no: '0231', stamp: 'IN SESSION',
-    fields: [['NAME', '"Little Pim"'], ['AGE', '31'], ['SEX', 'F'], ['HEIGHT', '5′2″'], ['FORMERLY', 'Rag picker, the plague pits'], ['OFFENCE', 'Robbed the dead in the pits. Then robbed the ones who weren\'t quite dead, and kept them quiet.'], ['VICTIMS', R_], ['SENTENCE', 'The Table, until she gives it all back']],
-    lore: ['She wears a crown of bent spoons and forks she says she found in mouths. One lens of her mask is bigger than the other and glows green when she wants something.', 'The doll on her belt is called Mister. Mister answers her. Mister has opinions about everyone at the Table.'],
-    behaviour: 'Twitches toward anything that rattles. Giggles at Downed players.',
+  { id: 'scavenger', group: 'AT THE TABLE', name: 'Scavenger', epithet: 'The Pit Picker', tint: 0x5a6a3a, gold: 3, no: '0231', stamp: 'IN SESSION', stampCol: '#7c1f19',
+    fields: [['NAME', 'Pim ' + R_], ['AGE', '34'], ['SEX', 'Female'], ['HEIGHT', '5′6″'], ['FORMERLY', 'Corpse handler, the plague pits; former army sapper'], ['OFFENCE', 'Stripped the dead in the pits for resale. When the dead ran out, took from the dying, and did not wait.'], ['STATUS', 'Seated. Match ' + R_ + '.']],
+    lore: ['The mask and helmet are her own, kept from the war and from the pits. She has not removed either since arrival, and the Table has not asked her to.', 'Everything in her sack was taken from someone at this Table. She knows whose each item was, and when they stopped needing it.'],
+    behaviour: 'Moves toward the Downed before anyone else does. Sorts her pack between turns.',
     ability: 'Salvage', uses: 'ONCE PER INTERMISSION', abilityText: 'Gain 1 Gold.', kit: ['knife', 'medicine', 'crowbar'] },
-  { id: 'tallyman', group: 'BEHIND THE COUNTER', name: 'Tallyman', epithet: 'Keeper of the Public Shop', tint: 0x3a5a3a, no: '0002', stamp: 'RETAINED',
-    fields: [['NAME', 'Horace Pell'], ['AGE', '44 at sentencing · now ' + R_], ['SEX', 'M'], ['HEIGHT', '6′6″ (growing)'], ['FORMERLY', 'Grocer, Famine Street'], ['OFFENCE', 'Weighted his scales through the famine. Sold sawdust as flour, and buried the complaints.'], ['STATUS', 'Lost at the Table, Round 6. Retained as staff.']],
-    lore: ['He lost, so he stayed. The House gave him a counter and three pairs of spectacles, and he has been taking stock ever since. It never comes out right.', 'His smile was stitched wider after he complained. A price tag hangs from his ear. He measures each player who walks up, wondering who will be standing beside him next.'],
-    behaviour: 'Counts under his breath. Never blinks while you pay.' },
-  { id: 'fence', group: 'BEHIND THE COUNTER', name: 'Fence', epithet: 'Keeper of the Black Market', tint: 0x8a2a20, no: R_, stamp: 'RETAINED',
-    fields: [['NAME', R_], ['AGE', R_], ['SEX', R_], ['HEIGHT', 'Varies'], ['FORMERLY', R_], ['OFFENCE', R_], ['STATUS', 'Lost at the Table. Date ' + R_ + '. Retained.']],
-    lore: ['His record has been redacted by the House itself. Under the hood there are too many embers, all watching, and one gold tooth.', 'The pocket watches sewn into his coat each belonged to a player who lost. Every one stopped at the moment its owner did. He sells their things back in the dark, a little dearer each time.'],
-    behaviour: 'Speaks only in prices. Laughs at nothing, softly, for a long time.' },
-  { id: 'dealer', group: 'TUTORIAL', name: 'The Dealer', epithet: 'The Table, in a man\'s shape', tint: 0x8a6a3a, no: '0000', stamp: 'THE HOUSE',
-    fields: [['NAME', '—'], ['AGE', 'Older than the room'], ['SEX', '—'], ['HEIGHT', R_], ['NATURE', 'Not a prisoner. Not a man.'], ['OFFENCE', 'None. He is where offences are paid.']],
-    lore: ['The Dealer is the Table itself, wearing the shape of a man so the sentenced have something to look at. Under the brim there is no face, only polished wood, green baize, a brass ring and the lamp.', 'The Table exists so that people pay back what they did. He deals, he waits, and he decides when a debt is settled. Little else is recorded. Little else is allowed to be.'],
-    behaviour: 'Does not blink. Does not breathe. His fingers are too long for the cards.' }
+  { id: 'tallyman', group: 'BEHIND THE COUNTER', name: 'Tallyman', epithet: 'Keeper of the Public Shop', tint: 0x3a5a3a, no: '0002', stamp: 'RETAINED', stampCol: '#3a2a1a',
+    fields: [['NAME', 'Horace Pell'], ['AGE', '44 at sentencing'], ['SEX', 'Male'], ['HEIGHT', '6′2″'], ['FORMERLY', 'Clerk to a grain merchant, Famine Street'], ['OFFENCE', 'Kept two sets of books during a famine. The merchant hoarded; Pell made the shortage look natural.'], ['STATUS', 'Lost at the Table. Retained.']],
+    lore: ['Pell lost his match and stayed, as the rules require. The Table found him useful and gave him a counter instead of the dark.', 'He keeps the public ledger honestly now. He is courteous to every player, and he records every sale twice.'],
+    behaviour: 'Polite, precise, patient. Does not discuss his own debt.' },
+  { id: 'fence', group: 'BEHIND THE COUNTER', name: 'Fence', epithet: 'Keeper of the Black Market', tint: 0x8a2a20, no: R_, stamp: 'RETAINED', stampCol: '#3a2a1a',
+    fields: [['NAME', R_], ['AGE', R_], ['SEX', R_], ['HEIGHT', R_], ['FORMERLY', R_], ['OFFENCE', R_], ['STATUS', 'Lost at the Table. Date ' + R_ + '. Retained.']],
+    lore: ['The Fence\'s record was sealed by the Table itself. It is known that he lost, and that he was not sent below.', 'The watches on his coat are stopped at different hours. Players who have studied them believe each marks the moment someone at the Table ran out of time.'],
+    behaviour: 'Deals only in private. Never names a price aloud.' },
+  { id: 'dealer', group: 'TUTORIAL', name: 'The Dealer', epithet: 'The Table, in a man\'s shape', tint: 0x8a6a3a, no: '0000', stamp: 'THE HOUSE', stampCol: '#3a2a1a',
+    fields: [['NAME', '—'], ['AGE', R_], ['SEX', '—'], ['HEIGHT', R_], ['NATURE', 'Not sentenced. Not human.'], ['OFFENCE', 'None recorded.']],
+    lore: ['The Dealer is the Table itself, taking a human shape so that the sentenced have someone to face. What is under the brim is not recorded.', 'The Table exists so that debts are paid. He deals, he waits, and he decides when a debt is settled.'],
+    behaviour: 'Patient. Does not blink.' }
 ];
 
 type HandbookTab = 'items' | 'chars' | 'contracts' | 'wildcards';
@@ -83,6 +84,7 @@ export function ReferenceHandbook({ onClose }: { onClose?: () => void }) {
   const selected = selections[tab];
   const items = Object.values(ITEM_BY_ID);
   const character = CHARS.find(entry => entry.id === selections.chars)!;
+  const characterSeal = useMemo(() => typeof document === 'undefined' ? '' : tableSealURL(character.stamp, character.stampCol, 132), [character.stamp, character.stampCol]);
   const item = ITEM_BY_ID[selections.items] ?? items[0]!;
   const contract = OBJECTIVES.find(entry => entry.id === selections.contracts)!;
   const wildcard = WILDCARDS.find(entry => entry.id === selections.wildcards)!;
@@ -102,14 +104,13 @@ export function ReferenceHandbook({ onClose }: { onClose?: () => void }) {
       <nav className="handbook-catalog" aria-label={tab === 'chars' ? 'Characters' : tab}>{groups.map(group => <section className="handbook-group" key={group.title}><h3>{group.title}</h3><div className="handbook-items">{group.rows.map(row => <button key={row.id} type="button" aria-pressed={selected === row.id} className={selected === row.id ? 'selected' : ''} onClick={() => setSelections(previous => ({ ...previous, [tab]: row.id }))}>{tab === 'items' ? <ReferenceItemArt itemId={row.id} size={44} /> : tab === 'chars' ? <HandbookCharacterThumbnail roleId={row.id} tint={CHARS.find(entry => entry.id === row.id)!.tint} /> : <HandbookModel kind={tab} modelId={row.id} name={row.name} description={tab === 'contracts' ? OBJECTIVE_HELP[row.id] ?? '' : ''} thumbnail />}<span className="handbook-row-copy"><strong>{row.name}</strong><small>{row.epithet}</small></span></button>)}</div></section>)}</nav>
       <HandbookModel key={tab + selected} kind={tab} modelId={selected} name={name} description={description} tint={character.tint} />
       {tab === 'chars' ? <article className="handbook-case-file" aria-label={character.name + ' case file'}>
-        <div className="handbook-file-strip"><span>THE TABLE · RECORD OF THE SENTENCED</span><span>FILE <Redacted value={character.no} /></span></div>
-        <div className="handbook-file-body"><div className="handbook-case-heading"><p>{character.group === 'AT THE TABLE' ? 'ROLE' : character.group === 'TUTORIAL' ? 'TUTORIAL' : 'SHOPKEEPER'} · {character.epithet}</p><h3>{character.name}</h3><span className="handbook-stamp">{character.stamp}</span></div>
+        <div className="handbook-file-body">{characterSeal && <img className="handbook-seal" src={characterSeal} alt={`${character.stamp} Table seal`} />}<div className="handbook-case-heading"><p>{character.group === 'AT THE TABLE' ? 'ROLE' : character.group === 'TUTORIAL' ? 'TUTORIAL' : 'SHOPKEEPER'} · {character.epithet}</p><h3>{character.name}</h3></div>
           <dl className="handbook-case-fields">{character.fields.map(([key, value]) => <div key={key}><dt>{key}</dt><dd><Redacted value={value!} /></dd></div>)}</dl>
           <section><h4>CASE NOTES</h4>{character.lore.map(paragraph => <p key={paragraph}>{paragraph}</p>)}</section>
           <section className="handbook-behaviour"><h4>OBSERVED BEHAVIOUR</h4><p>{character.behaviour}</p></section>
           {role && <><section className="handbook-ability"><h4>PERMITTED ABILITY <span>{character.uses}</span></h4><h5>{role.ability.name}</h5><p>{roleCopy?.ability ?? character.abilityText}</p></section><section><h4>ISSUED ON ARRIVAL <CoinAmount amount={role.startingCoins} /></h4><ul className="handbook-starting-kit">{role.startingItems.map(id => <li key={id}><ReferenceItemArt itemId={id} size={32} />{itemName(id)}</li>)}</ul></section></>}
           {character.group === 'BEHIND THE COUNTER' && <section><h4>{character.id === 'fence' ? 'BLACK MARKET STOCK · BASE + 1' : 'PUBLIC SHOP STOCK'}</h4><ul className="handbook-stock">{shopStock.map(entry => <li key={entry.id}><span>{entry.name}</span><CoinAmount amount={entry.basePrice! + (character.id === 'fence' ? 1 : 0)} /></li>)}</ul></section>}
-        </div><footer>PROPERTY OF THE TABLE — NOT TO BE REMOVED FROM THE ROOM</footer>
+        </div>
       </article> : <article className="handbook-description" aria-live="polite"><header><p className="handbook-kind">{tab === 'items' ? 'ITEM · ' + itemCategory(item) : tab === 'contracts' ? 'CONTRACT · ' + contract.mode : 'WILDCARD · ROUND 3+'}</p><h3>{name}</h3><p className="item-rarity">{tab === 'items' ? item.rarity : tab === 'contracts' ? 'Unlocks Round ' + contract.unlockRound + ' · ' + targetLabel(contract.targeting).toLowerCase() : 'Draw from the centre deck · Use or Burn'}</p></header><p>{description}</p>{tab === 'contracts' && contingency && <section className="handbook-contingency"><h4>CONTINGENCY</h4><p>{contingency}</p></section>}<dl>{tab === 'items' ? <><div><dt>PRICE</dt><dd>{item.basePrice === null ? 'UNSELLABLE' : <CoinAmount amount={item.basePrice} />}</dd></div><div><dt>USE</dt><dd>{item.consumption === 'ONE_USE' ? 'ONE-USE' : item.consumption === 'REUSABLE' ? 'REUSABLE' : 'EQUIPMENT'}</dd></div></> : tab === 'contracts' ? <><div><dt>TARGETS</dt><dd>{targetLabel(contract.targeting)}</dd></div><div><dt>UNLOCKS</dt><dd>Round {contract.unlockRound}</dd></div></> : <><div><dt>TARGET</dt><dd>{wildcard.targeting === 'NONE' ? 'None' : wildcard.targeting === 'POCKET' ? 'Choose a Pocket' : wildcard.targeting === 'VISIBLE_ITEM' || wildcard.targeting === 'EXCHANGE' ? 'Choose a visible item' : 'Choose a player'}</dd></div><div><dt>IF BURNED</dt><dd>Discarded face-down. Nobody sees it.</dd></div></>}</dl></article>}
     </div>
   </section>;

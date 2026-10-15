@@ -1,4 +1,4 @@
-// Canonical consolidated Art Style Samples (11) models, re-exported by the web kit.
+// Canonical consolidated Art Style Samples (12) models, re-exported by the web kit.
 // The Low Table — shared 3D asset kit (items, chests, characters, post FX)
 export const GRADES = { Sodium:[1.08,.93,.74], Bile:[.86,1.03,.74], Rust:[1.14,.82,.72], Spectator:[.88,.98,1.14] };
 export const ITEMS = [
@@ -206,7 +206,7 @@ export class Kit {
   const steel = m.metal, brass = m.brass, rust = m.rust, dark = F(0x070505), red = F(0x6a1410), copper = F(0xa8582a);
   const band = new T.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: .25 });
   const eyeW = F(0xd8ccb0), pupil = F(0x0a0606);
-  const slim = { enforcer: .9, tallyman: .82, fence: 1.08, dealer: .9, medic: .86, locksmith: .9, scavenger: .84, broker: .92, smuggler: .95 }[role] || 1;
+  const slim = { enforcer: .9, tallyman: .82, fence: 1.08, dealer: .9, medic: .86, locksmith: .76, scavenger: .84, broker: .92, smuggler: .95 }[role] || 1;
   const g = new T.Group(), up = new T.Group(), head = new T.Group();
   up.position.y = st ? .98 : .76; g.add(up); head.position.y = .8; up.add(head);
   const U = (...k) => k.flat().forEach(o => { o.position.y -= .76; up.add(o); });
@@ -272,32 +272,67 @@ export class Kit {
     legs(pant, boot);
     if (st) { [-1, 1].forEach(s => g.add(M(C(.092, .1, .3, 16), boot, s * .115, .22, 0), at(cuffC(.105), s * .115, .26, 0))); g.add(...chain([-.1, .26, .06], [.1, .26, .06], 8, steel, .011, .05)); }
   }
-  if (role === 'locksmith') {  // a living lock: iron safe-door torso with dial, keyhole eye socket, tumbler-pin teeth, skeleton-key spine, padlock hands, loupe on a hinge
-    const iron = new T.MeshPhongMaterial({ color: 0x3a3634, shininess: 40, specular: 0x6a6460, flatShading: true }), apron = cloth('#3a2a1e'), skin = cloth('#8a7468'), lea = F(0x2a1c14), boot = F(0x1a1210), glassM = new T.MeshPhongMaterial({ color: 0x8aa8a0, shininess: 90, specular: 0xffffff });
-    torso(apron, { chest: 1.0, skin, waist: .9 }); skirt(apron, -.08, 1.1);
-    U(M(C(.17, .17, .05, 18), iron, 0, 1.27, FZ + .01, PI / 2), M(C(.14, .14, .02, 18), F(0x2a2624), 0, 1.27, FZ + .04, PI / 2));
-    for (let i = 0; i < 24; i++) { const a = i / 24 * PI * 2; U(M(B(.004, i % 4 ? .012 : .024, .004), brass, Math.sin(a) * .12, 1.27 + Math.cos(a) * .12, FZ + .052)); }
-    const dial = G(M(C(.06, .06, .025, 14), brass, 0, 0, 0, PI / 2), M(B(.012, .07, .02), F(0x6a5428), 0, 0, .016), sph(.01, F(0x2a1a0a), 0, 0, .03)); dial.position.set(0, 1.27 - .76, FZ + .06); up.add(dial); P.dial = dial;
-    U(...[-1, 1].map(s => M(C(.02, .02, .07, 8), iron, s * .19, 1.36, FZ + .01)), ...[0, 1, 2, 3, 4, 5].map(i => sph(.01, steel, Math.sin(i) * .16, 1.27 + Math.cos(i) * .16, FZ + .04)));
-    U(...[0, 1, 2, 3, 4, 5].map(i => M(B(.04 - i * .003, .012, .01), brass, 0, 1.5 - i * .07, -FZ + .01)), M(new T.TorusGeometry(.04, .008, 4, 10), brass, 0, 1.56, -FZ + .01));
-    aL = arm(-1, apron, skin, null); aR = arm(1, apron, skin, null);
-    [aL, aR].forEach((a, i) => { a.hand.add(mkHand(skin, { long: true })); a.el.add(at(ring(.064, brass, .008), 0, -.34, 0)); });
-    for (let i = 0; i < 3; i++) aL.hand.add(M(C(.003, .002, .1, 4), steel, -.02 + i * .02, -.11, .02));
-    Hd(M(C(.13, .14, .26, 8), iron, 0, 1.74, 0), M(C(.14, .14, .02, 8), F(0x2a2624), 0, 1.875, 0), ...[0, 1, 2, 3, 4, 5, 6, 7].map(i => sph(.008, steel, Math.sin(i * PI / 4) * .135, 1.865, Math.cos(i * PI / 4) * .135)));
-    Hd(sph(.028, F(0x050404), -.045, 1.77, .125), M(B(.016, .03, .02), F(0x050404), -.045, 1.745, .125), sph(.006, glow(0xe0a040), -.045, 1.77, .14), ell(.022, .018, .01, eyeW, .05, 1.77, .128), sph(.009, pupil, .05, 1.77, .136));
-    Hd(M(B(.1, .03, .01), F(0x0a0606), 0, 1.66, .128), ...[0, 1, 2, 3, 4, 5].map(i => M(B(.008, .012 + (i * 7 % 5) * .004, .008), brass, -.04 + i * .016, 1.67 - (i * 7 % 5) * .002, .132)));
-    const lp = G(M(B(.02, .05, .01), brass, 0, .02, 0), M(C(.03, .036, .06, 10), brass, 0, -.02, .03, PI / 2), M(C(.025, .025, .005, 10), glassM, 0, -.02, .062, PI / 2)); lp.position.set(.05, .23, .13); head.add(lp); P.loupe = lp;
-    { const tl = [F(0x8a1a14), F(0x2a4a6a), F(0x5a3a1e)];
-      U(...[-1, 1].flatMap(s => [M(B(.11, .11, .02), lea, s * .1, .92, WZ + .035), M(B(.112, .03, .024), F(0x1a120c), s * .1, .965, WZ + .036), ...[0, 1, 2].map(j => M(C(.008, .008, .06, 6), tl[j], s * .1 - .03 + j * .03, .99, WZ + .035)), ...[0, 1, 2].map(j => M(C(.0025, .0025, .05, 4), steel, s * .1 - .03 + j * .03, 1.04, WZ + .035))]));
-      U(...[-1, 1].map(s => M(B(.03, .52, .01), lea, s * .1, 1.3, FZ + .02, 0, 0, s * .08)), ...[-1, 1].map(s => M(B(.035, .03, .014), brass, s * .1, 1.48, FZ + .024)));
-      U(M(C(.035, .035, .025, 12), brass, -.17, 1.42, FZ - .01, PI / 2), M(C(.03, .03, .004, 12), F(0xe8e0c8), -.17, 1.42, FZ + .004, PI / 2), M(B(.003, .026, .003), F(0x8a1a14), -.17, 1.425, FZ + .007, 0, 0, .7), M(C(.008, .008, .06, 6), brass, -.17, 1.38, FZ - .01));
-      U(...chain([0, 1.2, FZ + .07], [.16, .99, WZ + .03], 9, steel, .008, .04));
-      const kr = new T.Group(); kr.add(tor(.045, .006, steel, 0, 0, 0)); for (let i = 0; i < 6; i++) { const ky = key(i % 2 ? brass : steel, 1); ky.position.set(Math.sin(i - 2.5) * .04, -.05 - Math.abs(i - 2.5) * .006, 0); ky.rotation.z = (i - 2.5) * .25; kr.add(ky); } kr.position.set(.25, .94 - .76, .06); up.add(kr); P.ring = kr;
-      const oc = G(M(C(.03, .035, .06, 10), F(0x3a5a3a), 0, 0, 0), M(new T.ConeGeometry(.02, .04, 8), F(0x3a5a3a), 0, .05, 0), M(C(.003, .003, .06, 4), brass, .02, .09, 0, 0, 0, -.8)); oc.position.set(-.25, .9 - .76, .03); up.add(oc);
-      U(M(C(.012, .012, .3, 6), brass, 0, 1.6, -.16, .5), M(C(.02, .02, .03, 8), brass, 0, 1.47, -.2));
-      [aL, aR].forEach(a => a.el.add(tor(.066, .014, apron, 0, .0, 0, PI / 2)));
-      Hd(...[1.66, 1.72, 1.78, 1.84].flatMap(y => [-1, 1].map(s => sph(.007, steel, s * .125, y, .055))), M(B(.008, .26, .01), F(0x2a2624), 0, 1.74, .136)); }
-    legs(apron, boot);
+  if (role === 'locksmith') {  // THE KEEPER: very tall, veiled in a fringed ash shawl, porcelain mask with a keyhole brow, wreath of keys, netted clockwork arms with gears turning at every joint
+    const robe = cloth('#5e5a54'), robeD = cloth('#3e3b37'), shawl = cloth('#8e887e'), shawlD = cloth('#6a655c'), net = cloth('#2a2724', { stripe: '#58524a' }), skin = cloth('#b8aca0'), skinR = cloth('#a89488', { blood: 40 });
+    const por = cloth('#e2dace', { shine: 50, cracks: 4 }), ink = F(0x14100e), boot = F(0x2a2622), cav = F(0x080605), red = F(0x8a1a14), redD = F(0x5a0e0a);
+    const gm = new T.MeshPhongMaterial({ color: 0xa8843c, shininess: 70, specular: 0xffe0a0, flatShading: true }), gd = new T.MeshPhongMaterial({ color: 0x6a5a40, shininess: 50, specular: 0x8a7a60, flatShading: true });
+    let sd2 = 917; const rr = () => (sd2 = (sd2 * 16807) % 2147483647) / 2147483647;
+    // body + floor-length robe with a ragged over-layer
+    torso(robe, { chest: .92, waist: .8, skin, neck: .14 });
+    if (st) { U(lathe([[.2 * slim, .94], [.26 * slim, .7], [.32 * slim, .3], [.36 * slim, -.1], [.37 * slim, -.2]], robe, .72));
+      for (let i = 0; i < 22; i++) { const a = i / 22 * PI * 2, L = .55 + rr() * .5, r0 = .27 * slim; U(M(B(.07, L, .008), i % 3 ? robeD : shawlD, Math.sin(a) * (r0 + .04 + L * .06), .9 - L / 2, Math.cos(a) * (r0 + .04 + L * .06) * .72, -Math.cos(a) * .12, a, Math.sin(a) * .12)); } }
+    else skirt(robe, 0);
+    { const b = M(C(.25 * slim, .25 * slim, .05, 14), robeD, 0, .96, 0); b.scale.z = .66; U(b); }
+    U(...[-1, 1].map(s => M(B(.024, .24, .006), robeD, s * .05, .82, WZ + .01, 0, 0, s * .1)));
+    // shawl: hood open at the face, mantle over the shoulders, long fringe strips down both sides
+    Hd(lathe([[.0, 1.94], [.09, 1.925], [.148, 1.87], [.166, 1.77], [.162, 1.67], [.15, 1.6], [.17, 1.55]], shawl, 1.0, PI * 2 - 1.75, PI), ...[-1, 1].map(s => M(B(.012, .26, .1), shawlD, s * .158, 1.7, .07, 0, s * .35, s * .04)));
+    U(lathe([[.1, 1.6], [.2 * slim + .04, 1.53], [.3 * slim + .03, 1.44], [.33 * slim + .03, 1.36]], shawl, .78, PI * 2 - .7, PI));
+    const fr = st ? 1 : .55;
+    [-1, 1].forEach(s => { for (let i = 0; i < 5; i++) { const L = (.5 + rr() * .6) * fr, x = s * (.07 + i * .026), z = FZ + .02 - i * .006; U(M(B(.024, L, .006), i % 2 ? shawl : shawlD, x, 1.42 - L / 2, z, 0, 0, s * (rr() - .5) * .06)); } });
+    for (let i = 0; i < 9; i++) { const L = (.8 + rr() * .6) * fr; U(M(B(.04, L, .006), i % 2 ? shawl : shawlD, -.15 + i * .037, 1.4 - L / 2, -FZ - .03, 0, 0, (rr() - .5) * .06)); }
+    // pearl collar, long chain, keyhole medallion (swings)
+    U(...Array.from({ length: 16 }, (_, i) => { const a = (i / 15 - .5) * 2.4; return sph(.011, F(0xd8d0c0), Math.sin(a) * .085, 1.58 - Math.cos(a) * .02, Math.cos(a) * .075 + .005); }));
+    { const md = new T.Group(); md.add(...chain([0, 0, 0], [0, -.4, 0], 14, gm, .007), M(C(.05, .05, .012, 14), gm, 0, -.44, 0, PI / 2), tor(.05, .005, gd, 0, -.44, .007),
+        M(C(.012, .012, .016, 8), ink, 0, -.432, .004, PI / 2), M(B(.012, .026, .016), ink, 0, -.452, .004), ...[0, 1, 2, 3, 4, 5].map(i => sph(.005, gd, Math.cos(i) * .036, -.44 + Math.sin(i) * .036, .008)));
+      md.position.set(0, 1.56 - .76, FZ - .02); up.add(md); P.ring = md; }
+    // arms: grey sleeves to the elbow, netted forearms, long pale hands; gears at shoulder, elbow and wrist
+    aL = arm(-1, robe, net, null); aR = arm(1, robe, net, null);
+    aL.hand.add(mkHand(skinR, { long: true })); aR.hand.add(mkHand(skin, { long: true }));
+    const gear = (r, n, mat, th = .012) => { const o = new T.Group(); o.add(M(C(r * .82, r * .82, th, 14), mat, 0, 0, 0, PI / 2), M(C(r * .22, r * .22, th + .004, 8), ink, 0, 0, 0, PI / 2));
+      for (let i = 0; i < n; i++) { const a = i / n * PI * 2; o.add(M(B(r * .26, r * .26, th), mat, Math.cos(a) * r * .9, Math.sin(a) * r * .9, 0, 0, 0, a)); }
+      for (let i = 0; i < 4; i++) { const a = i / 4 * PI * 2 + .4; o.add(M(B(r * .1, r * .55, th * .8), cav, Math.cos(a) * r * .5, Math.sin(a) * r * .5, .002, 0, 0, a - PI / 2)); } return o; };
+    P.gears = [];
+    const joint = (bone, side, r, n, mat, y, sp, out = .07) => { const w = new T.Group(); w.position.set(side * out, y, 0); w.rotation.y = side * PI / 2; const gg = gear(r, n, mat); w.add(gg, M(C(r * .5, r * .5, .02, 10), gd, 0, 0, -.01, PI / 2)); bone.add(w); P.gears.push([gg, sp]); return gg; };
+    [[aL, -1], [aR, 1]].forEach(([a, s]) => {
+      joint(a.sh, s, .075, 12, gm, -.02, s * .9, .09); joint(a.sh, s, .034, 8, gd, -.09, -s * 1.7, .082);
+      joint(a.el, s, .044, 9, gm, 0, -s * 1.3, .066); joint(a.el, -s, .03, 7, gd, .01, s * 2.1, .06);
+      joint(a.hand, s, .022, 6, gm, .02, s * 2.6, .045);
+      a.el.add(tor(.06, .006, gm, 0, .045, 0, PI / 2), tor(.058, .005, gd, 0, -.04, 0, PI / 2)); a.hand.add(tor(.044, .006, gm, 0, .03, 0, PI / 2));
+      a.el.add(...[-.12, -.2, -.28].map(y => tor(.05, .003, F(0x58524a), 0, y, 0, PI / 2 + .3 * s))); });
+    // left hand: a long curved hook pick like a sickle; right hand: tension bar and a string of black beads
+    { const pk = new T.Group(), Rk = .15; for (let i = 0; i < 16; i++) { const a = i / 15 * 1.8; pk.add(M(B(.007, .022, .014 - i * .0007), F(0xb8b4ac), -Rk * (1 - Math.cos(a)), -.04 - Rk * Math.sin(a), 0, 0, 0, -a)); }
+      pk.add(M(C(.012, .014, .07, 8), gd, 0, 0, 0), tor(.014, .004, gm, 0, .04, 0, PI / 2)); pk.position.set(0, -.11, .03); pk.rotation.x = .3; aL.hand.add(pk); }
+    aR.hand.add(M(B(.004, .09, .01), steel, .02, -.13, .03, 0, 0, .2), ...chain([-.01, -.08, .03], [.02, -.32, .02], 16, F(0x14100e), .008, .02), sph(.012, gm, .02, -.33, .02));
+    // head: dark void under the hood, porcelain mask with closed slit eyes, long nose ridge, keyhole brow, painted tear marks
+    Hd(ell(.13, .158, .14, cav, 0, 1.75, -.01));
+    { const mk = new T.Group(), y0 = 1.745 - 1.56;
+      mk.add(ell(.112, .148, .05, por, 0, 0, 0), ell(.03, .07, .03, por, 0, -.005, .04), M(new T.ConeGeometry(.018, .06, 4), por, 0, -.01, .055, -.15, PI / 4));
+      [-1, 1].forEach(s => { mk.add(tor(.03, .004, ink, s * .045, .022, .042, 0, 0, PI * 1.1, PI * .8), M(B(.003, .03, .002), red, s * .045, -.022, .046, 0, 0, s * .05), M(B(.003, .018, .002), redD, s * .045, -.048, .045)); });
+      mk.add(M(B(.034, .004, .004), ink, 0, -.078, .044), M(B(.004, .012, .003), ink, 0, -.09, .043));
+      mk.add(M(C(.011, .011, .006, 10), ink, 0, .085, .036, PI / 2 - .4), M(B(.01, .02, .006), ink, 0, .07, .04, -.4), ...[-1, 1].flatMap(s => [1, 2, 3].map(i => sph(.006, gm, s * (.018 + i * .016), .082 - i * .004, .036 - i * .004))));
+      mk.position.set(0, y0, .135); mk.rotation.x = -.06; head.add(mk); }
+    // wreath: rusted wire ring of upright keys with knots of dried red flowers
+    { const wr = new T.Group(); wr.add(tor(.15, .009, rust, 0, 0, 0, PI / 2), tor(.152, .004, F(0x3a2a1e), 0, .006, 0, PI / 2 + .1));
+      for (let i = 0; i < 12; i++) { const a = i / 12 * PI * 2, ky = key(i % 3 ? rust : gm, 1.3); ky.position.set(Math.sin(a) * .15, .04, Math.cos(a) * .15); ky.rotation.set(0, a, (rr() - .5) * .4); wr.add(ky); }
+      for (let i = 0; i < 7; i++) { const a = (i / 7 - .5) * 2.6; wr.add(...[0, 1, 2].map(j => sph(.012 - j * .002, j ? redD : red, Math.sin(a) * .155 + (j - 1) * .01, .01 + j * .006, Math.cos(a) * .155))); }
+      for (let i = 0; i < 9; i++) { const a = rr() * PI * 2; wr.add(M(B(.003, .09 + rr() * .07, .003), F(0x2a2018), Math.sin(a) * .14, .06, Math.cos(a) * .14, (rr() - .5) * .6, 0, (rr() - .5) * .6)); }
+      wr.position.set(0, 1.9 - 1.56, .0); wr.rotation.x = -.18; head.add(wr); }
+    // loupe hinged on the mask over the right eye (drops and lifts in idle)
+    { const glassM = new T.MeshPhongMaterial({ color: 0x8aa8a0, shininess: 90, specular: 0xffffff });
+      const lp = G(M(B(.012, .05, .008), gm, 0, -.025, 0), M(C(.026, .032, .05, 10), gm, 0, -.055, .025, PI / 2), M(C(.022, .022, .005, 10), glassM, 0, -.055, .051, PI / 2), tor(.028, .004, gd, 0, -.055, .05));
+      lp.position.set(.045, 1.83 - 1.56, .18); head.add(lp); P.loupe = lp; }
+    // feet: wrapped, dark-toed, just showing under the hem
+    legs(robeD, boot);
   }
   if (role === 'fence') {      // ragged hood with ember eyes and a gold tooth, red-lined coat of stopped watches, four arms holding loot
     const coat = cloth('#2a221c', { blood: 3, ds: true }), lining = cloth('#5a1616', { ds: true, blood: 4 }), skin = cloth('#7a6a5e', { blood: 2 }), boot = F(0x161210), void0 = F(0x030202);
@@ -338,25 +373,62 @@ export class Kit {
     legs(coat, boot);
     if (st) [-1, 1].forEach(s => g.add(M(B(.13, .03, .2), F(0xd8ccb0), s * .115, .09, .03)));
   }
-  if (role === 'smuggler') {   // dockside smuggler: sealed iron head under a knit watch cap, roll-neck jumper, short double-breasted peacoat with contraband-stuffed pockets, rope coil on the shoulder, cask strapped to the back, shuttered lantern + cargo hook on the belt, tall tarred boots
-    const coat = cloth('#1c2028', { cracks: 2 }), coatIn = F(0x14161c), knit = cloth('#5a2a24'), jumper = cloth('#4a4a42'), pant = cloth('#2e2c26'), boot = new T.MeshPhongMaterial({ color: 0x141412, shininess: 60, specular: 0x444440, flatShading: true }), rope = F(0x8a7048), wood = F(0x4a3020), dk = F(0x1a120c), lea = F(0x3a2416), iron = new T.MeshPhongMaterial({ color: 0x46413c, shininess: 35, specular: 0x7a7266, flatShading: true }), weld = F(0x2a2420), btn = F(0x2a2a2a);
-    torso(coat, { chest: .95, waist: .84 }); const w = slim * .95;
-    if (st) U(lathe([[.25 * w, 1.0], [.27 * w, .84], [.28 * w, .78]], coat, .64, PI * 2, 0, 16));
-    U(lathe([[.065, 1.5], [.085, 1.54], [.095, 1.6], [.088, 1.64]], jumper, .9, PI * 2, 0, 16), ...[1.52, 1.56, 1.6].map(y => tor(.09, .008, jumper, 0, y, 0, PI / 2)), M(B(.1, .14, .015), jumper, 0, 1.44, FZ - .004));
-    [-1, 1].forEach(s => U(lathe([[.24 * w, 1.52], [.295 * w, 1.41], [.29 * w, 1.3]], coat, .64, .46, s * .3, 4), lathe([[.236 * w, 1.52], [.29 * w, 1.41]], coatIn, .645, .1, s * .5, 2)));
-    U(...[1.36, 1.25, 1.14].flatMap(y => [-1, 1].map(s => M(C(.012, .012, .008, 8), btn, s * .06, y, FZ + .008, PI / 2))), ...[-1, 1].map(s => M(B(.11, .015, .03), coat, s * .14, 1.06, WZ + .025)), M(B(.06, .05, .03), F(0x8a7a5a), -.13, 1.1, WZ + .012), M(C(.012, .012, .07, 6), new T.MeshPhongMaterial({ color: 0x2a4a2a, shininess: 90 }), .15, 1.12, WZ + .015), M(B(.08, .006, .03), coat, .1, 1.38, FZ + .012));
-    { const b = M(C(.235 * w, .235 * w, .045, 14), lea, 0, .97, 0); b.scale.z = .7; U(b, M(B(.05, .045, .02), steel, 0, .97, WZ + .01)); }
-    const hook = G(M(B(.014, .06, .014), steel, 0, 0, 0), tor(.035, .009, steel, 0, -.06, 0, 0, 0, PI, PI * 1.3), M(new T.ConeGeometry(.01, .025, 4), steel, -.035, -.06, 0, 0, 0, .3)); hook.position.set(.24, .9 - .76, .06); up.add(hook);
-    const lan = G(M(B(.07, .1, .07), dk, 0, 0, 0), M(B(.055, .07, .072), glow(0xffb050), 0, 0, 0), M(B(.06, .07, .076), dk, .0, 0, 0, 0, 0, 0), M(new T.ConeGeometry(.05, .03, 4), dk, 0, .065, 0, 0, PI / 4), tor(.02, .004, steel, 0, .09, 0)); lan.children[2].position.x = .03; lan.position.set(-.25, .86 - .76, .04); up.add(lan); P.lantern = lan;
-    const cask = G(M(C(.13, .13, .28, 12), wood, 0, 0, 0), M(C(.115, .115, .282, 12), F(0x3a2416), 0, 0, 0), ...[-.11, 0, .11].map(y => tor(.132, .008, steel, 0, y, 0, PI / 2)), M(C(.015, .015, .03, 6), F(0x2a1a10), 0, .02, .13, PI / 2));
-    cask.children[1].scale.set(1, 1, 1); cask.position.set(0, 1.3 - .76, -.27); cask.rotation.z = PI / 2 - .15; up.add(cask); U(...[-1, 1].map(s => M(B(.035, .46, .01), lea, s * .12, 1.3, -.2, 0, 0, s * .1)));
-    aL = arm(-1, coat, coat, F(0x2a2018)); aR = arm(1, coat, coat, F(0x2a2018));
-    [aL, aR].forEach(a => a.el.add(tor(.066, .01, coatIn, 0, -.33, 0, PI / 2), ...[0, 1].map(i => M(C(.006, .006, .006, 6), btn, .05, -.3 - i * .025, .03, 0, 0, PI / 2))));
-    const coil = G(...[0, 1, 2, 3].map(i => tor(.085 + i * .004, .011, rope, (i - 1.5) * .008, 0, 0, 0, PI / 2 + (i - 1.5) * .08, 0)), M(B(.012, .12, .012), rope, .02, -.12, .02, 0, 0, .3)); coil.position.set(0, -.04, .02); aL.sh.add(coil);
-    { const hd = M(new T.DodecahedronGeometry(.155, 0), iron, 0, 1.74, 0, .2, .3, 0); hd.scale.set(.95, 1.12, .92); Hd(hd, ...[0, 1, 2, 3, 4, 5, 6, 7].map(i => { const a = i / 8 * PI * 2; return M(B(.012, .01, .012), weld, Math.sin(a) * .128, 1.7 + Math.cos(a * 3) * .04, Math.cos(a) * .128); }), M(B(.07, .05, .006), F(0x5a524a), .03, 1.71, .142, 0, .15, .1), ...[[-.01, 1.73], [.065, 1.73], [-.01, 1.69], [.065, 1.69]].map(([x, y]) => sph(.006, F(0x8a8070), x, y, .148))); }
-    { const cap = lathe([[0, 1.95], [.07, 1.94], [.125, 1.9], [.15, 1.84], [.158, 1.8]], knit, .95, PI * 2, 0, 16); cap.rotation.z = -.08; Hd(cap, lathe([[.16, 1.77], [.168, 1.8], [.168, 1.84], [.16, 1.86]], knit, .95, PI * 2, 0, 16), ...Array.from({ length: 16 }, (_, i) => { const a = i / 16 * PI * 2; return M(B(.006, .07, .004), F(0x3a1a16), Math.sin(a) * .169, 1.815, Math.cos(a) * .161, 0, a, 0); })); }
-    legs(pant, boot);
-    if (st) [-1, 1].forEach(s => g.add(M(C(.095, .1, .44, 10), boot, s * .115, .28, 0), tor(.098, .012, boot, s * .115, .5, 0, PI / 2), M(B(.08, .004, .004), F(0x5a5a50), s * .115, .3, .1)));
+  if (role === 'smuggler') {   // THE DIVER: full old standard-dress diving suit, dark brown and waterlogged, overgrown with coral and barnacle sores; copper helmet with grilled ports, bolted corselet, lead weight belt, air hose, contraband in a net on the hip
+    const suit = cloth('#3a281c', { cracks: 3 }), suitD = cloth('#2a1c14'), patch = cloth('#33241a'), rub = F(0x1e1814), cu = cloth('#6a4026', { shine: 55, cracks: 4 }), cuD = new T.MeshPhongMaterial({ color: 0x4a2a18, shininess: 40, specular: 0x7a5a3a, flatShading: true });
+    const brz = new T.MeshPhongMaterial({ color: 0x7a5a30, shininess: 60, specular: 0xa08050, flatShading: true }), lead = F(0x3a3a38), glassD = new T.MeshPhongMaterial({ color: 0x0a100e, shininess: 30, specular: 0x1a2a26, transparent: true, opacity: .55 }), glowE = new T.MeshBasicMaterial({ color: 0xc8a050 });
+    const corA = new T.MeshPhongMaterial({ color: 0xb0502a, shininess: 20, flatShading: true }), corB = new T.MeshPhongMaterial({ color: 0xc8907a, shininess: 20, flatShading: true }), corC = new T.MeshPhongMaterial({ color: 0x7a2418, shininess: 20, flatShading: true });
+    const barnM = new T.MeshPhongMaterial({ color: 0xb8a890, shininess: 10, flatShading: true }), sore = new T.MeshPhongMaterial({ color: 0x9a6a58, shininess: 50, specular: 0x6a4a40, flatShading: true });
+    let sd3 = 4242; const rr = () => (sd3 = (sd3 * 16807) % 2147483647) / 2147483647;
+    // growths: barnacle (ring + dark hole), Dung-Eater-style sore (swollen disc, pale rim), branching coral
+    const barn = (r) => G(M(C(r * .7, r, r * .8, 7), barnM, 0, r * .4, 0), M(C(r * .4, r * .5, r * .3, 6), F(0x1a120c), 0, r * .82, 0));
+    const soreG = (r) => G(M(C(r, r * 1.1, r * .5, 9), sore, 0, r * .2, 0), tor(r * .82, r * .16, barnM, 0, r * .46, 0, PI / 2), M(C(r * .45, r * .45, r * .2, 7), F(0x5a2a20), 0, r * .5, 0));
+    const coral = (r, mat) => { const o = new T.Group(); const br = (x, y, z, rx, rz, l, w, d) => { const c = M(C(w * .6, w, l, 5), mat, x, y + l / 2, z, rx, 0, rz); o.add(c); if (d > 0) { const tx = x - Math.sin(rz) * l, ty = y + Math.cos(rz) * Math.cos(rx) * l, tz = z + Math.sin(rx) * l; br(tx, ty - .002, tz, rx + (rr() - .5) * .9, rz - .5, l * .7, w * .7, d - 1); br(tx, ty - .002, tz, rx + (rr() - .5) * .9, rz + .5, l * .7, w * .7, d - 1); } else o.add(sph(w * 1.1, mat, x - Math.sin(rz) * l, y + l, z)); };
+      br(0, 0, 0, (rr() - .5) * .4, (rr() - .5) * .4, r, r * .22, 2); return o; };
+    const onBody = (obj, a, y, R, d = .7, tilt = 0) => { const rho = R / Math.sqrt(Math.sin(a) ** 2 + (Math.cos(a) / d) ** 2), w = new T.Group(); w.position.set(0, y - .76, 0); w.rotation.y = a; obj.position.set(0, 0, rho); obj.rotation.x = PI / 2 + tilt; w.add(obj); up.add(w); };
+    // body: bulky waterlogged suit with puckered folds and patches
+    torso(suit, { chest: 1.22, waist: 1.18, d: .7, neck: .06 });
+    if (st) U(lathe([[.3 * slim * 1.18, .94], [.33 * slim * 1.18, .78], [.31 * slim * 1.18, .66]], suit, .74)); else skirt(suit, 0);
+    U(...[1.12, 1.0, .88].map(y => tor(.33 * slim * 1.12, .012, suitD, 0, y, 0, PI / 2)), M(B(.12, .1, .01), patch, -.14, 1.06, WZ + .045, 0, 0, .15), M(B(.09, .08, .01), patch, .16, .9, WZ + .05, 0, 0, -.1));
+    // corselet: bronze breastplate bolted to the suit's rubber collar
+    U(lathe([[.1, 1.6], [.2, 1.56], [.33 * slim * 1.15, 1.44], [.36 * slim * 1.15, 1.36]], brz, .82), lathe([[.36 * slim * 1.15, 1.36], [.365 * slim * 1.15, 1.34]], rub, .82));
+    for (let i = 0; i < 12; i++) { const a = i / 12 * PI * 2, R0 = .335 * slim * 1.15; U(G(M(C(.014, .014, .02, 6), brz, 0, 0, 0, PI / 2), M(B(.03, .008, .006), brz, 0, 0, .012)).translateX(Math.sin(a) * R0).translateY(1.375).translateZ(Math.cos(a) * R0 * .82)); }
+    U(tor(.19, .02, cuD, 0, 1.585, 0, PI / 2), ...[-1, 1].map(s => M(B(.1, .05, .02), cuD, s * .14, 1.42, FZ + .055, -.5, 0, s * -.2)));
+    // weight belt with lead blocks, crotch strap, knife sheath, contraband net
+    U(G(M(C(.335 * slim * 1.18, .335 * slim * 1.18, .07, 16), F(0x2a1e14), 0, 0, 0)).translateY(.96));
+    for (let i = 0; i < 7; i++) { const a = (i / 6 - .5) * 2.6; U(G(M(B(.07, .08, .03), lead, 0, 0, 0)).translateX(Math.sin(a) * .33 * slim * 1.2).translateY(.96).translateZ(Math.cos(a) * .33 * slim * 1.2 * .74 + .02).rotateY(a)); }
+    U(M(B(.05, .05, .02), brz, 0, .96, WZ + .07), M(B(.05, .24, .02), F(0x2a1e14), 0, .82, WZ + .05));
+    U(G(M(B(.04, .2, .02), F(0x1a1410), 0, 0, 0), M(B(.03, .06, .025), brz, 0, .12, 0), M(C(.012, .012, .06, 6), F(0x3a2a1e), 0, .17, 0)).translateX(.2).translateY(.84).translateZ(WZ + .02).rotateZ(.1));
+    { const nb = new T.Group(); nb.add(ell(.07, .09, .05, new T.MeshPhongMaterial({ color: 0x2a2018, wireframe: true }), 0, 0, 0), ...[[-.02, 0, F(0x2a4a3a)], [.025, .01, F(0x6a2a1a)], [0, -.03, F(0x8a7a50)]].map(([x, y, mt]) => M(C(.016, .016, .07, 6), mt, x, y, 0, 0, 0, x * 4)), M(C(.004, .004, .1, 4), F(0x6a5a40), 0, .1, 0));
+      nb.position.set(-.27, .85 - .76, .05); up.add(nb); }
+    // air hose: from the helmet's back, over the shoulder, down the front to the belt and trailing
+    { const pts = [[.05, 1.66, -.18], [.18, 1.62, -.2], [.27, 1.5, -.06], [.24, 1.36, .14], [.13, 1.2, .22], [.08, 1.0, .25], [.12, .84, .23], [.2, .7, .18]];
+      for (let i = 0; i < pts.length - 1; i++) { const [a, b] = [pts[i], pts[i + 1]], d = new T.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]), L = d.length(), seg = M(C(.022, .022, L + .01, 7), rub, 0, 0, 0); seg.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - .76, (a[2] + b[2]) / 2); seg.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), d.normalize()); up.add(seg);
+        if (i % 2) U(tor(.025, .006, brz, a[0], a[1], a[2], PI / 2)); } }
+    // arms: puffy sleeves with fold rings and rubber cuffs, heavy gloves
+    aL = arm(-1, suit, suit, rub); aR = arm(1, suit, suit, rub);
+    [aL, aR].forEach((a, i) => { const s = i ? 1 : -1; a.el.add(...[-.12, -.22, -.3].map(y => tor(.062, .01, suitD, 0, y, 0, PI / 2)), tor(.058, .016, rub, 0, -.37, 0, PI / 2), M(B(.06, .05, .01), patch, s * .05, .1, .03, 0, s * PI / 2, 0));
+      a.sh.add(...[-.1, -.2].map(y => tor(.078, .01, suitD, 0, y, 0, PI / 2)), sph(.09, suit, 0, 0, 0)); });
+    // helmet: copper sphere, grilled faceport with something looking out, side and top ports, bonnet bolts, valves
+    { const hb = 1.76;
+      Hd(ell(.2, .21, .2, cu, 0, hb, 0), M(C(.1, .11, .06, 10), cuD, 0, 1.58, 0), tor(.11, .014, brz, 0, 1.61, 0, PI / 2));
+      const port = (r, x, y, z, rx, ry) => { const p = G(M(C(r + .018, r + .022, .05, 14, true), brz, 0, 0, 0, PI / 2), M(C(r + .006, r + .006, .05, 14, true), cuD, 0, 0, 0, PI / 2), M(C(r, r, .006, 14), F(0x040303), 0, 0, .006, PI / 2), M(C(r, r, .02, 14), glassD, 0, 0, .018, PI / 2), tor(r + .01, .007, cuD, 0, 0, .026), M(B(r * 2.1, .01, .01), brz, 0, 0, .03, 0, 0, PI / 4), M(B(r * 2.1, .01, .01), brz, 0, 0, .03, 0, 0, -PI / 4), M(B(r * 2.1, .008, .008), brz, 0, 0, .032), ...[0, 1, 2, 3, 4, 5].map(j => sph(.007, brz, Math.cos(j) * (r + .016), Math.sin(j) * (r + .016), .028)));
+        p.position.set(x, y - 1.56, z); p.rotation.set(rx, ry, 0); head.add(p); return p; };
+      port(.085, 0, hb - .01, .185, 0, 0).add(...[-1, 1].map(s => sph(.014, glowE, s * .034, .01, .015)), ell(.03, .016, .004, F(0x2a1a14), 0, -.035, .011)); port(.055, -.175, hb, .02, 0, -PI / 2); port(.055, .175, hb, .02, 0, PI / 2); port(.045, 0, hb + .16, .1, -.95, 0);
+
+      Hd(...[[-.09, 1.62, .13], [.09, 1.62, .13], [-.15, 1.64, -.04], [.15, 1.64, -.04], [0, 1.63, -.15]].map(([x, y, z]) => G(M(C(.014, .014, .03, 6), brz, x, y, z), M(B(.04, .008, .008), brz, x, y + .02, z))));
+      Hd(M(C(.02, .022, .06, 8), brz, .05, 1.74, -.19, PI / 2 - .3), M(C(.03, .03, .012, 10), brz, .05, 1.745, -.22, PI / 2 - .3), M(C(.016, .016, .05, 8), brz, -.14, 1.7, .13, 0, 0, .9)); }
+    // growth pass: coral and barnacles across helmet, corselet, chest, back, arms
+    const hG = (o, x, y, z, rx, rz) => { o.position.set(x, y - 1.56, z); o.rotation.set(rx, 0, rz); head.add(o); };
+    hG(coral(.11, corA), .08, 1.93, -.02, -.2, -.3); hG(coral(.08, corB), -.1, 1.9, -.08, .3, .5); hG(coral(.07, corC), .14, 1.8, .08, -.3, -1.1); hG(barn(.022), -.12, 1.86, .12, -.6, .6); hG(barn(.018), .15, 1.82, -.1, .2, -1.1); hG(soreG(.03), -.05, 1.84, -.17, -2.3, .2); hG(barn(.016), .02, 1.93, .1, -.5, 0);
+    [[.4, 1.48, .022, 'b'], [-.9, 1.45, .03, 's'], [2.6, 1.46, .026, 's'], [.2, 1.25, .035, 's'], [-.5, 1.18, .025, 'b'], [1.1, 1.3, .03, 's'], [-1.6, 1.08, .028, 's'], [3.2, 1.2, .04, 's'], [2.2, 1.0, .03, 'b'], [-2.6, 1.3, .03, 's'], [.7, 1.05, .02, 'b'], [-.15, .9, .022, 'b']].forEach(([a, y, r, t]) => onBody(t === 's' ? soreG(r) : barn(r), a, y, y > 1.36 ? .345 * slim * 1.15 : .32 * slim * 1.2, y > 1.36 ? .82 : .72));
+    [[-.8, 1.5, corA, .11], [2.9, 1.42, corC, .13], [1.4, 1.2, corB, .09], [-2.2, 1.0, corA, .09], [.9, 1.48, corC, .08], [-1.3, 1.25, corB, .08], [3.5, 1.1, corA, .1]].forEach(([a, y, mt, r]) => onBody(coral(r, mt), a, y, .33 * slim * 1.18, .74, -.6));
+    [[aL, -1], [aR, 1]].forEach(([a, s]) => { const add2 = (bone, o, y, z) => { o.position.set(s * .07, y, z); o.rotation.z = -s * PI / 2; bone.add(o); };
+      add2(a.sh, soreG(.028), -.05, .02); add2(a.sh, barn(.02), -.2, -.03); add2(a.el, barn(.018), -.15, .02); if (s > 0) add2(a.sh, coral(.1, corA), 0, 0); else add2(a.el, soreG(.024), -.08, -.02); });
+    // legs + heavy diving boots (lead soles, brass toe caps, laced canvas uppers)
+    legs(suit, rub);
+    if (st) [-1, 1].forEach(s => g.add(cap(.135, .26, suit, s * .115, .7, 0, 0, 0, s * .03), cap(.12, .26, suit, s * .12, .36, 0, 0, 0, s * .02), tor(.13, .014, suitD, s * .118, .52, 0, PI / 2), tor(.124, .012, suitD, s * .12, .42, 0, PI / 2), M(B(.08, .07, .01), patch, s * .2, .62, .06, 0, s * .5, 0)));
+    if (st) [-1, 1].forEach(s => { g.add(M(C(.125, .13, .2, 10), suitD, s * .115, .16, 0), M(B(.2, .05, .3), lead, s * .115, .025, .04), ell(.09, .06, .08, brz, s * .115, .08, .14), ...[.1, .16, .22].map(y => M(B(.1, .006, .006), F(0x8a7a5a), s * .115, y, .1)), tor(.1, .014, rub, s * .115, .27, 0, PI / 2));
+      const bo = soreG(.03); bo.position.set(s * .235, .58, .04); bo.rotation.z = -s * PI / 2; g.add(bo); const cb = barn(.02); cb.position.set(s * .11, .42, .1); cb.rotation.x = PI / 2; g.add(cb); });
   }
   if (role === 'dealer') {     // THE DEALER (original): dark worn suit, frayed shirt, waistcoat, sleeve garters, a low fedora that keeps the face in shadow; two faint lamp-points for eyes
     const suit = cloth('#17130f', { cracks: 2 }), shirt = cloth('#9a907a', { ink: 4 }), tie = F(0x3a1610), vest = cloth('#231c16'), hat = cloth('#0e0c0a'), band = F(0x2a1810), skin = cloth('#a89888'), gar = new T.MeshPhongMaterial({ color: 0x8a6a30, shininess: 50, specular: 0x6a5a40, flatShading: true }), boot = F(0x0c0a08), eg = glow(0xffc070);
@@ -446,7 +518,8 @@ export class Kit {
   }
   Object.assign(P, { aL, aR }); g.userData.P = P;
   aL.sh.add(at(ring(.072, band, .008), 0, -.05, 0));
-  if (st) g.scale.setScalar({ tallyman: 1.1, dealer: 1.06, enforcer: 1.05, fence: 1.04, scavenger: .95, locksmith: .94, medic: 1.0 }[role] || 1);
+  if (st) g.scale.setScalar({ tallyman: 1.1, dealer: 1.06, enforcer: 1.05, fence: 1.04, scavenger: .95, locksmith: 1.0, medic: 1.0 }[role] || 1);
+  if (st && role === 'locksmith') g.scale.set(.9, 1.14, .9);
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   g.userData.label = name; return g;
 }
@@ -503,6 +576,8 @@ export class Kit {
     if (P.lantern) { P.lantern.rotation.z = s(t * 1.7 + ph) * .14; P.lantern.rotation.x = s(t * 1.3 + ph) * .08; }
     if (P.watch) P.watch.rotation.z = s(t * 2.2 + ph) * .25;
     if (P.trinkets) P.trinkets.forEach((o, i) => { o.rotation.z = s(t * 1.9 + i * 1.3) * .12; });
+    if (P.gears) P.gears.forEach(([o, sp]) => { o.rotation.z = t * sp; });
+    if (P.pendulum) P.pendulum.rotation.z = Math.sin(t * 3.2) * .35;
     if (P.loupe) { const k = (t * .12 + ph * .1) % 1, e = x => x * x * (3 - 2 * x), q = k < .45 ? 0 : k < .5 ? e((k - .45) / .05) : k < .9 ? 1 : 1 - e((k - .9) / .1); P.loupe.rotation.x = -q * .95; }
     if (P.eyeMat) { const f = Math.max(.15, .78 + .22 * s(t * 3.1 + ph) - (Math.floor(t * 7) % 23 === 0 ? .7 : 0)); P.eyeMat.color.setRGB(.88 * f, .63 * f, .25 * f); }
     if (r === 'dealer') { P.head.rotation.y = s(t * .21 + ph) * .1; P.head.rotation.x = .07 + s(t * .13) * .02; P.up.rotation.z = s(t * .17 + ph) * .008; }
@@ -756,6 +831,33 @@ export class Kit {
   if (P.dial) P.dial.rotation.z = Math.round(t * .6) * .6; if (P.claw) P.claw.children.forEach((c, i) => { c.rotation.z = (i < 2 ? 1 : -1) * Math.max(0, s(t * .8)) * .25; }); if (P.box) P.box.rotation.y = s(t * .7) * .1;
   if (P.books) P.books.rotation.z = s(t * .9 + ph) * .025;
   if (P.lampMat) { const f = .8 + .2 * s(t * 2.3 + ph); P.lampMat.color.setRGB(1 * f, .75 * f, .44 * f); } }; }
+
+// The Table's seal: circular ink emblem. Ring text "THE TABLE" (top) + status (bottom), beaded ring, top-down table with six seats and the lamp. Pixel-eroded for a worn rubber-stamp look.
+export function tableSealURL(status = 'IN SESSION', ink = '#7c1f19', S = 96) {
+  const c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d'), cx = S / 2, PI = Math.PI;
+  let sd = status.length * 131 + 7; const r = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  g.strokeStyle = g.fillStyle = '#000'; g.lineCap = 'butt';
+  const ring = (rr, w) => { g.lineWidth = w; g.beginPath(); g.arc(cx, cx, rr, 0, PI * 2); g.stroke(); };
+  ring(S * .47, 3.2); ring(S * .405, 1.2); ring(S * .3, 1.6);
+  const arcText = (txt, rr, mid, dir) => { g.font = 'bold ' + Math.round(S * .105) + 'px "Courier New", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const step = .205; const n = txt.length; for (let i = 0; i < n; i++) { const a = mid + (i - (n - 1) / 2) * step * dir; g.save(); g.translate(cx + Math.cos(a) * rr, cx + Math.sin(a) * rr); g.rotate(a + (dir > 0 ? PI / 2 : -PI / 2)); g.fillText(txt[i], 0, 0); g.restore(); } };
+  arcText('THE TABLE', S * .353, -PI / 2, 1);
+  arcText(status, S * .353, PI / 2, -1);
+  [PI, 0].forEach(a => { const x = cx + Math.cos(a) * S * .353, y = cx + Math.sin(a) * S * .353; g.save(); g.translate(x, y); g.rotate(PI / 4); g.fillRect(-2.6, -2.6, 5.2, 5.2); g.restore(); });
+  // emblem: round table, six seats, lamp
+  ring(S * .17, 2.2);
+  for (let i = 0; i < 6; i++) { const a = i / 6 * PI * 2 - PI / 2; g.save(); g.translate(cx + Math.cos(a) * S * .235, cx + Math.sin(a) * S * .235); g.rotate(a); g.fillRect(-2.4, -3.4, 4.8, 6.8); g.restore(); }
+  for (let i = 0; i < 8; i++) { const a = i / 8 * PI * 2, l = i % 2 ? S * .07 : S * .115; g.lineWidth = i % 2 ? 1.2 : 1.8; g.beginPath(); g.moveTo(cx + Math.cos(a) * S * .03, cx + Math.sin(a) * S * .03); g.lineTo(cx + Math.cos(a) * l, cx + Math.sin(a) * l); g.stroke(); }
+  g.beginPath(); g.arc(cx, cx, S * .03, 0, PI * 2); g.fill();
+  // wear: uneven ink + chipped edge, then tint
+  const d = g.getImageData(0, 0, S, S), p = d.data;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { const i = (y * S + x) * 4; if (!p[i + 3]) continue;
+    const dd = Math.hypot(x - cx, y - cx) / (S / 2), bias = .07 + (x / S) * .1 + (dd > .9 ? .12 : 0);
+    p[i + 3] = p[i + 3] < 110 || r() < bias ? 0 : 255; }
+  for (let k = 0; k < 6; k++) { const a = r() * PI * 2, rr = S * (.3 + r() * .17), x = cx + Math.cos(a) * rr | 0, y = cx + Math.sin(a) * rr | 0; for (let j = 0; j < 10; j++) { const xx = x + (r() * 5 | 0) - 2, yy = y + (r() * 5 | 0) - 2; if (xx >= 0 && yy >= 0 && xx < S && yy < S) p[(yy * S + xx) * 4 + 3] = 0; } }
+  g.putImageData(d, 0, 0); g.globalCompositeOperation = 'source-in'; g.fillStyle = ink; g.fillRect(0, 0, S, S);
+  return c.toDataURL();
+}
 
 // ---- item-use animation clips (local item units; E.floor = table height in piv-parent space)
 const PI = Math.PI, cl = x => Math.min(1, Math.max(0, x)), eio = x => x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2, eo = x => 1 - Math.pow(1 - x, 3), ei = x => x * x;

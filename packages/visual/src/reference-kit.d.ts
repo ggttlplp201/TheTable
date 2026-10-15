@@ -63,6 +63,7 @@ export const STATES: { id: string; name: string }[];
 
 export function jobIconURL(id: string, color?: string, out?: number): string;
 export function coinIconURL(out?: number, grid?: number): string;
+export function tableSealURL(status?: string, ink?: string, size?: number): string;
 export function outlineIconURL(url: string, color?: string): Promise<string>;
 
 export function coinIconCanvas(out?: number, grid?: number): HTMLCanvasElement;
