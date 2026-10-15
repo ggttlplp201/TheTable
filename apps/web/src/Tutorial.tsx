@@ -133,7 +133,7 @@ export default function Tutorial({ chapter, audio, audioStarted, onEnableAudio, 
     setGuidePosition(null);
   }, [controller.step]);
   const exit = (join: boolean) => { if (!completed) recordTutorialMetric({ kind: 'abandoned', chapter: controller.chapter }); onExit(join); };
-  const cameraTravel = useCallback((degrees: number) => { if (controller.look(degrees)) changed(); }, [controller, changed]);
+  const cameraLook = useCallback((headingDegrees: number) => { if (controller.look(headingDegrees)) changed(); }, [controller, changed]);
   const beginGuideDrag = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
     const guide = guideRef.current;
@@ -174,7 +174,7 @@ export default function Tutorial({ chapter, audio, audioStarted, onEnableAudio, 
   }, []);
   const guideStyle: CSSProperties | undefined = guidePosition ? { left: guidePosition.left, top: guidePosition.top, right: 'auto', bottom: 'auto', transform: 'none' } : undefined;
   return <main className="tutorial-shell" data-focus={focus} data-step={controller.step} style={{ '--tutorial-guide-height': `${guideHeight}px` } as CSSProperties}>
-    {!completed && <MatchView room={client.view()} client={client} connected viewerId={HUMAN} voice={{ enabled: false, iceServers: [], relayConfigured: false }} audioEngine={audio} audioStarted={audioStarted} onEnableAudio={onEnableAudio} onView={changed} onCameraTravel={cameraTravel} guideFocus={focus} onReturnHome={() => exit(false)} />}
+    {!completed && <MatchView room={client.view()} client={client} connected viewerId={HUMAN} voice={{ enabled: false, iceServers: [], relayConfigured: false }} audioEngine={audio} audioStarted={audioStarted} onEnableAudio={onEnableAudio} onView={changed} onCameraTravel={cameraLook} guideFocus={focus} onReturnHome={() => exit(false)} />}
     {!completed && <button className="tutorial-exit" type="button" onClick={() => exit(false)}>← EXIT TUTORIAL</button>}
     {!completed ? <aside ref={guideRef} className="tutorial-guide" data-guide-focus={focus} data-dragged={guidePosition ? 'true' : undefined} data-dragging={guideDragging ? 'true' : undefined} style={guideStyle} aria-label="Dealer lesson">
       <header><span>THE DEALER · {controller.chapter}/6</span><span className="tutorial-guide-controls"><button className="tutorial-guide-drag" type="button" aria-label="Move tutorial prompt. Drag, or use the arrow keys." title="Drag to move" onPointerDown={beginGuideDrag} onPointerMove={moveGuide} onPointerUp={endGuideDrag} onPointerCancel={endGuideDrag} onKeyDown={moveGuideWithKeyboard}>MOVE</button></span></header>

@@ -410,7 +410,7 @@ export class VisualKit {
   }
 
   /** Supplied brass back-face hull, isolated to tutorial highlights. */
-  setTutorialOutline(object: Object3D, visible: boolean, pulse = 1): void {
+  setTutorialOutline(object: Object3D, visible: boolean, pulse = 1, scale = 1.09, maxOpacity = 1): void {
     let hull = object.userData.tutorialHull as Group | undefined;
     if (!hull && visible) {
       hull = new Group();
@@ -421,7 +421,7 @@ export class VisualKit {
       object.traverse(child => {
         if (!(child instanceof Mesh)) return;
         const outline = new Mesh(child.geometry, material); outline.matrixAutoUpdate = false;
-        outline.matrix.copy(inverse).multiply(child.matrixWorld).multiply(new THREE.Matrix4().makeScale(1.09, 1.09, 1.09));
+        outline.matrix.copy(inverse).multiply(child.matrixWorld).multiply(new THREE.Matrix4().makeScale(scale, scale, scale));
         hull!.add(outline);
       });
       object.add(hull); object.userData.tutorialHull = hull;
@@ -432,7 +432,7 @@ export class VisualKit {
       if (visible && material) {
         const amount = Math.max(0, Math.min(1, pulse));
         material.color.copy(TUTORIAL_OUTLINE_DARK).lerp(TUTORIAL_OUTLINE_LIGHT, amount);
-        material.opacity = .48 + amount * .52;
+        material.opacity = maxOpacity * (.55 + amount * .45);
       }
     }
   }

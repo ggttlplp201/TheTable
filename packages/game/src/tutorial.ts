@@ -44,7 +44,8 @@ export class TutorialController {
   step: TutorialStep = 'look';
   retries = 0;
   readonly metrics: TutorialMetric[] = [];
-  private travelled = 0;
+  private lookedLeft = false;
+  private lookedRight = false;
   private chapterStartedAt: number;
   private wildcardCheckpoint?: RoomState;
   constructor(private readonly clock = () => Date.now()) {
@@ -68,7 +69,14 @@ export class TutorialController {
     if (view.public.pendingThreat) view.public.pendingThreat.deadlineAt = this.clock() + RULES.responseMs;
     return view;
   }
-  look(degrees: number): boolean { if (this.step !== 'look') return false; this.travelled += Math.abs(degrees); if (this.travelled < 8) return false; this.enter('dealer'); return true; }
+  look(headingDegrees: number): boolean {
+    if (this.step !== 'look') return false;
+    this.lookedLeft ||= headingDegrees <= -18;
+    this.lookedRight ||= headingDegrees >= 18;
+    if (!this.lookedLeft || !this.lookedRight) return false;
+    this.enter('dealer');
+    return true;
+  }
   next(): void {
     switch (this.step) {
       case 'dealer': this.enter('inventory'); break;
@@ -119,7 +127,7 @@ export class TutorialController {
   }
   private solveCheckpoint(): void {
     switch (this.step) {
-      case 'look': this.look(40); break;
+      case 'look': this.look(-30); this.look(30); break;
       case 'pocket': this.submit({ type: 'POCKET', instanceId: item(this.room,HUMAN,'medicine').instanceId, pocketIndex: 0 }); break;
       case 'trade': this.submit({ type: 'TRADE', targetId: DEALER, offeredItems: [item(this.room,HUMAN,'key').instanceId], requestedItems: [], offeredCoins: 0, requestedCoins: 2 }); break;
       case 'refuse': this.submit({ type: 'RESPOND_THREAT', comply: false }); break;

@@ -299,7 +299,6 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     const pointerMove = (event: PointerEvent) => {
       if (options.viewerId === undefined || (!interactionsEnabled && ownerWildcard?.phase !== 'TARGETING') || (arrival && !arrival.finished)) return;
       const bounds = renderer.domElement.getBoundingClientRect();
-      const previousInputLookX = lookX;
       if (dragging) {
         lookX = Math.max(-1, Math.min(1, lookX - (event.clientX - dragX) / Math.max(1, bounds.width) * 1.7));
         lookY = Math.max(-1, Math.min(1, lookY + (event.clientY - dragY) / Math.max(1, bounds.height) * 1.3));
@@ -308,7 +307,7 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
         lookX = Math.max(-1, Math.min(1, ((event.clientX - bounds.left) / bounds.width) * 2 - 1));
         lookY = Math.max(-1, Math.min(1, ((event.clientY - bounds.top) / bounds.height) * 2 - 1));
       }
-      if (focus === 'seat' && event.pointerType === 'mouse') options.onCameraTravel?.(Math.abs(lookX - previousInputLookX) * 45);
+      if (focus === 'seat' && event.pointerType === 'mouse') options.onCameraTravel?.(lookX * 45);
       const intent = dragging ? undefined : semanticHit(event);
       const wildcardEligible = intent?.kind === 'WILDCARD' && canInteractWithWildcardDeck(room, options.viewerId, wildcardDrawEnabled);
       renderer.domElement.style.cursor = dragging ? 'grabbing' : intent && (intent.kind !== 'WILDCARD' || wildcardEligible) ? 'pointer' : 'grab';
@@ -608,7 +607,7 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       }
       if (room.mode === 'tutorial') {
         const pulse = motion.matches ? 1 : (Math.sin(now / 380) + 1) / 2;
-        for (const [id, character] of characters) kit.setTutorialOutline(character, tutorialFocus === 'dealer' && id === 'dealer', pulse);
+        for (const [id, character] of characters) kit.setTutorialOutline(character, tutorialFocus === 'dealer' && id === 'dealer', pulse, 1.025, .38);
         for (const [kind, chest] of chests) kit.setTutorialOutline(chest, tutorialFocus === 'chest' && kind === 'STANDARD', pulse);
         kit.setTutorialOutline(coins, tutorialFocus === 'coins', pulse);
         kit.setTutorialOutline(wildcardDeck.root, tutorialFocus === 'wildcard' && !ownerWildcard, pulse);
