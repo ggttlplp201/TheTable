@@ -389,6 +389,17 @@ export type SceneIntentTarget = {
   threatMode?: 'OPEN' | 'COVERED' | undefined;
 };
 
+/** Resolve the other participant whose seat the first-person camera should face. */
+export function interactionCameraTarget(room: AnyRoomView, viewerId: string, panel: MatchPanel, selection: Omit<SceneIntentTarget, 'panel'>): string | undefined {
+  const pending = room.public.pendingTrade ?? room.public.pendingThreat;
+  if (pending && (pending.actorId === viewerId || pending.targetId === viewerId)) {
+    return pending.actorId === viewerId ? pending.targetId : pending.actorId;
+  }
+  if (panel !== 'TRADE' && panel !== 'THREAT') return undefined;
+  const eligible = room.public.players.filter(player => player.id !== viewerId && player.life === 'ACTIVE' && player.connection === 'CONNECTED');
+  return eligible.some(player => player.id === selection.targetPlayerId) ? selection.targetPlayerId : eligible[0]?.id;
+}
+
 /** Convert a public scene hit into a capability-gated UI destination without losing the hit object. */
 export function sceneIntentTarget(room: AnyRoomView, viewerId: string, intent: SceneIntent): SceneIntentTarget | null {
   if (isSpectatorView(room) || intent.kind === 'EMPTY') return null;
@@ -577,15 +588,16 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
     else if (needsOpponent(sceneItem.itemId)) setAiming(true);
     else showPanel('USE_ITEM', { itemInstanceId: sceneItem.instanceId });
   };
+  const focusPlayerId = spectator ? undefined : interactionCameraTarget(room, viewerId, panel, sceneSelection);
   const sceneFocus = !spectator && hasCapability(room, 'LEAVE_TABLE') && (!panel || panel === 'OBJECTIVE') ? 'door'
-    : panel === 'TRADE' || panel === 'THREAT' || room.public.pendingTrade || room.public.pendingThreat ? 'left'
+    : focusPlayerId ? 'seat'
     : panel === 'USE_ITEM' || panel === 'OBJECTIVE' || panel === 'POCKETS' || panel === 'DOWNED' || (!spectator && hasCapability(room, 'OVERFLOW_CHOICE')) ? 'down' : 'seat';
 
   const modalOpen = !presentationBlocking && !results && ((panel !== null && panel !== 'MARKETS' && panel !== 'SPECTATOR') || forcedDecision);
   return <div className="match-layout match-viewport" data-viewer={spectator ? 'spectator' : 'player'} data-market={panel === 'MARKETS' || undefined} data-response={forcedDecision || undefined} data-chat={chatOpen || undefined} data-downed={me?.life === 'DOWNED' || undefined} data-modal={modalOpen ? 'true' : undefined} data-objective-reveal={objectiveBlocking ? objectiveReveal.phase.toLowerCase() : undefined}>
     <MultiplayerHints room={room} blackMarketOpen={panel === 'MARKETS' && marketView === 'BLACK'} />
     <div className="match-scene-shell" aria-label={spectator ? 'Spectator table view' : 'First person table view'}>
-      <GameTableScene onExitBeat={beat => { if (audio.started) playExitBeatAudio(audio.engine, beat); }} tutorialFocus={guideFocus} onCameraTravel={onCameraTravel} room={presentedPublic} {...(ownerWildcard ? { ownerWildcard } : {})} wildcardDrawEnabled={hasCapability(room, 'DRAW_WILDCARD') && !action.busy} onReadyChange={setSceneReady} viewerId={spectator ? undefined : viewerId} onIntent={openIntent} interactionsEnabled={!presentationBlocking && !panel && !sceneChest && (!forcedDecision || wildcardTargeting) && !results} exitReady={!spectator && hasCapability(room, 'LEAVE_TABLE')} showOwnerMarket={!spectator && intermission} focus={sceneFocus} selectedItemId={!panel && !forcedDecision ? sceneItem?.instanceId : undefined} aimTargets={aimTargets} aimPockets={Boolean(aiming && sceneItem && ['spyglass', 'pickpocket', 'glass-eye'].includes(sceneItem.itemId))} spyglassTargetId={activeScope?.identity === scopeIdentity ? activeScope.targetId : undefined} spyglassActive={!spectator && !results && activeScope?.identity === scopeIdentity} onArrivalBeat={beat => { if (audio.started) audio.engine.play(ARRIVAL_AUDIO[beat]); }} onArrivalStateChange={active => setObjectiveReveal(current => {
+      <GameTableScene onExitBeat={beat => { if (audio.started) playExitBeatAudio(audio.engine, beat); }} tutorialFocus={guideFocus} onCameraTravel={onCameraTravel} room={presentedPublic} {...(ownerWildcard ? { ownerWildcard } : {})} wildcardDrawEnabled={hasCapability(room, 'DRAW_WILDCARD') && !action.busy} onReadyChange={setSceneReady} viewerId={spectator ? undefined : viewerId} onIntent={openIntent} interactionsEnabled={!presentationBlocking && !panel && !sceneChest && (!forcedDecision || wildcardTargeting) && !results} exitReady={!spectator && hasCapability(room, 'LEAVE_TABLE')} showOwnerMarket={!spectator && intermission} focus={sceneFocus} focusPlayerId={focusPlayerId} selectedItemId={!panel && !forcedDecision ? sceneItem?.instanceId : undefined} aimTargets={aimTargets} aimPockets={Boolean(aiming && sceneItem && ['spyglass', 'pickpocket', 'glass-eye'].includes(sceneItem.itemId))} spyglassTargetId={activeScope?.identity === scopeIdentity ? activeScope.targetId : undefined} spyglassActive={!spectator && !results && activeScope?.identity === scopeIdentity} onArrivalBeat={beat => { if (audio.started) audio.engine.play(ARRIVAL_AUDIO[beat]); }} onArrivalStateChange={active => setObjectiveReveal(current => {
         if (current.phase !== 'WAITING') return current;
         if (active) return { ...current, sawArrival: true };
         return { ...current, phase: 'VISIBLE' };
@@ -671,8 +683,8 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
 
     {!presentationBlocking && !(wildcardPending && panel === 'WILDCARD') && panel && panel !== 'MARKETS' && !results && <MatchOverlay panel={panel} tone={panel === 'THREAT' ? 'danger' : panel === 'OBJECTIVE' ? 'paper' : 'neutral'} title={panelTitle(panel)} onClose={closePanel}>
       {!spectator && actionProps && panel === 'USE_ITEM' && <UseItemForm key={`${sceneSelection.itemInstanceId ?? 'default-item'}:${sceneSelection.targetPlayerId ?? 'default-target'}:${sceneSelection.pocketIndex ?? 'default-pocket'}`} {...actionProps} preferredItemId={sceneSelection.itemInstanceId} preferredTargetId={sceneSelection.targetPlayerId} preferredPocketIndex={sceneSelection.pocketIndex} />}
-      {!spectator && actionProps && panel === 'TRADE' && <TradeForm key={`${sceneSelection.targetPlayerId ?? 'default-trade'}:${sceneSelection.requestedItemInstanceId ?? 'no-item'}`} {...actionProps} preferredTargetId={sceneSelection.targetPlayerId} preferredRequestedItemId={sceneSelection.requestedItemInstanceId} onCancel={closePanel} />}
-      {!spectator && actionProps && panel === 'THREAT' && <ThreatForm key={`${sceneSelection.targetPlayerId ?? 'default-threat'}:${sceneSelection.threatMode ?? 'OPEN'}`} {...actionProps} preferredTargetId={sceneSelection.targetPlayerId} preferredMode={sceneSelection.threatMode} onCancel={closePanel} />}
+      {!spectator && actionProps && panel === 'TRADE' && <TradeForm key={`${sceneSelection.requestedItemInstanceId ?? 'no-item'}`} {...actionProps} preferredTargetId={sceneSelection.targetPlayerId} preferredRequestedItemId={sceneSelection.requestedItemInstanceId} onTargetChange={targetPlayerId => setSceneSelection(current => ({ ...current, targetPlayerId }))} onCancel={closePanel} />}
+      {!spectator && actionProps && panel === 'THREAT' && <ThreatForm key={`${sceneSelection.threatMode ?? 'OPEN'}`} {...actionProps} preferredTargetId={sceneSelection.targetPlayerId} preferredMode={sceneSelection.threatMode} onTargetChange={targetPlayerId => setSceneSelection(current => ({ ...current, targetPlayerId }))} onCancel={closePanel} />}
       {!spectator && actionProps && panel === 'DOWNED' && <DownedForm key={`${sceneSelection.targetPlayerId ?? 'default-downed'}:${sceneSelection.immediateLoot ? 'immediate' : 'normal'}`} {...actionProps} preferredTargetId={sceneSelection.targetPlayerId} immediate={sceneSelection.immediateLoot} />}
       {!spectator && panel === 'OBJECTIVE' && <PrivateDetail detail={room.private} room={room.public} />}
       {!spectator && actionProps && panel === 'POCKETS' && <InventoryForm {...actionProps} onSelectPocketItem={instanceId => { setSceneItemId(instanceId); setPanel(null); }} />}

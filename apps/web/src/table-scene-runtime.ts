@@ -34,13 +34,14 @@ export interface TablePresentationOptions {
   ownerWildcard?: PendingWildcard | undefined;
   tutorialFocus?: string | undefined;
   focus?: SceneFocus;
+  focusPlayerId?: string | undefined;
   selectedItemId?: string | undefined;
   aimTargets?: readonly string[];
   aimPockets?: boolean;
   spyglassTargetId?: string | undefined;
   spyglassActive?: boolean;
 }
-export interface TablePresentation { setTutorialFocus(value: string | undefined): void; update(room: PublicRoomView): void; setInteractionsEnabled(value: boolean): void; setExitReady(value: boolean): void; setWildcardDrawEnabled(value: boolean): void; setOwnerWildcard(value: PendingWildcard | undefined): void; setFocus(value: SceneFocus): void; setItemSelection(value: string | undefined, targets: readonly string[], pockets?: boolean): void; setSpyglass(targetId: string | undefined, active: boolean): void; skipIntro(): void; dispose(): void }
+export interface TablePresentation { setTutorialFocus(value: string | undefined): void; update(room: PublicRoomView): void; setInteractionsEnabled(value: boolean): void; setExitReady(value: boolean): void; setWildcardDrawEnabled(value: boolean): void; setOwnerWildcard(value: PendingWildcard | undefined): void; setFocus(value: SceneFocus, playerId?: string | undefined): void; setItemSelection(value: string | undefined, targets: readonly string[], pockets?: boolean): void; setSpyglass(targetId: string | undefined, active: boolean): void; skipIntro(): void; dispose(): void }
 interface Effect { start: number; duration: number; sourceInstanceId?: string; apply(time: number): void; finish(): void }
 const ease = (n: number) => { const t = Math.max(0, Math.min(1, n)); return t * t * (3 - 2 * t); };
 const modelId = (id: string): ItemModelId | undefined => {
@@ -148,7 +149,9 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     let exitReady = options.exitReady ?? false;
     let tutorialFocus = options.tutorialFocus;
     let focus = options.focus ?? 'seat';
+    let focusPlayerId = options.focusPlayerId;
     const cameraAim = new Vector3(...CAMERA_VIEWS.seat.lookAt), focusPosition = new Vector3(), focusAim = new Vector3();
+    const playerFocusAim = new Vector3();
     let selectedItem = options.selectedItemId;
     let aimTargets = options.aimTargets ?? [];
     let aimPockets = options.aimPockets ?? false;
@@ -262,7 +265,13 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
         const desktopFocus = target.clientWidth >= 801 ? focus : 'seat';
         const view = CAMERA_VIEWS[desktopFocus];
         focusPosition.set(view.position[0], view.position[1], view.position[2]); focusAim.set(view.lookAt[0], view.lookAt[1], view.lookAt[2]);
-        if (desktopFocus === 'seat') { focusPosition.x += currentLookX * .14; focusPosition.y -= currentLookY * .05; focusAim.x += currentLookX * .9; focusAim.y -= currentLookY * .45; }
+        const focusedCharacter = target.clientWidth >= 801 && focusPlayerId ? characters.get(focusPlayerId) : undefined;
+        if (focusedCharacter) {
+          focusPosition.set(...CAMERA_VIEWS.seat.position);
+          playerFocusAim.set(0, 1.5, 0); focusedCharacter.localToWorld(playerFocusAim); focusAim.copy(playerFocusAim);
+        } else if (desktopFocus === 'seat') {
+          focusPosition.x += currentLookX * .14; focusPosition.y -= currentLookY * .05; focusAim.x += currentLookX * .9; focusAim.y -= currentLookY * .45;
+        }
         camera.position.lerp(focusPosition, blend); cameraAim.lerp(focusAim, blend); camera.lookAt(cameraAim);
       }
       const scopeFigure = !revealingOrder && options.viewerId !== undefined && room.players.find(player => player.id === options.viewerId)?.life === 'ACTIVE' && spyglassActive && !motion.matches ? characters.get(spyglassTargetId ?? '') : undefined;
@@ -271,7 +280,9 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       const fov = revealingOrder ? camera.fov + (42 - camera.fov) * blend : 58 - 38 * zoom;
       if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
       target.dataset.presentationFov = String(fov);
-      target.dataset.presentationFocus = revealingOrder ? 'order' : options.viewerId === undefined ? 'spectator' : room.players.find(player => player.id === options.viewerId)?.life === 'DOWNED' ? falling ? 'falling' : 'downed' : target.clientWidth >= 801 ? focus : 'seat';
+      target.dataset.presentationFocus = revealingOrder ? 'order' : options.viewerId === undefined ? 'spectator' : room.players.find(player => player.id === options.viewerId)?.life === 'DOWNED' ? falling ? 'falling' : 'downed' : target.clientWidth >= 801 && focusPlayerId ? 'player' : target.clientWidth >= 801 ? focus : 'seat';
+      if (target.clientWidth >= 801 && focusPlayerId && characters.has(focusPlayerId)) target.dataset.presentationFocusPlayer = focusPlayerId;
+      else delete target.dataset.presentationFocusPlayer;
     };
     const semanticHit = (event: PointerEvent): SceneIntent | undefined => {
       const wildcardTargeting = ownerWildcard?.phase === 'TARGETING';
@@ -938,6 +949,6 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     }
     target.dataset.arrivalDuration = String(ARRIVAL_DURATION);
     redraw();
-    return { setTutorialFocus(value) { tutorialFocus = value; redraw(); }, update(next) { try { update(next); } catch { fail(); } }, setInteractionsEnabled(value) { interactionsEnabled = value; if (!value && ownerWildcard?.phase !== 'TARGETING') tooltip.style.display = 'none'; if (motion.matches) render(performance.now()); }, setExitReady(value) { exitReady = value; if (motion.matches) render(performance.now()); }, setWildcardDrawEnabled(value) { wildcardDrawEnabled = value; hoverOutline.visible = false; wildcardDeck.setHovered(false); if (motion.matches) render(performance.now()); }, setOwnerWildcard(value) { ownerWildcard = options.viewerId === undefined ? undefined : value; wildcardDeck.setOwnerWildcard(ownerWildcard, performance.now(), motion.matches); redraw(); }, setFocus(value) { focus = value; if (motion.matches) render(performance.now()); }, setItemSelection(value, targets, pockets = false) { selectedItem = value; aimTargets = targets; aimPockets = pockets; aimLight.intensity = 0; if (motion.matches) render(performance.now()); }, setSpyglass(id, active) { if (active && (!spyglassActive || spyglassTargetId !== id)) spyglassStart = performance.now(); spyglassTargetId = id; spyglassActive = active; redraw(); }, skipIntro() { if (canSkipIntro) { finishArrival(); redraw(); } }, dispose };
+    return { setTutorialFocus(value) { tutorialFocus = value; redraw(); }, update(next) { try { update(next); } catch { fail(); } }, setInteractionsEnabled(value) { interactionsEnabled = value; if (!value && ownerWildcard?.phase !== 'TARGETING') tooltip.style.display = 'none'; if (motion.matches) render(performance.now()); }, setExitReady(value) { exitReady = value; if (motion.matches) render(performance.now()); }, setWildcardDrawEnabled(value) { wildcardDrawEnabled = value; hoverOutline.visible = false; wildcardDeck.setHovered(false); if (motion.matches) render(performance.now()); }, setOwnerWildcard(value) { ownerWildcard = options.viewerId === undefined ? undefined : value; wildcardDeck.setOwnerWildcard(ownerWildcard, performance.now(), motion.matches); redraw(); }, setFocus(value, playerId) { focus = value; focusPlayerId = playerId; if (motion.matches) render(performance.now()); }, setItemSelection(value, targets, pockets = false) { selectedItem = value; aimTargets = targets; aimPockets = pockets; aimLight.intensity = 0; if (motion.matches) render(performance.now()); }, setSpyglass(id, active) { if (active && (!spyglassActive || spyglassTargetId !== id)) spyglassStart = performance.now(); spyglassTargetId = id; spyglassActive = active; redraw(); }, skipIntro() { if (canSkipIntro) { finishArrival(); redraw(); } }, dispose };
   } catch (error) { dispose(); throw error; }
 }

@@ -86,7 +86,7 @@ export function UseItemForm({ room, send, busy, preferredItemId, preferredTarget
   </fieldset></form>;
 }
 
-export function TradeForm({ room, send, busy, preferredTargetId, preferredRequestedItemId, onCancel }: ActionProps & { preferredTargetId?: string | undefined; preferredRequestedItemId?: string | undefined; onCancel?: () => void }) {
+export function TradeForm({ room, send, busy, preferredTargetId, preferredRequestedItemId, onTargetChange, onCancel }: ActionProps & { preferredTargetId?: string | undefined; preferredRequestedItemId?: string | undefined; onTargetChange?: (targetId: string) => void; onCancel?: () => void }) {
   const allowed = hasCapability(room, 'TRADE');
   const others = room.public.players.filter(player => player.id !== room.private.playerId && player.life === 'ACTIVE' && player.connection === 'CONNECTED');
   const preferredTarget = others.find(player => player.id === preferredTargetId);
@@ -99,7 +99,7 @@ export function TradeForm({ room, send, busy, preferredTargetId, preferredReques
     void send({ type: 'TRADE', targetId, offeredItems: selected(data, 'offeredItems'), offeredCoins: coins(data, 'offeredCoins'), requestedItems: selected(data, 'requestedItems'), requestedCoins: coins(data, 'requestedCoins') });
   };
   return <form className="action-form reference-trade" onSubmit={submit} aria-label="Compose Trade"><fieldset disabled={busy}><legend className="sr-only">Propose a Trade</legend>
-    <div className="reference-screen-heading"><h2>Propose a trade</h2><label className="reference-trade-target">WITH <select aria-label="Trade with" name="targetId" value={targetId} onChange={event => setTarget(event.target.value)}>{others.map(player => <option key={player.id} value={player.id}>{player.name.toUpperCase()}</option>)}</select></label></div>
+    <div className="reference-screen-heading"><h2>Propose a trade</h2><label className="reference-trade-target">WITH <select aria-label="Trade with" name="targetId" value={targetId} onChange={event => { setTarget(event.target.value); onTargetChange?.(event.target.value); }}>{others.map(player => <option key={player.id} value={player.id}>{player.name.toUpperCase()}</option>)}</select></label></div>
     <div className="reference-trade-columns"><Assets player={me(room)} prefix="offered" legend="You offer" /><div className="exchange-arrow" aria-hidden="true">⇄</div>{target && <Assets key={targetId} player={target} prefix="requested" legend="You request" preferredItemId={preferredRequestedItemId} />}</div>
     {!target && <p className="form-error" role="status">No connected, active player is available to trade.</p>}
     <DraftSaved visible={!allowed} />
@@ -107,7 +107,7 @@ export function TradeForm({ room, send, busy, preferredTargetId, preferredReques
   </fieldset></form>;
 }
 
-export function ThreatForm({ room, send, busy, preferredTargetId, preferredMode = 'OPEN', onCancel }: ActionProps & { preferredTargetId?: string | undefined; preferredMode?: 'OPEN' | 'COVERED' | undefined; onCancel?: () => void }) {
+export function ThreatForm({ room, send, busy, preferredTargetId, preferredMode = 'OPEN', onTargetChange, onCancel }: ActionProps & { preferredTargetId?: string | undefined; preferredMode?: 'OPEN' | 'COVERED' | undefined; onTargetChange?: (targetId: string) => void; onCancel?: () => void }) {
   const allowed = hasCapability(room, 'THREAT');
   const others = room.public.players.filter(player => player.id !== room.private.playerId && player.life === 'ACTIVE' && player.connection === 'CONNECTED');
   const preferredTarget = others.find(player => player.id === preferredTargetId);
@@ -130,7 +130,7 @@ export function ThreatForm({ room, send, busy, preferredTargetId, preferredMode 
   };
   return <form className="action-form reference-threat" onSubmit={submit} aria-label="Compose Threat"><fieldset disabled={busy}><legend className="sr-only">Make a Threat</legend>
     <div className="reference-screen-heading"><h2>Make a demand</h2><span>⚠ THREAT</span></div>
-    <TargetSelect players={others} value={targetId} onChange={setTarget} label="Threaten" />
+    <TargetSelect players={others} value={targetId} onChange={id => { setTarget(id); onTargetChange?.(id); }} label="Threaten" />
     {target && <Assets key={targetId} player={target} prefix="demanded" legend="You demand" />}
     <ItemSelect key={`${mode}-${targetId}`} items={committedItems} label={mode === 'OPEN' ? 'Visible weapon' : 'Visible item to cover'} name="committedItemId" />
     <fieldset className="visual-choice threat-mode"><legend>Threat mode</legend><div className="choice-grid"><button type="button" className={mode === 'COVERED' ? 'selected' : ''} aria-pressed={mode === 'COVERED'} onClick={() => setMode('COVERED')}><ReferenceItemArt itemId="cloth" size={28} label="" /><strong>Under cloth</strong><small>Commit an unknown item and consume Cloth</small></button><button type="button" className={mode === 'OPEN' ? 'selected' : ''} aria-pressed={mode === 'OPEN'} onClick={() => setMode('OPEN')}><strong>Open</strong><small>Present a valid weapon</small></button></div><label className="sr-only">Threat mode<select name="mode" value={mode} onChange={event => setMode(event.target.value as 'OPEN' | 'COVERED')}><option value="OPEN">Open</option><option value="COVERED">Covered</option></select></label></fieldset>

@@ -17,7 +17,7 @@ export type SceneIntent =
 
 export type SceneFocus = 'seat' | 'left' | 'down' | 'door';
 
-export function GameTableScene({ tutorialFocus, onCameraTravel, room, viewerId, onArrivalBeat, onExitBeat, onArrivalStateChange, onReadyChange, onIntent, interactionsEnabled = true, exitReady = false, showOwnerMarket = false, wildcardDrawEnabled = false, ownerWildcard, focus = 'seat', selectedItemId, aimTargets = [], aimPockets = false, spyglassTargetId, spyglassActive = false, children }: {
+export function GameTableScene({ tutorialFocus, onCameraTravel, room, viewerId, onArrivalBeat, onExitBeat, onArrivalStateChange, onReadyChange, onIntent, interactionsEnabled = true, exitReady = false, showOwnerMarket = false, wildcardDrawEnabled = false, ownerWildcard, focus = 'seat', focusPlayerId, selectedItemId, aimTargets = [], aimPockets = false, spyglassTargetId, spyglassActive = false, children }: {
   tutorialFocus?: string | undefined;
   room: PublicRoomView;
   onCameraTravel?: ((degrees: number) => void) | undefined;
@@ -37,6 +37,8 @@ export function GameTableScene({ tutorialFocus, onCameraTravel, room, viewerId, 
   /** Explicit authorized owner-only card state. Spectators and other players must omit it. */
   ownerWildcard?: PendingWildcard;
   focus?: SceneFocus;
+  /** Public participant to face from the viewer's seated camera position. */
+  focusPlayerId?: string | undefined;
   selectedItemId?: string | undefined;
   aimTargets?: readonly string[];
   /** Public target affordance only; never carries private pocket contents. */
@@ -55,7 +57,7 @@ export function GameTableScene({ tutorialFocus, onCameraTravel, room, viewerId, 
   const latestIntent = useRef(onIntent);
   const latestCameraTravel = useRef(onCameraTravel); latestCameraTravel.current = onCameraTravel;
   const latestReady = useRef(onReadyChange);
-  const latestPresentation = useRef({ tutorialFocus, interactionsEnabled, exitReady, wildcardDrawEnabled, ownerWildcard, focus, selectedItemId, aimTargets, aimPockets, spyglassTargetId, spyglassActive });
+  const latestPresentation = useRef({ tutorialFocus, interactionsEnabled, exitReady, wildcardDrawEnabled, ownerWildcard, focus, focusPlayerId, selectedItemId, aimTargets, aimPockets, spyglassTargetId, spyglassActive });
   const [renderFailed, setRenderFailed] = useState(false);
   const [intro, setIntro] = useState<ArrivalPhase | null>(null);
   const [canSkip, setCanSkip] = useState(false);
@@ -65,7 +67,7 @@ export function GameTableScene({ tutorialFocus, onCameraTravel, room, viewerId, 
   latestArrivalState.current = onArrivalStateChange;
   latestIntent.current = onIntent;
   latestReady.current = onReadyChange;
-  latestPresentation.current = { tutorialFocus, interactionsEnabled, exitReady, wildcardDrawEnabled, ownerWildcard, focus, selectedItemId, aimTargets, aimPockets, spyglassTargetId, spyglassActive };
+  latestPresentation.current = { tutorialFocus, interactionsEnabled, exitReady, wildcardDrawEnabled, ownerWildcard, focus, focusPlayerId, selectedItemId, aimTargets, aimPockets, spyglassTargetId, spyglassActive };
   const rosterSignature = publicSeats(room).map(seat => `${seat.id}:${seat.role}:${seat.label}:${seat.position.join(',')}`).join('|');
   const matchKey = matchPresentationKey(room);
 
@@ -99,7 +101,7 @@ export function GameTableScene({ tutorialFocus, onCameraTravel, room, viewerId, 
   useEffect(() => { runtime.current?.setWildcardDrawEnabled(wildcardDrawEnabled); }, [wildcardDrawEnabled]);
   useEffect(() => { runtime.current?.setOwnerWildcard(ownerWildcard); }, [ownerWildcard]);
   useEffect(() => { runtime.current?.setTutorialFocus(tutorialFocus); }, [tutorialFocus]);
-  useEffect(() => { runtime.current?.setFocus(focus); }, [focus]);
+  useEffect(() => { runtime.current?.setFocus(focus, focusPlayerId); }, [focus, focusPlayerId]);
   useEffect(() => { runtime.current?.setItemSelection(selectedItemId, aimTargets, aimPockets); }, [selectedItemId, aimTargets, aimPockets]);
   useEffect(() => { runtime.current?.setSpyglass(spyglassTargetId, spyglassActive); }, [spyglassTargetId, spyglassActive]);
 
