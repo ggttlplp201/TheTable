@@ -52,8 +52,6 @@ export function WildcardTargetPicker({ room, send, busy, targetPlayerId, onTarge
   const options = wildcardTargets(room.public, room.private.playerId, pending.cardId);
   const target = options.players.find(player => player.id === targetId);
   const visible = presentItems(target?.visibleInventory ?? []);
-  const selectedItem = visible.find(item => item.instanceId === instanceId);
-  const selectedOwn = options.ownItems.find(item => item.instanceId === ownInstanceId);
   const command = wildcardResolutionCommand(room, { targetId, instanceId, ownInstanceId, pocketIndex });
   const allowed = hasCapability(room, 'RESOLVE_WILDCARD');
   return <form className="wildcard-targets" onSubmit={event => {
@@ -62,11 +60,25 @@ export function WildcardTargetPicker({ room, send, busy, targetPlayerId, onTarge
     void send(command);
   }}><fieldset disabled={busy || !allowed}><legend className="sr-only">Choose Wildcard targets</legend>
     {options.hasTargets ? <>
-      <label>Other active player<select aria-label="Wildcard target player" value={targetId} onChange={event => chooseTarget(event.target.value)}><option value="">Choose a player</option>{options.players.map(player => <option key={player.id} value={player.id}>{player.name}</option>)}</select></label>
-      {target && (card.targeting === 'POCKET' ? <label>Occupied Pocket<select aria-label="Wildcard target Pocket" value={pocketIndex} onChange={event => setPocketIndex(event.target.value)}><option value="">Choose a Pocket</option>{target.pocketOccupancy.flatMap((occupied, index) => occupied ? [<option key={index} value={index}>Pocket {index + 1} · Occupied</option>] : [])}</select></label>
-        : <label>Their visible item<select aria-label="Wildcard target item" value={instanceId} onChange={event => setInstanceId(event.target.value)}><option value="">Choose an item</option>{visible.map(item => <option key={item.instanceId} value={item.instanceId}>{stackName(item)}</option>)}</select></label>)}
-      {card.targeting === 'EXCHANGE' && <label>Your visible item<select aria-label="Your exchange item" value={ownInstanceId} onChange={event => setOwnInstanceId(event.target.value)}><option value="">Choose an item to give</option>{options.ownItems.map(item => <option key={item.instanceId} value={item.instanceId}>{stackName(item)}</option>)}</select></label>}
-      {selectedItem && <div className="wildcard-selected-item"><ReferenceItemArt itemId={selectedItem.itemId} size={48} /><span>{card.targeting === 'EXCHANGE' && selectedOwn ? `${stackName(selectedOwn)} ⇄ ` : ''}{stackName(selectedItem)}</span></div>}
+      <section className="wildcard-choice-block wildcard-player-block" aria-labelledby="wildcard-player-heading">
+        <div className="wildcard-choice-heading"><span>1</span><strong id="wildcard-player-heading">CHOOSE A PLAYER</strong><small>{target ? `${target.name.toUpperCase()} SELECTED` : 'ACTIVE PLAYERS'}</small></div>
+        <div className="wildcard-player-choices" role="group" aria-label="Choose a Wildcard target player">{options.players.map(player => <button type="button" key={player.id} aria-label={player.name} aria-pressed={targetId === player.id} onClick={() => chooseTarget(player.id)}><span className="wildcard-choice-mark" aria-hidden="true">{targetId === player.id ? '◆' : '◇'}</span><strong>{player.name.toUpperCase()}</strong><small>SEAT {player.seat + 1}{player.connection === 'DISCONNECTED' ? ' · OFFLINE' : ''}</small></button>)}</div>
+        <label className="sr-only">Wildcard target player<select aria-label="Wildcard target player" value={targetId} onChange={event => chooseTarget(event.target.value)}><option value="">Choose a player</option>{options.players.map(player => <option key={player.id} value={player.id}>{player.name}</option>)}</select></label>
+      </section>
+      {target && (card.targeting === 'POCKET' ? <section className="wildcard-choice-block" aria-labelledby="wildcard-pocket-heading">
+        <div className="wildcard-choice-heading"><span>2</span><strong id="wildcard-pocket-heading">CHOOSE AN OCCUPIED POCKET</strong><small>CONTENTS STAY HIDDEN</small></div>
+        <div className="wildcard-pocket-choices" role="group" aria-label="Choose an occupied Pocket">{target.pocketOccupancy.flatMap((occupied, index) => occupied ? [<button type="button" key={index} aria-label={`Pocket ${index + 1}`} aria-pressed={pocketIndex === String(index)} onClick={() => setPocketIndex(String(index))}><span aria-hidden="true">▰</span><strong>POCKET {index + 1}</strong><small>OCCUPIED · UNKNOWN</small></button>] : [])}</div>
+        <label className="sr-only">Wildcard target Pocket<select aria-label="Wildcard target Pocket" value={pocketIndex} onChange={event => setPocketIndex(event.target.value)}><option value="">Choose a Pocket</option>{target.pocketOccupancy.flatMap((occupied, index) => occupied ? [<option key={index} value={index}>Pocket {index + 1} · Occupied</option>] : [])}</select></label>
+      </section> : <section className="wildcard-choice-block" aria-labelledby="wildcard-item-heading">
+        <div className="wildcard-choice-heading"><span>2</span><strong id="wildcard-item-heading">CHOOSE THEIR VISIBLE ITEM</strong><small>{target.name.toUpperCase()} · ON THE TABLE</small></div>
+        <div className="wildcard-item-choices" role="group" aria-label="Choose their visible item">{visible.map(item => <button type="button" key={item.instanceId} aria-label={stackName(item)} aria-pressed={instanceId === item.instanceId} onClick={() => setInstanceId(item.instanceId)}><ReferenceItemArt itemId={item.itemId} size={52} label="" /><strong>{stackName(item).toUpperCase()}</strong>{item.quantity > 1 && <small>×{item.quantity}</small>}<span className="wildcard-item-check" aria-hidden="true">{instanceId === item.instanceId ? '◆' : ''}</span></button>)}</div>
+        <label className="sr-only">Wildcard target item<select aria-label="Wildcard target item" value={instanceId} onChange={event => setInstanceId(event.target.value)}><option value="">Choose an item</option>{visible.map(item => <option key={item.instanceId} value={item.instanceId}>{stackName(item)}</option>)}</select></label>
+      </section>)}
+      {card.targeting === 'EXCHANGE' && <section className="wildcard-choice-block" aria-labelledby="wildcard-own-item-heading">
+        <div className="wildcard-choice-heading"><span>3</span><strong id="wildcard-own-item-heading">CHOOSE YOUR ITEM TO GIVE</strong><small>VISIBLE INVENTORY</small></div>
+        <div className="wildcard-item-choices wildcard-own-item-choices" role="group" aria-label="Choose your exchange item">{options.ownItems.map(item => <button type="button" key={item.instanceId} aria-label={`Give ${stackName(item)}`} aria-pressed={ownInstanceId === item.instanceId} onClick={() => setOwnInstanceId(item.instanceId)}><ReferenceItemArt itemId={item.itemId} size={52} label="" /><strong>{stackName(item).toUpperCase()}</strong>{item.quantity > 1 && <small>×{item.quantity}</small>}<span className="wildcard-item-check" aria-hidden="true">{ownInstanceId === item.instanceId ? '◆' : ''}</span></button>)}</div>
+        <label className="sr-only">Your exchange item<select aria-label="Your exchange item" value={ownInstanceId} onChange={event => setOwnInstanceId(event.target.value)}><option value="">Choose an item to give</option>{options.ownItems.map(item => <option key={item.instanceId} value={item.instanceId}>{stackName(item)}</option>)}</select></label>
+      </section>}
       <p>{card.targeting === 'POCKET' ? 'Only occupancy is known. Safe blocks the reveal and the Wildcard remains spent.' : 'Visible inventory only. Pocket contents stay protected.'}</p>
     </> : <p role="status">No legal targets remain. Resolve without an effect; your Wildcard remains spent.</p>}
     {targetId && !target && options.hasTargets && <p role="status">That target is no longer available. Choose another player.</p>}
