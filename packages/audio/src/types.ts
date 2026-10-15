@@ -43,6 +43,7 @@ export const AUDIO_CUE_IDS = {
   warning: 'turn.warning',
   responseWarning: 'turn.response-warning',
   door: 'world.door',
+  doorOpen: 'world.door-open', exitThrough: 'world.exit-through',
   footstep: 'world.footstep',
   chair: 'world.chair', chairScrape: 'world.chair-scrape', chairSettle: 'world.chair-settle', tableSettle: 'world.table-settle', coinScatter: 'world.coin-scatter',
   room: 'world.room',

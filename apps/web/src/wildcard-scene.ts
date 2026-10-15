@@ -263,7 +263,7 @@ export function createWildcardDeckPresentation(kit: VisualKit, options: Wildcard
     if (reconcileLifecycle && active && !active.owner) {
       if (next.pending?.playerId === active.actorId) {
         kit.setWildcardFace(active.card, next.pending.cardId); active.face = next.pending.cardId;
-        active.phase = 'reveal'; active.startedAt = now - 250; active.from = copyPose(active.card);
+        active.phase = 'reveal'; active.startedAt = now - 600; active.from = copyPose(active.card);
         pose(revealPose(), 1);
       } else if (next.discards.at(-1)?.playerId === active.actorId) removeActive();
     }
@@ -271,7 +271,7 @@ export function createWildcardDeckPresentation(kit: VisualKit, options: Wildcard
     if (!visible) { removeActive(); ownerWildcard = undefined; }
     else if (!primed && next.pending && next.pending.playerId !== options.viewerId && !active) {
       const current = newActive(next.pending.cardId, next.pending.playerId, false, revealPose());
-      current.phase = 'reveal'; current.startedAt = now - 250; current.from = copyPose(current.card);
+      current.phase = 'reveal'; current.startedAt = now - 600; current.from = copyPose(current.card);
     }
     primed = true;
     apply(now, reducedMotion);
@@ -347,8 +347,8 @@ export function createWildcardDeckPresentation(kit: VisualKit, options: Wildcard
     } else if (active?.phase === 'opponent-held') {
       pose(actorPose(active.actorId), 1);
     } else if (active?.phase === 'reveal') {
-      pose(revealPose(), reducedMotion ? 1 : easeInOut(elapsed / 250), reducedMotion ? 0 : .05);
-      if (elapsed >= (reducedMotion ? 700 : 1000)) { active.discardFaceUp = true; setPhase('discard', now); syncDiscardVisibility(); }
+      pose(revealPose(), reducedMotion ? 1 : easeInOut(elapsed / 600), reducedMotion ? 0 : .05);
+      if (elapsed >= (reducedMotion ? 1700 : 3400)) { active.discardFaceUp = true; setPhase('discard', now); syncDiscardVisibility(); }
     } else if (active?.phase === 'burn-flip') {
       const back = cameraPose(new Vector3(0, .02, -.42), true); back.scale = 1.05; pose(back, reducedMotion ? 1 : easeInOut(elapsed / 350));
       if (reducedMotion || elapsed >= 400) { kit.setWildcardFace(active.card, 'back'); active.face = 'back'; setPhase('discard', now); }

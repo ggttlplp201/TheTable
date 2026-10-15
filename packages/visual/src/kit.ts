@@ -388,6 +388,15 @@ export class VisualKit {
   createFirstPersonLegs(): Group { return this.#trackWildcard(this.#referenceKit().fpLegs()); }
   createFirstPersonHands(): Group { return this.#trackWildcard(this.#referenceKit().fpHands()); }
 
+  /** The source's brass 6% back-face hull for in-scene item and target selection. */
+  setInteractionOutline(object: Object3D, visible: boolean): void {
+    if (!visible && !object.userData.hull) return;
+    const hadHull = Boolean(object.userData.hull);
+    this.#referenceKit().outline(object, visible);
+    const hull = object.userData.hull as Group | undefined;
+    if (hull && !hadHull) this.#trackWildcard(hull);
+  }
+
   #trackWildcard(root: Group): Group {
     root.traverse(object => {
       const mesh = object as Mesh;
@@ -435,11 +444,14 @@ export class VisualKit {
     rig.up.name = 'upper'; rig.head.name = 'head';
     for (const [arm, name] of [[rig.aL, 'armLeft'], [rig.aR, 'armRight']] as const) {
       arm.sh.name = name; arm.el.name = 'elbow'; arm.hand.name = 'hand';
-      arm.sh.userData.restX = arm.bx; arm.el.userData.restX = arm.be;
+      arm.sh.userData.restX = arm.bx; arm.el.userData.restX = arm.be; arm.sh.userData.restZ = arm.sh.rotation.z;
     }
     root.traverse(object => {
-      const mesh = object as Object3D & { geometry?: { dispose(): void }; material?: Material | Material[] };
+      const mesh = object as Object3D & { geometry?: { dispose(): void }; material?: Material | Material[]; skeleton?: THREE.Skeleton };
       if (mesh.geometry) this.#resources.track(mesh.geometry);
+      // The final cast uses skinned arms. Bone textures are allocated lazily by
+      // Three, so track the skeleton itself and release those textures on teardown.
+      if (mesh.skeleton) this.#resources.track(mesh.skeleton);
       for (const material of Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : []) {
         this.#resources.track(material);
         const map = (material as Material & { map?: { dispose(): void } | null }).map; if (map) this.#resources.track(map);
@@ -462,7 +474,7 @@ export class VisualKit {
     for (const arm of [rig.aL, rig.aR]) { arm.bx = Number(arm.sh.userData.restX ?? arm.bx); arm.be = Number(arm.el.userData.restX ?? arm.be); }
     rig.threat = (character.userData.threat as string | null | undefined) ?? null;
     this.#referenceKit().idle(character, timeSeconds, phase, standing);
-    if (!rig.threat) { rig.aR.sh.rotation.z = standing ? .1 : -.12; rig.aL.sh.rotation.z = standing ? -.1 : .12; }
+    if (!rig.threat) for (const arm of [rig.aL, rig.aR]) arm.sh.rotation.z = Number(arm.sh.userData.restZ);
   }
 
   animateDownedCharacter(character: Group, elapsedSeconds: number, timeSeconds: number, phase = 0): void {

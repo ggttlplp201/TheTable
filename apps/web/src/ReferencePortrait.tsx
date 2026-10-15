@@ -1,4 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { HandbookModel } from './ReferenceAnimatedItem';
+
+/** All nine mugshots use the same standing models as the selected Handbook figure. */
+export function HandbookCharacterThumbnail({ roleId, tint }: { roleId: string; tint: number }) {
+  return <HandbookModel kind="chars" modelId={roleId} name={roleId === 'dealer' ? 'The Dealer' : roleId} tint={tint} thumbnail />;
+}
 
 export function AnimatedReferencePortrait({ roleId, className = '', fallback }: { roleId: string; className?: string; fallback: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);

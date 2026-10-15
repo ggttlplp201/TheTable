@@ -26,6 +26,7 @@ export function WildcardDecision({ room, send, busy, connected, targetPlayerId, 
   if (!pending || !card) return null;
   const targeting = pending.phase === 'TARGETING';
   return <section className="wildcard-decision" data-phase={pending.phase} role="dialog" aria-label={targeting ? 'Resolve your Wildcard' : 'Private Wildcard decision'} aria-describedby="wildcard-commitment wildcard-action-help">
+    {targeting && <p className="wildcard-target-instruction">◎ CHOOSE A PLAYER{targetPlayerId ? card.targeting === 'POCKET' ? ' · CHOOSE AN OCCUPIED POCKET' : ' · SELECT THEIR ITEM BELOW' : ''}</p>}
     <div className="wildcard-ability-banner"><header><h2 tabIndex={-1} ref={heading}>{card.name.toUpperCase()}</h2><span>{targeting ? '◈ REVEALED TO THE TABLE' : '◈ WILDCARD · ONLY YOU'}</span></header><p className="wildcard-ability">{card.description}</p></div>
     <span className="sr-only">{!targeting && 'PRIVATE · ONLY YOU SEE THIS'}{room.public.turn && <Countdown deadline={room.public.turn.deadlineAt} label="Normal turn remaining" format="seconds" />}</span>
     {!connected && <p className="wildcard-connection" role="status">Reconnecting… Your decision is waiting for the table.</p>}

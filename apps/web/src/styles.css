@@ -369,8 +369,10 @@ body:has(.entry-layout) .global-audio, body:has(.join-stage) .global-audio, body
   border: 2px solid rgb(216 204 176 / .35); color: #d8ccb0; background: #0a0807;
   font: 20px "VT323", monospace;
 }
-.entry-utility-overlay .reference-handbook,
 .entry-utility-overlay .reference-settings { padding-top: 44px; }
+.entry-utility-items { background:rgba(4,3,2,.82); }
+.entry-layout:has(.entry-utility-items) .entry-copy,
+.entry-layout:has(.entry-utility-items) .entry-version { opacity:0; pointer-events:none; }
 
 .how-to-play { height:100%; padding-top:44px; box-sizing:border-box; display:grid; grid-template-columns:210px minmax(0,1fr); color:#d8ccb0; font-family:"VT323",monospace; }
 .rules-nav { min-height:0; padding:20px 14px 16px 18px; display:flex; flex-direction:column; border-right:2px solid #2a231c; background:rgb(8 6 5 / .68); }

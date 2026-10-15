@@ -37,8 +37,8 @@ export function wildcardResolutionCommand(room: RoomView, draft: WildcardTargetD
   return { type: 'RESOLVE_WILDCARD', targetId: target.id, instanceId: draft.instanceId, ...(card.targeting === 'EXCHANGE' ? { ownInstanceId: draft.ownInstanceId } : {}) };
 }
 
-export const WILDCARD_RESULT_DURATION = 1_000;
-export const WILDCARD_PUBLIC_BANNER_DELAY = 250;
+export const WILDCARD_RESULT_DURATION = 3_400;
+export const WILDCARD_PUBLIC_BANNER_DELAY = 600;
 export const WILDCARD_RESOLUTION_DURATION = 1_000;
 
 function publicEffectSummaries(room: PublicRoomView, facts: ActionEventPresentation | undefined) {

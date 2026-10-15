@@ -1,6 +1,6 @@
 .tutorial-shell { min-height:100dvh; background:#090807; }
 .tutorial-guide,.tutorial-complete,.tutorial-welcome,.multiplayer-hint { color:#d8ccb0; font-family:'VT323',monospace; }
-.tutorial-guide { position:fixed; z-index:130; left:50%; bottom:112px; width:min(330px,calc(100vw - 32px)); transform:translateX(-50%); padding:12px 15px; box-sizing:border-box; background:rgba(5,4,3,.9); border:1px solid rgba(224,160,64,.62); box-shadow:0 6px 18px #000a; pointer-events:none; transition:left 240ms cubic-bezier(.16,1,.3,1),right 240ms cubic-bezier(.16,1,.3,1),top 240ms cubic-bezier(.16,1,.3,1),bottom 240ms cubic-bezier(.16,1,.3,1),transform 240ms cubic-bezier(.16,1,.3,1); }
+.tutorial-guide { position:fixed; z-index:130; left:50%; top:14px; width:min(660px,calc(100vw - 360px)); transform:translateX(-50%); padding:9px 18px 10px; box-sizing:border-box; background:rgba(5,4,3,.72); border:2px solid rgba(216,204,176,.18); pointer-events:none; }
 .tutorial-guide header { display:flex; align-items:center; justify-content:space-between; color:#b8ab92; letter-spacing:.1em; font-size:14px; }
 .tutorial-guide header button { background:none; border:0; color:#b8ab92; font-size:22px; cursor:pointer; pointer-events:auto; }
 .tutorial-guide-controls { display:flex; align-items:center; gap:5px; }
@@ -11,49 +11,69 @@
 .tutorial-exit { position:fixed; z-index:131; top:22px; left:24px; padding:8px 12px; border:1px solid #9f3e34; background:rgba(19,5,4,.92); color:#ef735f; font:16px/1 'VT323',monospace; letter-spacing:.08em; cursor:pointer; box-shadow:0 4px 14px #0009; }
 .tutorial-exit:hover,.tutorial-exit:focus-visible { border-color:#ef735f; background:#35100c; color:#ff8a77; outline:none; }
 .tutorial-exit:active { transform:translateY(1px); }
-.tutorial-guide h2 { font-size:23px; line-height:1.05; color:#e0a040; margin:9px 0 5px; }
-.tutorial-guide h2::before { content:'◆'; color:#a87a28; font-size:12px; margin-right:8px; vertical-align:middle; }
-.tutorial-guide p { font-size:19px; line-height:1.15; margin:0; text-wrap:pretty; }
-.tutorial-guide small { display:block; margin-top:7px; color:#8f8270; font-size:12px; letter-spacing:.08em; }
+.tutorial-guide h2 { font:28px/1 'VT323',monospace; color:#d8ccb0; margin:7px 0 3px; text-wrap:balance; }
+.tutorial-instruction-marker { color:#a87a28; font-size:12px; margin-right:8px; vertical-align:middle; }
+.tutorial-guide p { font-size:20px; line-height:1.1; margin:0; color:#b8ab92; text-wrap:pretty; }
+.tutorial-guide small { display:block; margin-top:5px; color:#b8ab92; font-size:12px; letter-spacing:.08em; }
 .tutorial-chapters { display:flex; gap:5px; margin-top:5px; }
 .tutorial-chapters i { height:2px; flex:1; background:#51483a; }
 .tutorial-chapters .done { background:#a8c05a; }
 .tutorial-guide button:not(header button),.tutorial-complete button,.tutorial-welcome button { font:inherit; font-size:19px; padding:8px 13px; border:1px solid #736442; background:#090807; color:#d8ccb0; cursor:pointer; pointer-events:auto; }
 button.tutorial-continue { margin-top:10px; background:#e0a040; color:#130e07; border-color:#e0a040; }
 .tutorial-guide .tutorial-skip { margin-top:6px; font-size:16px; border:0; padding:4px 0; color:#b8ab92; background:transparent; }
-.tutorial-guide[data-guide-focus='dealer'] { top:15%; bottom:auto; }
-.tutorial-guide[data-guide-focus='inventory'],.tutorial-guide[data-guide-focus='coins'] { left:306px; bottom:126px; transform:translateX(0); }
-.tutorial-guide[data-guide-focus='pockets'],.tutorial-guide[data-guide-focus='contract'] { left:auto; right:28px; bottom:138px; transform:none; }
-.tutorial-guide[data-guide-focus='tasks'] { left:auto; right:292px; top:72px; bottom:auto; transform:none; }
-.tutorial-guide[data-guide-focus='response'] { left:24px; top:50%; bottom:auto; transform:translateY(-50%); }
-.tutorial-guide[data-guide-focus='revive'] { bottom:205px; }
-.tutorial-guide[data-guide-focus='market'] { left:24px; top:auto; bottom:190px; transform:none; }
-.tutorial-guide[data-guide-focus='chest'] { top:25%; bottom:auto; }
-.tutorial-guide[data-guide-focus='wildcard'] { bottom:104px; }
-.tutorial-guide[data-guide-focus='trade'] { left:50%; right:auto; top:112px; bottom:auto; transform:translateX(-50%); }
-.tutorial-guide[data-guide-focus='threat'] { left:auto; right:28px; top:112px; bottom:auto; transform:none; }
+.tutorial-shell:is([data-step='pocket'],[data-step='chest']) .tutorial-guide { top:auto; bottom:126px; }
+.tutorial-shell:has(.match-overlay-backdrop,.forced-decision) .tutorial-guide { left:50%!important; right:auto!important; top:14px!important; bottom:auto!important; transform:translateX(-50%)!important; }
+.tutorial-shell:has(.match-overlay-backdrop,.forced-decision) .tutorial-guide-drag { visibility:hidden; }
+.tutorial-privacy { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding-top:4px; }
+.tutorial-privacy>div+div { border-left:1px solid rgba(216,204,176,.18); padding-left:16px; }
+.tutorial-privacy span { display:flex; gap:8px; align-items:center; min-height:28px; font-size:21px; }
+.tutorial-trade-trail { display:flex; flex-wrap:wrap; gap:4px 12px; list-style:none; padding:0; margin:8px 0 0; color:#b8ab92; font-size:16px; }
+.tutorial-trade-trail [data-done] { color:#a8c05a; }
+.tutorial-trade-trail [aria-current] { color:#e0a040; }
 .tutorial-complete { position:fixed; inset:0; display:grid; place-content:center; gap:18px; padding:32px; box-sizing:border-box; background:#090807; text-align:center; }
 .tutorial-complete h1 { margin:0 0 12px; color:#cfe08d; font:54px/1 'IM Fell English',serif; }
 .tutorial-complete button { width:min(420px,calc(100vw - 40px)); }
+.tutorial-complete>p { margin:0; font-size:26px; color:#b8ab92; }
+.tutorial-complete .tutorial-escaped { color:#a8c05a; font-size:20px; letter-spacing:.2em; }
+.tutorial-learned { display:grid; grid-template-columns:repeat(3,1fr); gap:8px 24px; padding:0; margin:8px 0; list-style:none; text-align:left; font-size:23px; color:#b8ab92; }
+.tutorial-learned span { color:#e0a040; }
 .tutorial-welcome-backdrop { position:fixed; inset:0; z-index:200; display:grid; place-items:center; background:#0008; }
 .tutorial-welcome { padding:32px; width:min(420px,calc(100vw - 32px)); background:rgba(5,4,3,.9); border:2px solid rgba(216,204,176,.18); box-shadow:0 8px 32px #0008; }
 .tutorial-welcome h2 { font:30px 'IM Fell English',serif; margin:0 0 16px; }
 .tutorial-welcome p { font-size:23px; line-height:1.3; }
 .tutorial-welcome button { display:block; width:100%; margin-top:12px; }
-@keyframes tutorial-target-breathe { 0%,100% { outline-color:#e0a040; box-shadow:0 0 0 1px #e0a040,0 0 16px rgba(224,160,64,.72); } 50% { outline-color:#211408; box-shadow:0 0 0 1px #211408,0 0 3px rgba(224,160,64,.12); } }
+@keyframes tutorial-target-breathe { 0%,100% { outline-color:#e0a040; } 50% { outline-color:rgba(224,160,64,.55); } }
 .tutorial-shell[data-focus=inventory] .self-hand,.tutorial-shell[data-focus=coins] .self-vitals,.tutorial-shell[data-focus=tasks] .tasks-tab,.tutorial-shell[data-focus=pockets] .match-utility>button:nth-child(2),.tutorial-shell[data-focus=trade] .action-buttons>button:first-child,.tutorial-shell[data-focus=threat] .action-buttons>.threat,.tutorial-shell[data-focus=contract] .match-utility>button:first-child,.tutorial-shell[data-focus=revive] .downed-actions button:first-child,.tutorial-shell[data-focus=response] .threat-response .button.secondary,.tutorial-shell[data-focus=wildcard] .wildcard-use,.tutorial-shell[data-focus=wildcard] .wildcard-draw-action,.tutorial-shell[data-focus=contract] .scene-leave,.tutorial-shell[data-focus=market] .market-stock-tag:not(.sold) { outline:2px solid #e0a040; outline-offset:5px; animation:tutorial-target-breathe 1.35s ease-in-out infinite; }
 .tutorial-shell .camera-onboarding { display:none; }
-.tutorial-shell .dealer-nameplate { background:transparent; border:0; color:#e0a040; font-size:25px; letter-spacing:.08em; text-shadow:0 0 8px #000,0 2px #000; }
+.tutorial-shell .match-viewport.match-layout[data-viewer]>.match-hud-top { display:none; }
+.tutorial-shell .action-feedback:not(.action-feedback-error) { display:none; }
+.tutorial-shell .action-feedback-error { top:calc(var(--tutorial-guide-height) + 30px); max-height:90px; overflow:auto; box-sizing:border-box; }
+.tutorial-shell:has(.action-feedback-error) .match-viewport.match-layout .match-overlay-backdrop { padding-top:calc(var(--tutorial-guide-height) + 132px); }
+.tutorial-shell:has(.action-feedback-error) .match-viewport.match-layout .match-overlay { max-height:calc(100dvh - var(--tutorial-guide-height) - 152px); }
+.tutorial-shell .dealer-nameplate { background:#a8843c; border:0; color:#1a1008; padding:2px 8px; font-size:20px; letter-spacing:.08em; text-shadow:none; }
 .tutorial-shell .dealer-nameplate small { display:none; }
 .tutorial-shell[data-focus=wildcard] .wildcard-burn { opacity:.45; }
 .tutorial-shell[data-focus=threat] .tasks-hud { visibility:hidden; pointer-events:none; }
 .coin-amount { display:inline-flex; align-items:center; gap:3px; vertical-align:middle; white-space:nowrap; }
 .coin-amount img { flex:none; }
-.multiplayer-hint { position:fixed; z-index:95; right:24px; bottom:130px; max-width:240px; padding:14px 34px 14px 16px; background:rgba(5,4,3,.88); border:2px solid rgba(216,204,176,.18); box-shadow:0 8px 32px #0008; font-size:20px; }
+.multiplayer-hint { position:fixed; z-index:95; right:24px; bottom:130px; width:240px; box-sizing:border-box; padding:10px 30px 12px 14px; background:rgba(5,4,3,.72); border:2px solid rgba(216,204,176,.18); font-size:20px; line-height:1.05; color:#b8ab92; pointer-events:none; }
 .multiplayer-hint strong { display:block; color:#e0a040; margin-bottom:6px; }
-.multiplayer-hint button { position:absolute; right:8px; top:8px; border:0; background:transparent; color:#d8ccb0; cursor:pointer; }
-@media(min-width:1101px) { .tutorial-shell .match-viewport:not([data-response=true]) .match-overlay-backdrop { padding-right:0; }.tutorial-shell[data-focus='response'] .match-viewport[data-response='true'] .forced-decision { padding-left:390px; padding-right:24px; } }
-@media(min-width:1240px) { .tutorial-shell:is([data-focus='trade'],[data-focus='threat']) .match-overlay-backdrop:has(.match-overlay[data-panel='TRADE'],.match-overlay[data-panel='THREAT']) { padding-right:370px; box-sizing:border-box; }.tutorial-shell[data-focus='trade']:has(.match-overlay[data-panel='TRADE']) .tutorial-guide[data-guide-focus='trade'],.tutorial-shell[data-focus='threat']:has(.match-overlay[data-panel='THREAT']) .tutorial-guide[data-guide-focus='threat'] { left:auto; right:28px; top:112px; transform:none; } }
-@media(max-width:1100px) { .tutorial-guide,.tutorial-guide[data-guide-focus] { left:50%; right:auto; top:auto; bottom:102px; width:min(360px,calc(100vw - 24px)); transform:translateX(-50%); } }
-@media(max-width:680px) { .tutorial-guide,.tutorial-guide[data-guide-focus] { bottom:78px; padding:9px 11px; }.tutorial-guide p { font-size:16px; }.tutorial-guide h2 { font-size:19px; margin:6px 0 3px; }.tutorial-guide small,.tutorial-chapters { display:none; }.tutorial-exit { top:12px; left:12px; }.tutorial-complete { padding:24px; }.tutorial-complete h1 { font-size:40px; } }
-@media(prefers-reduced-motion:reduce) { .tutorial-guide { transition:none; }.tutorial-shell :is(.self-hand,.self-vitals,.tasks-tab,.match-utility>button,.action-buttons>button,.downed-actions button,.threat-response button,.wildcard-use,.wildcard-draw-action,.scene-leave,.market-stock-tag) { animation:none!important; } }
+.multiplayer-hint button { position:absolute; right:8px; top:8px; border:0; background:transparent; color:#d8ccb0; cursor:pointer; pointer-events:auto; }
+/* The lesson owns a shallow strip above production dialogs. Their content
+   scrolls inside the remaining space, so no guidance covers a decision. */
+.tutorial-shell .match-viewport.match-layout .match-overlay-backdrop { padding:calc(var(--tutorial-guide-height) + 30px) 16px 20px; box-sizing:border-box; }
+.tutorial-shell .match-viewport.match-layout .match-overlay { max-height:calc(100dvh - var(--tutorial-guide-height) - 50px); overflow:auto; }
+.tutorial-shell .match-viewport.match-layout[data-response='true'] .forced-decision { padding:calc(var(--tutorial-guide-height) + 30px) 24px 24px; box-sizing:border-box; }
+.tutorial-shell .match-viewport.match-layout[data-response='true'] .forced-decision>.decision-panel { max-height:calc(100dvh - var(--tutorial-guide-height) - 54px); }
+.tutorial-shell [data-tutorial-target='true'] { outline:2px solid #e0a040; outline-offset:5px; animation:tutorial-target-breathe 840ms ease-in-out infinite; }
+.tutorial-shell[data-step='trade']:has(.reference-trade) .action-buttons>button:first-child { outline:none; animation:none; }
+.tutorial-shell[data-step='practice']:has(.reference-threat) .reference-threat .threat-mode { outline:2px solid #e0a040; outline-offset:5px; }
+@media(max-width:1100px) { .tutorial-guide { width:min(620px,calc(100vw - 32px)); }.tutorial-guide header { padding-left:120px; }.tutorial-exit { top:19px; left:18px; padding:5px 8px; font-size:14px; } }
+@media(max-width:680px) { .tutorial-guide { top:8px; padding:7px 11px; }.tutorial-guide p { font-size:18px; }.tutorial-guide h2 { font-size:23px; margin:6px 0 3px; }.tutorial-guide>small,.tutorial-chapters { display:none; }.tutorial-exit { top:13px; left:22px; }.tutorial-complete { padding:24px; gap:12px; }.tutorial-complete h1 { font-size:40px; }.tutorial-learned { font-size:19px; gap:6px 14px; }.tutorial-privacy { gap:8px; }.tutorial-privacy span { font-size:18px; }.tutorial-trade-trail { font-size:14px; gap:3px 8px; }.tutorial-shell:is([data-step='pocket'],[data-step='chest']) .tutorial-guide { bottom:100px; } }
+@media(max-width:960px) {
+  .tutorial-shell .match-viewport.match-layout[data-response='true']>.match-utility { top:auto; bottom:12px; left:12px; right:12px; width:auto; justify-content:center; }
+  .tutorial-shell .match-viewport.match-layout[data-response='true'] .forced-decision { padding-bottom:116px; }
+  .tutorial-shell .match-viewport.match-layout[data-response='true'] .forced-decision>.decision-panel { max-height:calc(100dvh - var(--tutorial-guide-height) - 146px); }
+}
+@media(max-width:680px) { .tutorial-shell .match-viewport.match-layout[data-viewer]>.seat-ribbon { display:none; } }
+@media(prefers-reduced-motion:reduce) { .tutorial-guide { transition:none; }.tutorial-shell :is(.self-hand,.self-vitals,.tasks-tab,.match-utility>button,.action-buttons>button,.downed-actions button,.threat-response button,.wildcard-use,.wildcard-draw-action,.scene-leave,.market-stock-tag,[data-tutorial-target]) { animation:none!important; } }

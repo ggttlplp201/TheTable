@@ -15,11 +15,11 @@
   .match-viewport.match-layout:has(.wildcard-decision):has(.match-chat-drawer,.match-overlay-backdrop) > .match-utility { right:auto; left:28px; }
   .match-viewport.match-layout:has(.wildcard-decision):has(.match-chat-drawer,.match-overlay-backdrop) .match-role-card > .role-ability-detail { right:auto; left:0; }
 }
-.wildcard-decision { position:absolute; z-index:48; left:50%; top:59.78836%; transform:translateX(-50%); width:min(600px,calc(100% - 40px)); display:flex; flex-direction:column; align-items:center; gap:10px; pointer-events:auto; color:#d8ccb0; font-family:'VT323',monospace; cursor:default; }
+.wildcard-decision { --wildcard-banner-top:min(60.606%,calc(100% - 280px)); position:absolute; z-index:48; left:50%; top:var(--wildcard-banner-top); transform:translateX(-50%); width:min(600px,calc(100% - 40px)); max-height:calc(100% - var(--wildcard-banner-top) - 16px); overflow:auto; display:flex; flex-direction:column; align-items:center; gap:10px; pointer-events:auto; color:#d8ccb0; font-family:'VT323',monospace; cursor:default; }
 .wildcard-ability-banner { width:100%; box-sizing:border-box; padding:12px 18px 14px; background:rgba(14,10,6,.94); border:2px solid #8a6a2a; box-shadow:inset 0 0 0 1px rgba(201,162,74,.12); }
 .wildcard-ability-banner header { display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
 .match-viewport .wildcard-ability-banner h2 { margin:0; font:32px/1 'IM Fell English SC',serif; color:#d0a84e; text-wrap:balance; }
-.wildcard-ability-banner header > span { color:#8a6a2a; font-size:17px; letter-spacing:.2em; white-space:nowrap; }
+.wildcard-ability-banner header > span { color:#c5ad82; font-size:17px; letter-spacing:.2em; white-space:nowrap; }
 .wildcard-ability-banner .wildcard-ability { margin:8px 0 0; padding-top:10px; border-top:2px solid #5a4420; color:#d8ccb0; font:26px/1.08 'VT323',monospace; text-wrap:pretty; }
 .wildcard-buttons { display:grid; grid-template-columns:1fr 1fr; gap:10px; width:100%; }
 .match-viewport .wildcard-buttons button { min-height:56px; display:flex; align-items:center; justify-content:center; padding:0; border:0; border-radius:0; font:28px/1 'VT323',monospace; cursor:pointer; }
@@ -33,7 +33,8 @@
 .wildcard-commitment strong { font:19px/1.05 'VT323',monospace; letter-spacing:.18em; color:#d0a84e; }
 .wildcard-commitment > span { font:19px/1.05 'VT323',monospace; color:#b8ab92; }
 .wildcard-connection { margin:0; color:#ff9b89; background:rgba(14,10,6,.94); font:21px/1.1 'VT323',monospace; }
-.wildcard-decision[data-phase='TARGETING'] { top:auto; bottom:88px; }
+.wildcard-decision[data-phase='TARGETING'] { top:auto; bottom:88px; max-height:calc(100% - 180px); }
+.wildcard-target-instruction { margin:0; padding:6px 12px; border:2px solid rgba(216,204,176,.18); background:rgba(5,4,3,.72); color:#e0a040; font-size:24px; text-align:center; }
 .wildcard-decision[data-phase='TARGETING'] .wildcard-ability-banner { padding:10px 16px; }
 .wildcard-decision[data-phase='TARGETING'] .wildcard-ability { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 .wildcard-targets { width:100%; box-sizing:border-box; background:rgba(14,10,6,.94); border:2px solid #8a6a2a; padding:12px 16px; font:21px/1.1 'VT323',monospace; }

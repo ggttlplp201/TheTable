@@ -157,28 +157,107 @@
 .reference-response.trade-response .response-clock .countdown { color:#d8ccb0; }
 .reference-overflow footer button { padding:8px 18px; border:2px solid rgba(216,204,176,.35); background:none; font:26px 'VT323',monospace; border-radius:0; color:#d8ccb0; }
 .reference-interface[data-panel=HANDBOOK],.reference-interface[data-panel=SETTINGS] { background:radial-gradient(ellipse 75% 65% at 50% 38%,#221b15,#060504 78%); border:2px solid #1e1a16; }
-.reference-handbook { height:100%; display:grid; grid-template-columns:1fr 290px; gap:16px; padding:22px; box-sizing:border-box; }
-.handbook-catalog { min-width:0; display:flex; flex-direction:column; gap:10px; }
-.handbook-filters { display:flex; gap:8px; }
-.handbook-filters input { flex:1; width:0; height:38px; min-height:0; padding:0 10px; border:2px solid rgba(216,204,176,.35); background:none; font-size:22px; }
-.handbook-filters button { padding:4px 10px; border:2px solid rgba(216,204,176,.2); background:none; font-size:20px; }
-.handbook-filters button.selected { border-color:#e0a040; color:#e0a040; }
-.handbook-items { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:6px; }
-.handbook-items button { display:flex; flex-direction:column; align-items:center; padding:4px 2px; background:#0a0807; border:2px solid #2a231c; }
-.handbook-items button.selected { border-color:#e0a040; }
-.handbook-items span { font-size:14px; line-height:1; text-align:center; height:28px; color:#b8ab92; }
-.handbook-description { display:flex; flex-direction:column; gap:8px; padding:14px; background:rgba(10,8,6,.92); border:2px solid #e0a040; }
+.reference-handbook { height:100%; padding:26px 30px; box-sizing:border-box; display:flex; flex-direction:column; color:#d8ccb0; font-family:'VT323',monospace; }
+.handbook-header { display:flex; align-items:flex-end; gap:18px; padding-bottom:16px; margin-bottom:18px; border-bottom:2px solid rgba(216,204,176,.14); }
+.handbook-header h2 { margin:0; font:52px/.9 'IM Fell English SC',serif; font-weight:400; }
+.handbook-tabs { display:flex; gap:4px; flex-wrap:wrap; }
+.handbook-tabs button { min-height:44px; padding:4px 12px; border:0; border-radius:0; background:none; color:#a99b87; font:22px 'VT323',monospace; letter-spacing:.12em; }
+.handbook-tabs button[aria-selected=true] { color:#d8ccb0; background:rgba(224,160,64,.12); box-shadow:inset 0 -2px 0 #e0a040; }
+.handbook-close { display:flex; align-items:center; gap:8px; margin-left:auto; min-height:44px; padding:0; border:0; background:none; color:#b8ab92; font:20px 'VT323',monospace; white-space:nowrap; }
+.handbook-close kbd { padding:0 6px; border:2px solid rgba(216,204,176,.45); border-bottom-width:4px; font:15px 'VT323',monospace; }
+.handbook-body { flex:1; min-height:0; display:grid; grid-template-columns:300px 470px minmax(0,1fr); gap:26px; }
+.handbook-catalog { min-height:0; min-width:0; display:flex; flex-direction:column; gap:14px; overflow-y:auto; overscroll-behavior:contain; padding-right:6px; }
+.handbook-group h3 { margin:0 0 4px; padding-bottom:4px; border-bottom:1px solid rgba(224,160,64,.25); color:#e0a040; font:16px/1.2 'VT323',monospace; letter-spacing:.2em; }
+.handbook-items { display:flex; flex-direction:column; gap:4px; }
+.handbook-items button { min-height:56px; min-width:0; display:grid; grid-template-columns:44px minmax(0,1fr); gap:10px; align-items:center; padding:4px 8px 4px 4px; border:0; border-radius:0; background:transparent; color:#b8ab92; text-align:left; }
+.handbook-items button:hover { background:rgba(216,204,176,.07); }
+.handbook-items button.selected { color:#d8ccb0; background:rgba(224,160,64,.12); box-shadow:inset 3px 0 0 #e0a040; }
+.handbook-row-copy { min-width:0; display:flex; flex-direction:column; }
+.handbook-row-copy strong { font:23px/1 'VT323',monospace; }
+.handbook-row-copy small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#aa9c87; font:16px/1.2 'VT323',monospace; letter-spacing:.06em; }
+.handbook-character-thumbnail,.handbook-card-thumb { position:relative; width:44px; height:44px; background:#030303; overflow:hidden; }
+.handbook-character-thumbnail canvas { display:block; width:100%; height:100%; image-rendering:pixelated; }
+.handbook-card-thumb { display:grid; place-items:center; border:1px solid rgba(216,204,176,.18); box-sizing:border-box; color:#1a1410; background:#d6c9ab; font-size:30px; }
+.handbook-card-thumb.wildcards { color:#d8ccb0; background:#281b14; }
+.handbook-viewer { position:relative; min-height:0; overflow:hidden; background:#030303; border:2px solid rgba(216,204,176,.14); }
+.handbook-viewer canvas { display:block; width:100%; height:100%; image-rendering:pixelated; touch-action:none; cursor:grab; }
+.handbook-viewer canvas:active { cursor:grabbing; }
+.handbook-viewer canvas:focus-visible { outline:2px solid #e0a040; outline-offset:-4px; }
+.handbook-drag-hint,.handbook-viewer-kind { position:absolute; color:#b8ab92; font-size:16px; letter-spacing:.14em; pointer-events:none; text-shadow:0 2px #000; }
+.handbook-drag-hint { left:12px; bottom:10px; }
+.handbook-viewer-kind { right:12px; top:10px; }
+.handbook-model-fallback { position:absolute; inset:0; display:grid; place-items:center; padding:12px; color:#b8ab92; font-size:18px; text-align:center; }
+.handbook-description { min-width:0; min-height:0; display:flex; flex-direction:column; gap:14px; padding:0; overflow-y:auto; overscroll-behavior:contain; }
+.handbook-description header { padding-bottom:14px; border-bottom:2px solid rgba(216,204,176,.14); }
+.handbook-description p { margin:0; font-size:23px; line-height:1.14; text-wrap:pretty; }
+.handbook-description .handbook-kind { color:#e0a040; font-size:18px; letter-spacing:.18em; }
+.handbook-description h3 { margin:2px 0; font:58px/.95 'IM Fell English SC',serif; font-weight:400; overflow-wrap:anywhere; }
+.handbook-description .item-rarity { color:#b8ab92; font-size:22px; letter-spacing:.08em; }
+.handbook-description dl { margin:auto 0 0; display:flex; flex-direction:column; gap:10px; font-size:22px; }
+.handbook-description dl > div { display:grid; grid-template-columns:110px minmax(0,1fr); gap:12px; padding:8px 14px; background:rgba(5,4,3,.72); border:2px solid rgba(216,204,176,.18); }
+.handbook-description dt { color:#a99b87; font-size:16px; letter-spacing:.16em; }
+.handbook-description dd { margin:0; }
+.handbook-description .coin-amount { color:#e0a040; }
+.handbook-contingency { padding:10px 14px; background:rgba(5,4,3,.72); border:2px solid rgba(216,204,176,.18); }
+.handbook-contingency h4 { margin:0 0 6px; color:#e0a040; font-size:18px; font-weight:400; letter-spacing:.14em; }
+.handbook-case-file { min-width:0; min-height:0; display:flex; flex-direction:column; overflow-y:auto; overscroll-behavior:contain; background:#d6c9ab; color:#1a1410; box-shadow:inset 0 0 0 1px rgba(26,20,16,.4); }
+.handbook-file-strip { display:flex; justify-content:space-between; gap:10px; padding:10px 18px; color:#e6dcc4; background:#1a1410; font-size:17px; letter-spacing:.14em; }
+.handbook-file-body { display:flex; flex-direction:column; gap:12px; padding:16px 20px 18px; }
+.handbook-case-heading { position:relative; padding-right:100px; min-height:60px; }
+.handbook-case-heading > p { margin:0 0 2px; color:#5a4a36; font-size:16px; letter-spacing:.14em; }
+.handbook-case-heading h3 { margin:0; color:#1a1410; font:58px/.95 'IM Fell English SC',serif; font-weight:400; overflow-wrap:anywhere; }
+.handbook-stamp { position:absolute; right:0; top:0; max-width:110px; padding:2px 8px; border:3px solid #7c1f19; color:#7c1f19; font-size:22px; letter-spacing:.1em; text-align:center; transform:rotate(-8deg); }
+.handbook-case-fields { margin:0; padding:8px 0; border-top:2px solid #1a1410; border-bottom:1px solid rgba(26,20,16,.4); }
+.handbook-case-fields > div { display:grid; grid-template-columns:85px minmax(0,1fr); gap:12px; margin:4px 0; }
+.handbook-case-fields dt { padding-top:2px; color:#5a4a36; font-size:15px; letter-spacing:.14em; }
+.handbook-case-fields dd { margin:0; font-size:19px; line-height:1.1; text-wrap:pretty; }
+.handbook-redaction { display:inline-block; min-width:4em; max-width:100%; height:.8em; overflow:hidden; vertical-align:baseline; background:#14100c; color:transparent; user-select:none; }
+.handbook-file-body h4 { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:0 0 6px; color:#5a4a36; font-size:15px; font-weight:400; letter-spacing:.18em; }
+.handbook-file-body p { margin:0 0 6px; color:#1a1410; font-size:20px; line-height:1.14; text-wrap:pretty; }
+.handbook-behaviour { padding:6px 10px; border:2px dashed rgba(26,20,16,.5); }
+.handbook-behaviour p { font-size:19px; }
+.handbook-ability h5 { margin:0 0 4px; color:#7c1f19; font:24px/1 'VT323',monospace; }
+.handbook-ability h4 span { font-size:14px; letter-spacing:.1em; }
+.handbook-starting-kit,.handbook-stock { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; font-size:20px; }
+.handbook-starting-kit li,.handbook-stock li { display:flex; align-items:center; gap:8px; }
+.handbook-stock li { justify-content:space-between; border-bottom:1px solid rgba(26,20,16,.15); }
+.handbook-case-file footer { margin-top:auto; padding:7px 18px; background:#1a1410; color:#e6dcc4; font-size:15px; letter-spacing:.16em; text-align:center; }
 .reference-animated-item { position:relative; display:block; flex:none; overflow:hidden; background:#050403; }
 .reference-animated-item > canvas { position:absolute; inset:0; width:100%; height:100%; display:block; image-rendering:pixelated; }
-.handbook-description > .reference-animated-item { align-self:center; }
-.handbook-description h3 { font:32px/1 'IM Fell English SC',serif; color:#d8ccb0; }
-.handbook-description > p { font-size:22px; line-height:1.05; }
-.handbook-description > p.item-rarity { font-size:20px; color:#8f8270; }
-.handbook-description dl { margin:0; font-size:20px; display:flex; flex-direction:column; gap:6px; }
-.handbook-description dl > div { display:flex; justify-content:space-between; gap:8px; }
-.handbook-description dl > div:first-child { padding-top:6px; border-top:2px solid #1e1a16; }
-.handbook-description dt { color:#8f8270; }
-.handbook-description dd { margin:0; text-align:right; }
+@media (max-width:1390px) {
+  .handbook-body { grid-template-columns:240px minmax(260px,.9fr) minmax(330px,1fr); gap:18px; }
+  .handbook-case-heading h3 { font-size:46px; }
+}
+@media (max-width:1020px) {
+  .reference-handbook { padding:20px; }
+  .handbook-header { flex-wrap:wrap; }
+  .handbook-close { margin-left:auto; }
+  .handbook-tabs { order:3; width:100%; }
+  .handbook-body { grid-template-columns:190px minmax(220px,1fr) minmax(260px,1fr); gap:12px; }
+  .handbook-case-heading { padding-right:0; padding-top:42px; }
+  .handbook-stamp { left:0; right:auto; max-width:none; font-size:18px; }
+  .handbook-file-body { padding:12px; }
+}
+@media (max-width:760px) {
+  .reference-handbook { padding:16px; overflow-y:auto; }
+  .handbook-header { margin-bottom:14px; gap:12px; flex:none; }
+  .handbook-header h2 { font-size:40px; }
+  .handbook-close { font-size:17px; }
+  .handbook-tabs { flex-wrap:nowrap; justify-content:space-between; gap:0; }
+  .handbook-tabs button { padding:6px; font-size:18px; letter-spacing:0; }
+  .handbook-body { flex:none; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }
+  .handbook-catalog { max-height:430px; }
+  .handbook-viewer { min-height:330px; max-height:430px; }
+  .handbook-description,.handbook-case-file { grid-column:1 / -1; overflow:visible; }
+  .handbook-row-copy strong { font-size:20px; }
+  .handbook-row-copy small { font-size:14px; }
+  .handbook-items button { grid-template-columns:32px minmax(0,1fr); gap:5px; padding-left:3px; }
+  .handbook-items .reference-item-art,.handbook-character-thumbnail,.handbook-card-thumb { width:32px!important; height:32px!important; }
+  .handbook-drag-hint { left:6px; right:6px; font-size:13px; letter-spacing:0; text-align:center; }
+  .handbook-case-heading { padding-top:0; padding-right:100px; }
+  .handbook-stamp { left:auto; right:0; max-width:90px; }
+  .handbook-description h3 { font-size:46px; }
+}
 .reference-social { height:100%; padding:22px; box-sizing:border-box; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 .reference-interface .reference-social > .panel { padding:14px; background:rgba(10,8,6,.92); border:2px solid rgba(216,204,176,.22); display:flex; flex-direction:column; gap:8px; min-height:0; }
 .reference-social h2 { font:20px 'VT323',monospace; letter-spacing:.16em; color:#8f8270; }

@@ -1,4 +1,4 @@
-import { BoxGeometry, CylinderGeometry, Group, Quaternion, TorusGeometry, Vector3, type Object3D } from 'three';
+import { BoxGeometry, CylinderGeometry, Group, Quaternion, Skeleton, SkinnedMesh, TorusGeometry, Vector3, type Bone, type Object3D } from 'three';
 import { TABLE_TOP_Y, type VisualKit } from '@the-table/visual';
 
 const DOWN = new Vector3(0, -1, 0);
@@ -67,7 +67,23 @@ export function createSeatRestraint(kit: VisualKit, character: Group, playerId: 
   let naturalPose: Quaternion[] | undefined;
   // The owner's torso is intentionally hidden in first person. Render only the same rig's
   // sleeve/hand outside that hidden subtree while restrained, never a second whole character.
-  const ownerArm = firstPerson && shoulder ? shoulder.clone(true) : undefined;
+  const ownerSkeletons: Skeleton[] = [];
+  const ownerShoulder = firstPerson && shoulder ? shoulder.clone(true) : undefined;
+  const ownerArm = ownerShoulder ? new Group() : undefined;
+  if (ownerArm && ownerShoulder && shoulder?.parent) {
+    ownerArm.add(ownerShoulder);
+    // Final source arms are SkinnedMeshes beside the shoulder bones. Keep their
+    // bind transforms, but point the independent first-person sleeve at its own bones.
+    for (const source of shoulder.parent.children) {
+      if (!(source instanceof SkinnedMesh) || source.skeleton.bones[0] !== shoulder) continue;
+      const mesh = new SkinnedMesh(source.geometry, source.material);
+      mesh.position.copy(source.position); mesh.quaternion.copy(source.quaternion); mesh.scale.copy(source.scale);
+      mesh.castShadow = source.castShadow; mesh.receiveShadow = source.receiveShadow; mesh.frustumCulled = false;
+      const bones = [ownerShoulder as Bone, ownerShoulder.getObjectByName('elbow') as Bone];
+      const skeleton = new Skeleton(bones, source.skeleton.boneInverses.map(matrix => matrix.clone()));
+      ownerArm.add(mesh); mesh.bind(skeleton, source.bindMatrix); ownerSkeletons.push(skeleton);
+    }
+  }
   if (ownerArm) { ownerArm.name = 'firstPersonRestrainedArm'; ownerArm.visible = false; root.add(ownerArm); }
   let active = false, initialized = false, attachedAt: number | undefined, releasedAt: number | undefined;
   let releaseWeight = 0;
@@ -97,10 +113,11 @@ export function createSeatRestraint(kit: VisualKit, character: Group, playerId: 
       naturalPose = joints.map(joint => joint.quaternion.clone());
       wrist.copy(character.localToWorld(new Vector3(-.38, TABLE_TOP_Y + .08, .66)));
       placeRestrainedHand(character, wrist, weight);
-      if (ownerArm && shoulder) {
-        ownerArm.position.copy(shoulder.getWorldPosition(new Vector3()));
-        ownerArm.quaternion.copy(shoulder.getWorldQuaternion(new Quaternion()));
-        ownerArm.scale.copy(shoulder.getWorldScale(new Vector3()));
+      if (ownerArm && ownerShoulder && shoulder?.parent) {
+        ownerArm.position.copy(shoulder.parent.getWorldPosition(new Vector3()));
+        ownerArm.quaternion.copy(shoulder.parent.getWorldQuaternion(new Quaternion()));
+        ownerArm.scale.copy(shoulder.parent.getWorldScale(new Vector3()));
+        ownerShoulder.position.copy(shoulder.position); ownerShoulder.quaternion.copy(shoulder.quaternion);
         ownerArm.getObjectByName('elbow')!.quaternion.copy(elbow!.quaternion);
         ownerArm.getObjectByName('hand')!.quaternion.copy(hand.quaternion);
       }
@@ -124,6 +141,6 @@ export function createSeatRestraint(kit: VisualKit, character: Group, playerId: 
         link.quaternion.copy(seatRotation); link.rotateY(index % 2 ? Math.PI / 2 : 0);
       });
     },
-    dispose() { restorePose(); root.removeFromParent(); }, // Geometry/materials are owned by VisualKit.
+    dispose() { restorePose(); ownerSkeletons.forEach(skeleton => skeleton.dispose()); root.removeFromParent(); }, // Geometry/materials are owned by VisualKit.
   };
 }

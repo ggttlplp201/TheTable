@@ -12,6 +12,7 @@ import type { MatchClient } from './socket';
 import { dispatchRequest, type ActionRequest } from './action-request';
 import { canRematch, commandEnvelope, hasCapability, needsOpponent, ownItems, playerName, presentItems, remainingSeconds, stackName, useItemOptions, useItemTargets, usesChest, words } from './gameplay';
 import { GameTableScene, type SceneIntent } from './GameTableScene';
+import type { ExitBeat } from './table-exit-presentation';
 import { SceneAimPrompt, SceneChestPrompt, SceneExitPrompt, SceneItemCard } from './SceneContext';
 import { ChestPanel, Countdown, EventLog, OverflowDecision, PendingInteraction, PlayerRoster, PrivateDetail, Results, RoleAbilityDetail, SpectatorDetails } from './MatchPanels';
 import { DownedForm, InventoryForm, Markets, ThreatForm, TradeForm, TurnActions, UseItemForm } from './ActionForms';
@@ -249,6 +250,17 @@ const ARRIVAL_AUDIO: Record<ArrivalBeat, (typeof AUDIO_CUE_IDS)[keyof typeof AUD
   'chair-scrape': AUDIO_CUE_IDS.chairScrape,
   'chair-settle': AUDIO_CUE_IDS.chairSettle,
 };
+const EXIT_AUDIO: Record<ExitBeat, (typeof AUDIO_CUE_IDS)[keyof typeof AUDIO_CUE_IDS]> = {
+  'chair-scrape': AUDIO_CUE_IDS.chairScrape,
+  footstep: AUDIO_CUE_IDS.footstep,
+  'door-open': AUDIO_CUE_IDS.doorOpen,
+  'exit-through': AUDIO_CUE_IDS.exitThrough,
+};
+
+/** Public choreography only: identical cue mapping for owner, other players and spectators. */
+export function playExitBeatAudio(engine: Pick<AudioEngine, 'play'>, beat: ExitBeat): void {
+  engine.play(EXIT_AUDIO[beat]);
+}
 
 export function feedNewAudioEvents(
   engine: Pick<AudioEngine, 'handleEvent'>,
@@ -256,6 +268,7 @@ export function feedNewAudioEvents(
   viewerId: string,
   observed: Set<string>,
   active: boolean,
+  sceneExitAudio = false,
 ): void {
   const events = room.public.events ?? [];
   const inspections = !isSpectatorView(room) ? (room.private.inspections ?? []) : [];
@@ -266,6 +279,10 @@ export function feedNewAudioEvents(
     observed.add(key);
     if (observed.size > 512) observed.delete(observed.values().next().value!);
     if (!active || event.kind === 'MATCH_STARTED') continue;
+    // Match the scene observer's fresh/public-actor eligibility. Reduced motion,
+    // an unavailable renderer or a hidden page keeps the single generic fallback.
+    if (sceneExitAudio && event.kind === 'EXIT' && Math.abs(Date.now() - event.at) <= 5000
+      && room.public.players.some(player => player.id === event.actorId && player.roleId)) continue;
     const payload = privateByEvent.get(event.id);
     engine.handleEvent(payload === undefined ? event : { ...event, privatePayloads: { [viewerId]: payload } }, isSpectatorView(room) ? undefined : viewerId);
   }
@@ -300,7 +317,7 @@ export function musicFor(room: AnyRoomView, viewerId: string, scene: MusicScene)
   return 'table';
 }
 
-function useMatchAudio(room: AnyRoomView, viewerId: string, supplied?: { engine: AudioEngine; started: boolean; start: () => void }, scene: MusicScene = 'table') {
+function useMatchAudio(room: AnyRoomView, viewerId: string, supplied?: { engine: AudioEngine; started: boolean; start: () => void }, scene: MusicScene = 'table', sceneReady = false) {
   const engineRef = useRef<AudioEngine | undefined>(undefined);
   if (!supplied && !engineRef.current) engineRef.current = createAudioEngine();
   const engine = supplied?.engine ?? engineRef.current!;
@@ -313,9 +330,10 @@ function useMatchAudio(room: AnyRoomView, viewerId: string, supplied?: { engine:
   useOwnedAudioEngineLifecycle(engine, ownsEngine);
 
   useEffect(() => {
-    feedNewAudioEvents(engine, room, viewerId, observedEventsRef.current, started && projectionPrimedRef.current);
+    const sceneExitAudio = sceneReady && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && document.visibilityState !== 'hidden';
+    feedNewAudioEvents(engine, room, viewerId, observedEventsRef.current, started && projectionPrimedRef.current, sceneExitAudio);
     projectionPrimedRef.current = true;
-  }, [engine, room, viewerId, started]);
+  }, [engine, room, viewerId, started, sceneReady]);
 
   const track = musicFor(room, viewerId, scene);
   const threatOpen = Boolean(room.public.pendingThreat) && track === 'table';
@@ -362,6 +380,7 @@ function useMatchAudio(room: AnyRoomView, viewerId: string, supplied?: { engine:
 export type SceneIntentTarget = {
   panel: Exclude<MatchPanel, null>;
   itemInstanceId?: string | undefined;
+  pocketIndex?: number | undefined;
   requestedItemInstanceId?: string | undefined;
   targetPlayerId?: string | undefined;
   chestKind?: 'STANDARD' | 'BLACK' | undefined;
@@ -374,6 +393,7 @@ export type SceneIntentTarget = {
 export function sceneIntentTarget(room: AnyRoomView, viewerId: string, intent: SceneIntent): SceneIntentTarget | null {
   if (isSpectatorView(room) || intent.kind === 'EMPTY') return null;
   if (intent.kind === 'WILDCARD') return hasCapability(room, 'DRAW_WILDCARD') ? { panel: 'WILDCARD' } : null;
+  if (intent.kind === 'POCKET') return intent.ownerId === viewerId ? { panel: 'POCKETS', pocketIndex: intent.pocketIndex } : { panel: 'PLAYERS', targetPlayerId: intent.ownerId };
   if (intent.kind === 'MARKET_PUBLIC' || intent.kind === 'MARKET_BLACK' || intent.kind === 'SELL') {
     if (room.public.round?.phase !== 'INTERMISSION') return null;
     return { panel: 'MARKETS', marketView: intent.kind === 'MARKET_PUBLIC' ? 'PUBLIC' : intent.kind === 'MARKET_BLACK' ? 'BLACK' : 'SELL' };
@@ -422,10 +442,10 @@ function SetupMatchView(props: Parameters<typeof ActiveMatchView>[0] & { room: R
 function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine, audioStarted, onEnableAudio, onView, onReturnHome, onCameraTravel, guideFocus }: { room: AnyRoomView; client: MatchClient; connected: boolean; viewerId: string; voice: VoiceCapability; audioEngine?: AudioEngine; audioStarted?: boolean; onEnableAudio?: () => void; onView: (view: AnyRoomView) => void; onReturnHome?: () => void; onCameraTravel?: (degrees: number) => void; guideFocus?: string }) {
   const suppliedAudio = audioEngine && audioStarted !== undefined && onEnableAudio ? { engine: audioEngine, started: audioStarted, start: onEnableAudio } : undefined;
   const [musicScene, setMusicScene] = useState<MusicScene>('table');
-  const audio = useMatchAudio(room, viewerId, suppliedAudio, musicScene);
+  const [sceneReady, setSceneReady] = useState(false);
+  const audio = useMatchAudio(room, viewerId, suppliedAudio, musicScene, sceneReady);
   const action = useMatchActions({ client, room, connected, viewerId, onView, onAccepted: request => { if (audio.started) playAcceptedActionAudio(audio.engine, room, request); } });
   const spectator = isSpectatorView(room);
-  const [sceneReady, setSceneReady] = useState(false);
   const presentedPublic = usePresentedHealth(room.public, sceneReady);
   const results = room.public.status === 'RESULTS';
   const intermission = room.public.round?.phase === 'INTERMISSION';
@@ -479,7 +499,7 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
   }, [intermission, orderReveal?.key, results, spectator]);
   const me = room.public.players.find(player => player.id === viewerId);
   const ownerAmmo = !spectator ? ownItems(room).filter(item => item.itemId === 'bullet').reduce((total, item) => total + item.quantity, 0) : 0;
-  const sceneItem = me?.visibleInventory.find(item => item?.instanceId === sceneItemId) ?? undefined;
+  const sceneItem = !spectator ? ownItems(room).find(item => item.instanceId === sceneItemId) : undefined;
   const ownerWildcard = !spectator && room.private.playerId === viewerId ? room.private.pendingWildcard : undefined;
   const wildcardTargeting = ownerWildcard?.phase === 'TARGETING' && hasCapability(room, 'RESOLVE_WILDCARD') && !action.busy;
   const aimTargets = wildcardTargeting ? wildcardTargets(room.public, viewerId, ownerWildcard.cardId).players.map(player => player.id)
@@ -503,8 +523,7 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
       if (event.defaultPrevented || event.repeat || event.metaKey || event.ctrlKey || event.altKey || event.isComposing || target?.closest('input, select, textarea, button, [contenteditable]:not([contenteditable="false"])') || presentationBlocking || sceneItem || sceneChest || panel || forcedDecision || results || spectator || intermission || action.busy) return;
       if (event.key === ' ' && hasCapability(room, 'PASS_TURN')) { event.preventDefault(); void action.send({ type: 'PASS_TURN' }); return; }
       const next = event.key === '1' && hasCapability(room, 'TRADE') ? 'TRADE'
-        : event.key === '2' && hasCapability(room, 'THREAT') ? 'THREAT'
-        : event.key === '3' && hasCapability(room, 'USE_ITEM') ? 'USE_ITEM' : null;
+        : event.key === '2' && hasCapability(room, 'THREAT') ? 'THREAT' : null;
       if (!next) return;
       event.preventDefault();
       showPanel(next);
@@ -524,8 +543,13 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
     }
     if (intent.kind === 'EMPTY') { if (aiming) setAiming(false); else setSceneItemId(undefined); return; }
     if (aiming && sceneItem) {
+      if (intent.kind === 'POCKET') {
+        const pocketTargetItem = ['spyglass', 'pickpocket', 'glass-eye'].includes(sceneItem.itemId);
+        if (pocketTargetItem && intent.ownerId !== viewerId && aimTargets.includes(intent.ownerId)) showPanel('USE_ITEM', { itemInstanceId: sceneItem.instanceId, targetPlayerId: intent.ownerId, pocketIndex: intent.pocketIndex });
+        return;
+      }
       const targetId = intent.kind === 'PLAYER' ? intent.playerId : intent.kind === 'ITEM' ? intent.ownerId : undefined;
-      if (targetId && aimTargets.includes(targetId)) showPanel('USE_ITEM', { itemInstanceId: sceneItem.instanceId, targetPlayerId: targetId });
+      if (targetId && aimTargets.includes(targetId) && !['spyglass', 'pickpocket', 'glass-eye'].includes(sceneItem.itemId)) showPanel('USE_ITEM', { itemInstanceId: sceneItem.instanceId, targetPlayerId: targetId });
       return;
     }
     if (!spectator && intent.kind === 'ITEM' && intent.ownerId === viewerId && window.matchMedia('(min-width: 801px)').matches) {
@@ -561,7 +585,7 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
   return <div className="match-layout match-viewport" data-viewer={spectator ? 'spectator' : 'player'} data-market={panel === 'MARKETS' || undefined} data-response={forcedDecision || undefined} data-chat={chatOpen || undefined} data-downed={me?.life === 'DOWNED' || undefined} data-modal={modalOpen ? 'true' : undefined} data-objective-reveal={objectiveBlocking ? objectiveReveal.phase.toLowerCase() : undefined}>
     <MultiplayerHints room={room} blackMarketOpen={panel === 'MARKETS' && marketView === 'BLACK'} />
     <div className="match-scene-shell" aria-label={spectator ? 'Spectator table view' : 'First person table view'}>
-      <GameTableScene tutorialFocus={guideFocus} onCameraTravel={onCameraTravel} room={presentedPublic} {...(ownerWildcard ? { ownerWildcard } : {})} wildcardDrawEnabled={hasCapability(room, 'DRAW_WILDCARD') && !action.busy} onReadyChange={setSceneReady} viewerId={spectator ? undefined : viewerId} onIntent={openIntent} interactionsEnabled={!presentationBlocking && !panel && !sceneChest && (!forcedDecision || wildcardTargeting) && !results} exitReady={!spectator && hasCapability(room, 'LEAVE_TABLE')} showOwnerMarket={!spectator && intermission} focus={sceneFocus} selectedItemId={!panel && !forcedDecision ? sceneItem?.instanceId : undefined} aimTargets={aimTargets} spyglassTargetId={activeScope?.identity === scopeIdentity ? activeScope.targetId : undefined} spyglassActive={!spectator && !results && activeScope?.identity === scopeIdentity} onArrivalBeat={beat => { if (audio.started) audio.engine.play(ARRIVAL_AUDIO[beat]); }} onArrivalStateChange={active => setObjectiveReveal(current => {
+      <GameTableScene onExitBeat={beat => { if (audio.started) playExitBeatAudio(audio.engine, beat); }} tutorialFocus={guideFocus} onCameraTravel={onCameraTravel} room={presentedPublic} {...(ownerWildcard ? { ownerWildcard } : {})} wildcardDrawEnabled={hasCapability(room, 'DRAW_WILDCARD') && !action.busy} onReadyChange={setSceneReady} viewerId={spectator ? undefined : viewerId} onIntent={openIntent} interactionsEnabled={!presentationBlocking && !panel && !sceneChest && (!forcedDecision || wildcardTargeting) && !results} exitReady={!spectator && hasCapability(room, 'LEAVE_TABLE')} showOwnerMarket={!spectator && intermission} focus={sceneFocus} selectedItemId={!panel && !forcedDecision ? sceneItem?.instanceId : undefined} aimTargets={aimTargets} aimPockets={Boolean(aiming && sceneItem && ['spyglass', 'pickpocket', 'glass-eye'].includes(sceneItem.itemId))} spyglassTargetId={activeScope?.identity === scopeIdentity ? activeScope.targetId : undefined} spyglassActive={!spectator && !results && activeScope?.identity === scopeIdentity} onArrivalBeat={beat => { if (audio.started) audio.engine.play(ARRIVAL_AUDIO[beat]); }} onArrivalStateChange={active => setObjectiveReveal(current => {
         if (current.phase !== 'WAITING') return current;
         if (active) return { ...current, sawArrival: true };
         return { ...current, phase: 'VISIBLE' };
@@ -623,7 +647,6 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
       <div className="action-buttons">
         {hasCapability(room, 'TRADE') && <button type="button" aria-label="[1] ⇄ Trade" aria-keyshortcuts="1" onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => showPanel('TRADE')}><kbd aria-hidden="true">1</kbd>⇄ Trade</button>}
         {hasCapability(room, 'THREAT') && <button type="button" className="threat" aria-label="[2] ⚠ Threaten" aria-keyshortcuts="2" onPointerEnter={() => setThreatMenuOpen(true)} onClick={() => showPanel('THREAT')}><kbd aria-hidden="true">2</kbd>⚠ Threaten</button>}
-        {hasCapability(room, 'USE_ITEM') && <button type="button" aria-label="[3] ◈ Use item" aria-keyshortcuts="3" onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => showPanel('USE_ITEM')}><kbd aria-hidden="true">3</kbd>◈ Use item</button>}
         {hasCapability(room, 'DRAW_WILDCARD') && <button type="button" className="wildcard-draw-action" disabled={action.busy} onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => void action.send({ type: 'DRAW_WILDCARD' })}>✦ Draw Wildcard · Primary Action</button>}
         {hasCapability(room, 'LOOT_DOWNED') && <button type="button" className="immediate-loot" onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => showPanel('DOWNED', { targetPlayerId: room.public.turn?.immediateLoot?.targetId, immediateLoot: true })}>Take immediate loot</button>}
         {hasCapability(room, 'SKIP_LOOT') && <button type="button" className="end-turn" disabled={action.busy} onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => void action.send({ type: 'SKIP_LOOT' })}>Skip loot</button>}
@@ -647,12 +670,12 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
     </div>
 
     {!presentationBlocking && !(wildcardPending && panel === 'WILDCARD') && panel && panel !== 'MARKETS' && !results && <MatchOverlay panel={panel} tone={panel === 'THREAT' ? 'danger' : panel === 'OBJECTIVE' ? 'paper' : 'neutral'} title={panelTitle(panel)} onClose={closePanel}>
-      {!spectator && actionProps && panel === 'USE_ITEM' && <UseItemForm key={sceneSelection.itemInstanceId ?? 'default-item'} {...actionProps} preferredItemId={sceneSelection.itemInstanceId} preferredTargetId={sceneSelection.targetPlayerId} />}
+      {!spectator && actionProps && panel === 'USE_ITEM' && <UseItemForm key={`${sceneSelection.itemInstanceId ?? 'default-item'}:${sceneSelection.targetPlayerId ?? 'default-target'}:${sceneSelection.pocketIndex ?? 'default-pocket'}`} {...actionProps} preferredItemId={sceneSelection.itemInstanceId} preferredTargetId={sceneSelection.targetPlayerId} preferredPocketIndex={sceneSelection.pocketIndex} />}
       {!spectator && actionProps && panel === 'TRADE' && <TradeForm key={`${sceneSelection.targetPlayerId ?? 'default-trade'}:${sceneSelection.requestedItemInstanceId ?? 'no-item'}`} {...actionProps} preferredTargetId={sceneSelection.targetPlayerId} preferredRequestedItemId={sceneSelection.requestedItemInstanceId} onCancel={closePanel} />}
       {!spectator && actionProps && panel === 'THREAT' && <ThreatForm key={`${sceneSelection.targetPlayerId ?? 'default-threat'}:${sceneSelection.threatMode ?? 'OPEN'}`} {...actionProps} preferredTargetId={sceneSelection.targetPlayerId} preferredMode={sceneSelection.threatMode} onCancel={closePanel} />}
       {!spectator && actionProps && panel === 'DOWNED' && <DownedForm key={`${sceneSelection.targetPlayerId ?? 'default-downed'}:${sceneSelection.immediateLoot ? 'immediate' : 'normal'}`} {...actionProps} preferredTargetId={sceneSelection.targetPlayerId} immediate={sceneSelection.immediateLoot} />}
       {!spectator && panel === 'OBJECTIVE' && <PrivateDetail detail={room.private} room={room.public} />}
-      {!spectator && actionProps && panel === 'POCKETS' && <InventoryForm {...actionProps} />}
+      {!spectator && actionProps && panel === 'POCKETS' && <InventoryForm {...actionProps} onSelectPocketItem={instanceId => { setSceneItemId(instanceId); setPanel(null); }} />}
       {panel === 'PLAYERS' && <PlayerRoster room={room.public} viewerId={viewerId} {...(sceneSelection.targetPlayerId ? { selectedPlayerId: sceneSelection.targetPlayerId } : {})} />}
       {panel === 'CHESTS' && <><ChestPanel room={room} />{!spectator && hasCapability(room, 'INSPECT_CHEST') && <button className="button primary full-width" disabled={action.busy} onClick={() => void action.send({ type: 'INSPECT_CHEST' })}>Inspect Standard Chest</button>}</>}
       {panel === 'HISTORY' && <div className="reference-social"><EventLog room={room.public} /><PrivateInspectionHistory room={room} viewerId={viewerId} /></div>}

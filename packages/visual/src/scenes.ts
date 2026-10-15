@@ -205,12 +205,14 @@ function createDoor(kit: VisualKit): Group {
     kit.mesh(new BoxGeometry(0.12, 2.4, 0.2), m.dark, -0.56, 1.2),
     kit.mesh(new BoxGeometry(0.12, 2.4, 0.2), m.dark, 0.56, 1.2),
     kit.mesh(new BoxGeometry(1.24, 0.14, 0.2), m.dark, 0, 2.43),
-    kit.mesh(new BoxGeometry(0.32, 0.1, 0.08), m.glowGreen, 0, 2.62, 0.05),
+    kit.mesh(new BoxGeometry(0.32, 0.1, 0.08), m.bulb, 0, 2.62, 0.05),
   );
-  const glow = kit.mesh(new PlaneGeometry(1, 2.3), new MeshBasicMaterial({ color: 0x2c4229 }), 0, 1.15, -0.05);
+  const glow = kit.mesh(new PlaneGeometry(1, 2.3), new MeshBasicMaterial({ color: 0x29261f }), 0, 1.15, -0.05);
+  glow.name = 'exitGlow';
   door.add(glow);
   const panel = kit.mesh(new BoxGeometry(1, 2.3, 0.06), m.dark, 0.5, 1.15, 0);
   const hinge = new Group();
+  hinge.name = 'exitHinge';
   hinge.position.set(-0.5, 0, 0.02);
   hinge.rotation.y = 0.35;
   hinge.add(panel);

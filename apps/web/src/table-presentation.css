@@ -1,4 +1,7 @@
 .table-presentation { position: relative; }
+.match-viewport.match-layout[data-exit-playing='true'] > :is(.match-hud-top,.seat-ribbon,.self-hand,.action-dock,.match-utility,.scene-event-feed,.tasks-hud,.match-chat-drawer) { opacity:var(--scene-exit-hud-opacity,1); pointer-events:none; }
+.match-viewport.match-layout[data-exit-playing='true'] .scene-nameplate { opacity:var(--scene-exit-hud-opacity,1); }
+.match-viewport.match-layout[data-exit-playing='true'] > .results-stage { opacity:var(--scene-exit-result-opacity,0); }
 .table-presentation-canvas { position: absolute; inset: 0; touch-action: none; cursor: crosshair; }
 .scene-action-flash { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .scene-nameplate { position: absolute; left: 0; top: 0; visibility: hidden; pointer-events: none; display: flex; flex-direction: column; align-items: center; color: #fff; font: 20px/1 'VT323', monospace; text-shadow: 0 0 6px #000, 0 2px #000; white-space: nowrap; }
@@ -32,7 +35,14 @@
 @keyframes objective-contract-in { from { opacity:0; transform:translateY(24px) rotate(-2deg) scale(.96); } to { opacity:1; transform:translateY(0) rotate(-.7deg) scale(1); } }
 .scene-chest-prompt, .scene-exit-prompt, .scene-item-card, .scene-aim-prompt { display: none; }
 @media (min-width: 801px) {
-  .scene-item-card { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); width: 480px; box-sizing: border-box; padding: 14px 18px; background: rgba(8,6,5,.92); border: 2px solid #e0a040; display: flex; flex-direction: column; gap: 8px; pointer-events: auto; cursor: default; font: 22px/1.1 'VT323', monospace; color: #d8ccb0; }
+  .match-viewport .table-presentation .scene-item-card { position:absolute; left:var(--scene-item-x,50%); top:var(--scene-item-y,70%); bottom:auto; transform:translate(-30%,-100%); width:230px; max-height:calc(80dvh - 32px); box-sizing:border-box; padding:0; background:rgba(8,6,5,.94); border:2px solid #4a3f34; display:flex; flex-direction:column; gap:0; pointer-events:auto; cursor:default; font:19px/1.1 'VT323',monospace; color:#d8ccb0; animation:none; }
+  .match-viewport .table-presentation .scene-item-card::after { content:''; position:absolute; top:100%; left:30%; width:2px; height:16px; background:#4a3f34; pointer-events:none; }
+  .match-viewport .table-presentation .scene-item-card > header { display:grid; grid-template-columns:32px minmax(0,1fr); gap:8px; padding:10px; }
+  .match-viewport .table-presentation .scene-item-icon img { width:32px; height:32px; }
+  .match-viewport .table-presentation .scene-item-card h2 { font-size:26px; }
+  .match-viewport .table-presentation .scene-item-card > p { padding:8px 10px; font-size:19px; }
+  .match-viewport .table-presentation .scene-item-actions { display:flex; flex-direction:column; gap:6px; padding:8px 10px; }
+  .match-viewport .table-presentation .scene-item-actions button { min-height:36px; font-size:19px; }
   .scene-item-card > header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
   .table-presentation .scene-item-card h2 { margin: 0; font: 34px/1 'IM Fell English SC', serif; letter-spacing: normal; }
   .scene-item-card header > span { font-size: 20px; color: #8f8270; letter-spacing: .06em; white-space: nowrap; }

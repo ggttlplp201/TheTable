@@ -10,7 +10,7 @@ export function drawWildcard(context: CanvasRenderingContext2D | OffscreenCanvas
 export function drawWildcardHi(context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, id: WildcardTextureId): void;
 export function pixelateCard(context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, canvasFactory?: CanvasFactory): void;
 
-export interface ReferenceArm { sh: Group; el: Group; hand: Group; bx: number; be: number }
+export interface ReferenceArm { sh: THREE.Bone; el: THREE.Bone; hand: Group; bx: number; be: number }
 export interface ReferenceRig { up: Group; head: Group; aL: ReferenceArm; aR: ReferenceArm; role: string; ux?: number; threat?: string | null }
 export interface ReferenceKit {
   coinMesh(): Group;

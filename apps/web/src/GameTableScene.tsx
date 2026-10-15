@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { PendingWildcard, PublicRoomView } from '@the-table/game';
 import type { ArrivalBeat, ArrivalPhase } from '@the-table/visual';
 import type { TablePresentation } from './table-scene-runtime';
+import type { ExitBeat } from './table-exit-presentation';
 import { matchPresentationKey, publicSeats } from './table-presentation';
 import { canInteractWithWildcardDeck } from './wildcard-scene';
 import './table-presentation.css';
@@ -11,17 +12,19 @@ export type SceneIntent =
   | { kind: 'ITEM'; instanceId: string; ownerId: string; itemId: string }
   | { kind: 'CHEST'; chestKind: 'STANDARD' | 'BLACK' }
   | { kind: 'WILDCARD' }
+  | { kind: 'POCKET'; ownerId: string; pocketIndex: number }
   | { kind: 'EXIT' | 'MARKET_PUBLIC' | 'MARKET_BLACK' | 'SELL' | 'EMPTY' };
 
 export type SceneFocus = 'seat' | 'left' | 'down' | 'door';
 
-export function GameTableScene({ tutorialFocus, onCameraTravel, room, viewerId, onArrivalBeat, onArrivalStateChange, onReadyChange, onIntent, interactionsEnabled = true, exitReady = false, showOwnerMarket = false, wildcardDrawEnabled = false, ownerWildcard, focus = 'seat', selectedItemId, aimTargets = [], spyglassTargetId, spyglassActive = false, children }: {
+export function GameTableScene({ tutorialFocus, onCameraTravel, room, viewerId, onArrivalBeat, onExitBeat, onArrivalStateChange, onReadyChange, onIntent, interactionsEnabled = true, exitReady = false, showOwnerMarket = false, wildcardDrawEnabled = false, ownerWildcard, focus = 'seat', selectedItemId, aimTargets = [], aimPockets = false, spyglassTargetId, spyglassActive = false, children }: {
   tutorialFocus?: string | undefined;
   room: PublicRoomView;
   onCameraTravel?: ((degrees: number) => void) | undefined;
   /** Omit for spectators; identity must come from the authorized caller. */
   viewerId?: string | undefined;
   onArrivalBeat?: ((beat: ArrivalBeat) => void) | undefined;
+  onExitBeat?: ((beat: ExitBeat) => void) | undefined;
   onArrivalStateChange?: ((active: boolean) => void) | undefined;
   onIntent?: ((intent: SceneIntent) => void) | undefined;
   onReadyChange?: ((ready: boolean) => void) | undefined;
@@ -36,6 +39,8 @@ export function GameTableScene({ tutorialFocus, onCameraTravel, room, viewerId, 
   focus?: SceneFocus;
   selectedItemId?: string | undefined;
   aimTargets?: readonly string[];
+  /** Public target affordance only; never carries private pocket contents. */
+  aimPockets?: boolean;
   /** Authorized owner-only camera signal; never carries inspection contents. */
   spyglassTargetId?: string | undefined;
   spyglassActive?: boolean;
@@ -45,20 +50,22 @@ export function GameTableScene({ tutorialFocus, onCameraTravel, room, viewerId, 
   const runtime = useRef<TablePresentation | undefined>(undefined);
   const latestRoom = useRef(room);
   const latestBeat = useRef(onArrivalBeat);
+  const latestExitBeat = useRef(onExitBeat);
   const latestArrivalState = useRef(onArrivalStateChange);
   const latestIntent = useRef(onIntent);
   const latestCameraTravel = useRef(onCameraTravel); latestCameraTravel.current = onCameraTravel;
   const latestReady = useRef(onReadyChange);
-  const latestPresentation = useRef({ tutorialFocus, interactionsEnabled, exitReady, wildcardDrawEnabled, ownerWildcard, focus, selectedItemId, aimTargets, spyglassTargetId, spyglassActive });
+  const latestPresentation = useRef({ tutorialFocus, interactionsEnabled, exitReady, wildcardDrawEnabled, ownerWildcard, focus, selectedItemId, aimTargets, aimPockets, spyglassTargetId, spyglassActive });
   const [renderFailed, setRenderFailed] = useState(false);
   const [intro, setIntro] = useState<ArrivalPhase | null>(null);
   const [canSkip, setCanSkip] = useState(false);
   latestRoom.current = room;
   latestBeat.current = onArrivalBeat;
+  latestExitBeat.current = onExitBeat;
   latestArrivalState.current = onArrivalStateChange;
   latestIntent.current = onIntent;
   latestReady.current = onReadyChange;
-  latestPresentation.current = { tutorialFocus, interactionsEnabled, exitReady, wildcardDrawEnabled, ownerWildcard, focus, selectedItemId, aimTargets, spyglassTargetId, spyglassActive };
+  latestPresentation.current = { tutorialFocus, interactionsEnabled, exitReady, wildcardDrawEnabled, ownerWildcard, focus, selectedItemId, aimTargets, aimPockets, spyglassTargetId, spyglassActive };
   const rosterSignature = publicSeats(room).map(seat => `${seat.id}:${seat.role}:${seat.label}:${seat.position.join(',')}`).join('|');
   const matchKey = matchPresentationKey(room);
 
@@ -73,6 +80,7 @@ export function GameTableScene({ tutorialFocus, onCameraTravel, room, viewerId, 
         ...(viewerId === undefined ? {} : { viewerId }),
         onIntroChange: (phase, skip) => { reportedIntro = true; if (!cancelled) { setIntro(phase); setCanSkip(skip); latestArrivalState.current?.(phase !== null); } },
         onBeat: beat => latestBeat.current?.(beat),
+        onExitBeat: beat => latestExitBeat.current?.(beat),
         onCameraTravel: degrees => latestCameraTravel.current?.(degrees),
         onIntent: intent => latestIntent.current?.(intent),
         ...latestPresentation.current,
@@ -92,7 +100,7 @@ export function GameTableScene({ tutorialFocus, onCameraTravel, room, viewerId, 
   useEffect(() => { runtime.current?.setOwnerWildcard(ownerWildcard); }, [ownerWildcard]);
   useEffect(() => { runtime.current?.setTutorialFocus(tutorialFocus); }, [tutorialFocus]);
   useEffect(() => { runtime.current?.setFocus(focus); }, [focus]);
-  useEffect(() => { runtime.current?.setItemSelection(selectedItemId, aimTargets); }, [selectedItemId, aimTargets]);
+  useEffect(() => { runtime.current?.setItemSelection(selectedItemId, aimTargets, aimPockets); }, [selectedItemId, aimTargets, aimPockets]);
   useEffect(() => { runtime.current?.setSpyglass(spyglassTargetId, spyglassActive); }, [spyglassTargetId, spyglassActive]);
 
   const wildcardAccessible = interactionsEnabled && canInteractWithWildcardDeck(room, viewerId, wildcardDrawEnabled);

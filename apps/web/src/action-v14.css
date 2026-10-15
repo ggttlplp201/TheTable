@@ -8,6 +8,49 @@
   letter-spacing: .04em;
 }
 
+.selected-scene-item {
+  display: flex;
+  align-items: center;
+  gap: .85rem;
+  padding: .7rem .85rem;
+  border: 1px solid rgba(224, 160, 64, .72);
+  background: rgba(10, 8, 6, .78);
+}
+
+.selected-scene-item span {
+  display: grid;
+  gap: .2rem;
+}
+
+.selected-scene-item small {
+  color: #8f8270;
+  letter-spacing: .12em;
+}
+
+.selected-scene-item strong {
+  color: #e0a040;
+  font-size: 1.15rem;
+}
+
+.selected-target-pocket {
+  display: grid;
+  gap: .2rem;
+  padding: .65rem .8rem;
+  border: 1px solid rgba(216, 204, 176, .35);
+  background: rgba(5, 4, 3, .72);
+}
+
+.selected-target-pocket span {
+  color: #8f8270;
+  font-size: .8rem;
+  letter-spacing: .14em;
+}
+
+.selected-target-pocket strong {
+  color: #d8ccb0;
+  font-weight: 400;
+}
+
 .action-draft-saved,
 .ability-spent {
   color: #d8b77b;

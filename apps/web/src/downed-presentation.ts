@@ -5,7 +5,7 @@ import { matchPresentationKey } from './table-presentation';
 export const SOURCE_WEAPON_CONTACT = { pistol: 1.5, knife: .9 } as const;
 export const COMPACT_ACTION_SECONDS = .8;
 export const WEAPON_CONTACT = { pistol: 1.5 / 2.8 * COMPACT_ACTION_SECONDS, knife: .9 / 2.7 * COMPACT_ACTION_SECONDS } as const;
-export const DOWNED_FALL_DURATION = .85;
+export const DOWNED_FALL_DURATION = 1.5;
 export function downedFallProgress(seconds: number): number {
   const t = Math.max(0, Math.min(1, seconds / DOWNED_FALL_DURATION));
   return 1 - (1 - t * t) ** 2;

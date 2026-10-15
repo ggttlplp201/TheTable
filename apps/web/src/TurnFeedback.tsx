@@ -5,9 +5,11 @@ export function TurnFeedback({ room }: { room: PublicRoomView }) {
   const ended = [...(room.events ?? [])].reverse().find(event => event.kind === 'TURN_ENDED');
   const [visible, setVisible] = useState(false);
   useEffect(() => {
-    if (!ended || Date.now() - ended.at > 1000) return;
-    setVisible(true); const timer = window.setTimeout(() => setVisible(false), 500);
+    const age = ended ? Math.max(0, Date.now() - ended.at) : 500;
+    if (!ended || age >= 500) { setVisible(false); return; }
+    setVisible(true); const timer = window.setTimeout(() => setVisible(false), 500 - age);
     return () => window.clearTimeout(timer);
   }, [ended?.id]);
-  return visible ? <div className="turn-complete-beat" role="status"><span>TURN COMPLETE</span><b>{room.players.find(player => player.seat === room.turn?.activeSeat)?.name ?? 'ROUND COMPLETE'}</b></div> : null;
+  const next = room.players.find(player => player.seat === room.turn?.activeSeat);
+  return visible ? <div key={ended?.id} className="turn-complete-beat" role="status"><span>TURN COMPLETE</span><b>{next ? `${next.name}’S TURN` : 'ROUND COMPLETE'}</b></div> : null;
 }

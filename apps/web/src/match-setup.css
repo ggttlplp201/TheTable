@@ -1,36 +1,61 @@
 .app-shell:has(.match-setup) { width:100vw; height:100dvh; min-height:0; padding:0; overflow:hidden; background:#050504; }
 .app-shell:has(.match-setup)>.masthead { display:none; }
-.match-setup { min-height:100dvh; max-height:100dvh; overflow:auto; width:100%; padding:clamp(20px,4vw,52px); background:radial-gradient(ellipse at 25% 15%,#2d2013 0,#100d09 42%,#050504 100%); color:#d8ccb0; font:22px/1.25 'VT323',monospace; }
-.match-setup>header { display:flex; align-items:center; justify-content:space-between; gap:20px; max-width:1200px; margin:0 auto 24px; }
-.match-setup>header span { color:#d5a755; letter-spacing:.12em; }
-.match-setup h1 { margin:4px 0; font:clamp(30px,4vw,48px)/1.05 'IM Fell English SC',serif; }
-.setup-clock { color:#e0a040; font-size:38px; }
-.setup-columns { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(260px,1fr); gap:32px; max-width:1200px; margin:auto; }
-.setup-kit h2 { display:flex; justify-content:space-between; margin:0; font-size:28px; }
-.setup-kit h2 span { color:#e0a040; }
-.setup-kit>p { max-width:620px; margin:12px 0; }
-.setup-bonus { color:#e0a040; border-left:2px solid #a47a38; padding:6px 12px; }
-.setup-items { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:16px 0; }
-.setup-items button { display:grid; grid-template-columns:76px 1fr; column-gap:10px; align-content:start; align-items:center; min-height:124px; border:1px solid #66543b; border-radius:0; padding:12px; background:rgba(0,0,0,.22); text-align:left; color:inherit; font:inherit; }
-.setup-items button[aria-pressed=true] { border-color:#e0a040; box-shadow:inset 0 0 0 1px #e0a040; }
+.match-setup { width:100%; min-height:100dvh; max-height:100dvh; overflow:auto; box-sizing:border-box; padding:22px 26px; background:linear-gradient(rgba(4,3,2,.78),rgba(4,3,2,.78)),radial-gradient(ellipse at 55% 20%,#2d2013 0,#100d09 46%,#050504 100%); color:#d8ccb0; font:22px/1.15 'VT323',monospace; }
+.match-setup>header { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; max-width:1050px; margin:0 auto 14px; }
+.match-setup>header>div:first-child { display:flex; flex-direction:column; }
+.match-setup>header span,.setup-role>span,.setup-section-heading { color:#8f8270; font-size:17px; letter-spacing:.2em; }
+.match-setup h1 { margin:2px 0 0; color:#d8ccb0; font:40px/1 'IM Fell English SC',serif; }
+.setup-status { display:flex; align-items:baseline; gap:14px; white-space:nowrap; }
+.setup-status>span { font-size:20px; letter-spacing:.16em; }
+.setup-clock { color:#e0a040; font-size:40px; }
+.setup-columns { display:grid; grid-template-columns:200px 330px minmax(0,1fr); gap:20px; max-width:1050px; min-height:386px; margin:auto; }
+.setup-role { display:flex; flex-direction:column; gap:10px; min-width:0; }
+.setup-portrait { height:220px; overflow:hidden; border:2px solid rgba(216,204,176,.18); background:#030303; }
+.setup-portrait :is(canvas,img) { display:block; width:100%; height:100%; object-fit:cover; object-position:top; image-rendering:pixelated; }
+.setup-role p { margin:0; color:#d8ccb0; font-size:21px; line-height:1.08; text-wrap:pretty; }
+.setup-contract { min-width:0; }
+.setup-contract .reference-contract { position:relative; width:330px; min-height:386px; margin:0; padding:22px 22px 0; box-sizing:border-box; overflow:visible; background:#d6c9ab; color:#1a1410; border:0; transform:rotate(-.8deg); display:flex; flex-direction:column; gap:12px; box-shadow:0 18px 40px rgba(0,0,0,.6); }
+.setup-contract .reference-contract::before { content:""; position:absolute; inset:8px; border:1px solid rgba(26,20,16,.35); pointer-events:none; }
+.setup-contract .reference-contract header { display:flex; justify-content:space-between; gap:12px; color:#3a2e22; font-size:17px; letter-spacing:.2em; }
+.setup-contract .reference-contract .objective-detail { display:flex; flex-direction:column; gap:10px; min-height:0; }
+.setup-contract .reference-contract .objective-name { margin:0; padding-bottom:10px; border-bottom:2px solid #1a1410; color:#1a1410; font:36px/1 'IM Fell English SC',serif; text-wrap:balance; }
+.setup-contract .reference-contract .objective-detail>p { margin:0; color:#1a1410; font-size:21px; line-height:1.08; text-wrap:pretty; }
+.setup-contract .reference-contract .objective-progress { gap:3px; margin:0; }
+.setup-contract .reference-contract .objective-progress li { gap:6px; padding:2px 0; font-size:18px; }
+.setup-contract .reference-contract .objective-progress small { color:#2e241a; font-size:17px; }
+.setup-contract .reference-contract .contract-rule { padding:7px 9px; border:2px dashed rgba(26,20,16,.55); color:#2e241a; font-size:18px!important; }
+.setup-contract .contract-privacy-band { position:relative; margin:auto -22px 0; padding:8px 22px; justify-content:center; background:#1a1410; color:#e6dcc4!important; font-size:18px!important; letter-spacing:.22em!important; text-align:center; }
+.setup-kit { display:flex; flex-direction:column; gap:12px; min-width:0; }
+.setup-starting-kit,.setup-pocket { display:flex; flex-direction:column; gap:8px; padding:12px 14px; background:rgba(5,4,3,.72); border:2px solid rgba(216,204,176,.18); }
+.setup-section-heading { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+.setup-section-heading .coin-amount { color:#d8ccb0; font-size:20px; letter-spacing:0; }
+.setup-kit-items { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+.setup-kit-items>div { position:relative; display:flex; min-width:0; flex-direction:column; align-items:center; gap:2px; }
+.setup-kit-items img { width:44px!important; height:44px!important; }
+.setup-kit-items strong { max-width:100%; overflow:hidden; text-overflow:ellipsis; font-size:17px; font-weight:400; white-space:nowrap; }
+.setup-kit-items b { position:absolute; top:0; right:0; color:#e0a040; font-size:12px; }
+.setup-bonus { margin:0; color:#e0a040; font-size:16px; }
+.setup-pocket-selected { display:flex; align-items:center; gap:10px; }
+.setup-pocket-selected>img,.setup-empty-pocket { width:52px!important; height:52px!important; box-sizing:border-box; padding:4px; border:2px solid #e0a040; background:rgba(224,160,64,.08); }
+.setup-empty-pocket { display:grid; place-items:center; padding:0; color:#8f8270; font-size:30px; }
+.setup-pocket-selected>div { display:flex; min-width:0; flex-direction:column; }
+.setup-pocket-selected strong { color:#d8ccb0; font-size:22px; }
+.setup-pocket-selected small { color:#b8ab92; font-size:18px; }
+.setup-items { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+.setup-items button { display:flex; min-width:0; min-height:58px; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:4px; border:2px solid rgba(216,204,176,.18); border-radius:0; background:rgba(0,0,0,.2); color:#b8ab92; font:15px/1 'VT323',monospace; cursor:pointer; }
+.setup-items button[aria-pressed=true] { border-color:#e0a040; background:rgba(224,160,64,.1); color:#d8ccb0; }
 .setup-items button:focus-visible { outline:2px solid #e0a040; outline-offset:3px; }
-.setup-items button:disabled { opacity:.6; }
-.setup-items img { grid-row:span 3; }
-.setup-items strong { font-size:24px; }
-.setup-items small { font-size:18px; line-height:1.15; color:#b8ab92; }
-.setup-items b { font-size:16px; color:#e0a040; }
-.match-setup .setup-confirm { min-height:48px; width:100%; font:24px/1.1 'VT323',monospace; color:#120e09; background:#d5a755; border-color:#d5a755; }
-.setup-kit .setup-default { font-size:18px; color:#b8ab92; }
-.setup-contract { border-left:1px solid #66543b; padding-left:26px; }
-.setup-contract .reference-contract { margin:0; padding:22px; background:#d6c9ab; color:#1a1410; border:0; }
-.setup-contract .reference-contract header,.setup-contract .reference-contract footer { color:#1a1410; gap:12px; }
-.setup-contract .reference-contract .objective-name { margin:20px 0 0; }
-.setup-contract .reference-contract .objective-detail>p { margin:8px 0; }
-.setup-contract .reference-contract footer { margin-top:18px; }
-.setup-locked { padding:36px 16px; text-align:center; }
-.setup-locked img { margin:auto; }
-.setup-progress { display:flex; flex-wrap:wrap; gap:12px 28px; max-width:1200px; margin:28px auto 0; padding:16px 0 0; list-style:none; border-top:1px solid #66543b; }
-.setup-progress li { display:flex; gap:10px; }
-.setup-progress span { color:#b8ab92; }
-.match-setup>.form-error,.match-setup>p { max-width:1200px; margin:12px auto; }
-@media(max-width:750px) { .setup-columns { grid-template-columns:1fr; gap:24px; } .setup-contract { border-left:0; border-top:1px solid #66543b; padding:20px 0 0; } .setup-items { grid-template-columns:1fr; } .match-setup { padding:20px; } .match-setup h1 { font-size:32px; } }
+.setup-items button:disabled { border-style:dashed; color:#5e554a; cursor:not-allowed; }
+.setup-items button img { width:38px!important; height:38px!important; }
+.setup-items button strong { max-width:100%; overflow:hidden; text-overflow:ellipsis; font-weight:400; white-space:nowrap; }
+.setup-ready-block { display:flex; flex-direction:column; gap:8px; margin-top:auto; }
+.setup-progress { display:flex; flex-wrap:wrap; gap:5px 10px; margin:0; padding:0; list-style:none; color:#8f8270; font-size:17px; letter-spacing:.07em; }
+.setup-progress li { display:flex; gap:4px; }
+.setup-progress li[data-ready=true] { color:#a8c05a; }
+.match-setup .setup-confirm,.setup-locked { min-height:52px; width:100%; box-sizing:border-box; }
+.match-setup .setup-confirm { border-color:#d8ccb0; background:#d8ccb0; color:#14100c; box-shadow:inset 0 -4px 0 #a89c80,inset 0 2px 0 #f0e6cc; font:28px/1 'VT323',monospace; }
+.setup-locked { display:flex; align-items:center; justify-content:center; gap:14px; background:rgba(168,192,90,.1); border:2px solid rgba(168,192,90,.45); color:#a8c05a; }
+.setup-locked span { color:#b8ab92; font-size:17px; }
+.match-setup>.form-error,.match-setup>p { max-width:1050px; margin:10px auto; }
+@media(max-height:700px) { .match-setup { padding-block:14px; }.match-setup>header { margin-bottom:8px; }.setup-columns { min-height:340px; }.setup-portrait { height:184px; }.setup-contract .reference-contract { min-height:340px; }.setup-contract .reference-contract .objective-detail>p { font-size:19px; }.setup-contract .reference-contract .objective-name { font-size:32px; }.setup-contract .reference-contract .objective-progress li { font-size:16px; }.setup-contract .reference-contract .contract-rule { font-size:16px!important; }.setup-kit-items img { width:38px!important; height:38px!important; }.setup-items button { min-height:50px; } }
+@media(max-width:900px) { .setup-columns { grid-template-columns:180px 310px minmax(260px,1fr); }.setup-contract .reference-contract { width:310px; }.match-setup { min-width:800px; } }

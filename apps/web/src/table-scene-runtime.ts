@@ -16,11 +16,14 @@ import { downedFallProgress } from './downed-presentation';
 import { createSeatRestraint } from './table-restraints';
 import { itemName } from './gameplay';
 import { canInteractWithWildcardDeck, createWildcardDeckPresentation, publicWildcardDeckSnapshot, wildcardDeckTooltip } from './wildcard-scene';
+import { createExitPath, EXIT_DURATION, EXIT_STRIDE, ExitBeatTimeline, sampleExit, type ExitBeat, type ExitOrigin } from './table-exit-presentation';
 
 export interface TablePresentationOptions {
   viewerId?: string;
   onIntroChange: (phase: ArrivalPhase | null, canSkip: boolean) => void;
   onBeat?: (beat: ArrivalBeat) => void;
+  /** Public movement sounds only; emitted for each fresh visible exit, including spectators. */
+  onExitBeat?: (beat: ExitBeat) => void;
   onError?: () => void;
   onCameraTravel?: ((degrees: number) => void) | undefined;
   onIntent?: ((intent: SceneIntent) => void) | undefined;
@@ -33,10 +36,11 @@ export interface TablePresentationOptions {
   focus?: SceneFocus;
   selectedItemId?: string | undefined;
   aimTargets?: readonly string[];
+  aimPockets?: boolean;
   spyglassTargetId?: string | undefined;
   spyglassActive?: boolean;
 }
-export interface TablePresentation { setTutorialFocus(value: string | undefined): void; update(room: PublicRoomView): void; setInteractionsEnabled(value: boolean): void; setExitReady(value: boolean): void; setWildcardDrawEnabled(value: boolean): void; setOwnerWildcard(value: PendingWildcard | undefined): void; setFocus(value: SceneFocus): void; setItemSelection(value: string | undefined, targets: readonly string[]): void; setSpyglass(targetId: string | undefined, active: boolean): void; skipIntro(): void; dispose(): void }
+export interface TablePresentation { setTutorialFocus(value: string | undefined): void; update(room: PublicRoomView): void; setInteractionsEnabled(value: boolean): void; setExitReady(value: boolean): void; setWildcardDrawEnabled(value: boolean): void; setOwnerWildcard(value: PendingWildcard | undefined): void; setFocus(value: SceneFocus): void; setItemSelection(value: string | undefined, targets: readonly string[], pockets?: boolean): void; setSpyglass(targetId: string | undefined, active: boolean): void; skipIntro(): void; dispose(): void }
 interface Effect { start: number; duration: number; sourceInstanceId?: string; apply(time: number): void; finish(): void }
 const ease = (n: number) => { const t = Math.max(0, Math.min(1, n)); return t * t * (3 - 2 * t); };
 const modelId = (id: string): ItemModelId | undefined => {
@@ -68,6 +72,7 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     renderer.shadowMap.type = BasicShadowMap;
     renderer.setSize(width, height, false);
     target.append(renderer.domElement);
+    const matchLayout = target.closest<HTMLElement>('.match-layout');
     target.dataset.presentationRoom = initialRoom.id;
     const kit = new VisualKit({ seed: initialRoom.code });
     cleanups.push(() => kit.dispose());
@@ -137,18 +142,24 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       shortHeader = { left: box.left - frame.left, right: box.right - frame.left, bottom: box.bottom - frame.top };
     };
     const selectionLight = new PointLight(0xffe0b0, 0, 1.2, 2); bundle.scene.add(selectionLight);
-    const doorLight = new PointLight(0x7fbf80, 2.2, 5, 2); doorLight.position.set(2.4, 1.4, -5.3); bundle.scene.add(doorLight);
+    const doorLight = new PointLight(0xd8ccb4, 2.2, 5, 2); doorLight.position.set(2.4, 1.4, -5.3); bundle.scene.add(doorLight);
+    const doorHinge = exitDoor?.getObjectByName('exitHinge');
+    const doorGlow = exitDoor?.getObjectByName('exitGlow');
     let exitReady = options.exitReady ?? false;
     let tutorialFocus = options.tutorialFocus;
     let focus = options.focus ?? 'seat';
     const cameraAim = new Vector3(...CAMERA_VIEWS.seat.lookAt), focusPosition = new Vector3(), focusAim = new Vector3();
     let selectedItem = options.selectedItemId;
     let aimTargets = options.aimTargets ?? [];
+    let aimPockets = options.aimPockets ?? false;
     let spyglassTargetId = options.spyglassTargetId, spyglassActive = options.spyglassActive ?? false, spyglassStart = performance.now();
     const scopeAim = new Vector3(), scopeTarget = new Vector3();
     const aimLight = new PointLight(0xe05030, 0, 1.4, 2); bundle.scene.add(aimLight);
     const hitLight = new PointLight(0xff3020, 0, 1.6, 2); bundle.scene.add(hitLight);
     const screenFlash = document.createElement('div'); screenFlash.className = 'scene-action-flash'; target.append(screenFlash); cleanups.push(() => screenFlash.remove());
+    const exitFade = document.createElement('div');
+    exitFade.style.cssText = 'position:absolute;inset:0;pointer-events:none;background:#000;opacity:0';
+    target.append(exitFade); cleanups.push(() => exitFade.remove());
     let flashOpacity = 0;
     const tooltip = document.createElement('div'); tooltip.className = 'scene-tooltip'; target.append(tooltip); cleanups.push(() => tooltip.remove());
     const chestBanner = document.createElement('div'); chestBanner.className = 'scene-chest-banner'; chestBanner.hidden = true; target.append(chestBanner); cleanups.push(() => chestBanner.remove());
@@ -184,6 +195,22 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     const coins = new Group(); coins.name = 'yourCoinStack'; bundle.scene.add(coins);
     for (let index = 0; index < 5; index++) { const coin = kit.createCoin(); coin.position.set(-1.15, .972 + index * .019, 1.15); coin.rotation.y = index; coins.add(coin); }
     const departing = new Map<string, Group>();
+    const exitWalks = new Map<string, { start: number; path: ReturnType<typeof createExitPath>; origin: ExitOrigin; beats: ExitBeatTimeline }>();
+    const clearOwnerExit = () => {
+      matchLayout?.style.removeProperty('--scene-exit-hud-opacity');
+      matchLayout?.style.removeProperty('--scene-exit-result-opacity');
+      if (matchLayout) { delete matchLayout.dataset.exitPlaying; delete matchLayout.dataset.exitResultVisible; }
+      const confirmation = matchLayout?.querySelector<HTMLElement>('.scene-exit-confirmation');
+      if (confirmation) confirmation.inert = false;
+      exitFade.style.opacity = '0';
+      delete target.dataset.presentationExitPhase; delete target.dataset.presentationExitProgress;
+    };
+    const clearExitWalks = () => {
+      for (const departure of exitWalks.values()) departure.beats.finish();
+      exitWalks.clear(); departing.forEach(model => { model.visible = false; }); clearOwnerExit();
+    };
+    cleanups.push(clearExitWalks);
+    let chestFocus: { start: number; position: Vector3 } | undefined;
     const markers = new Map<string, Object3D>();
     let shopKit: VisualKit | undefined;
     let shop = new Group(), shopSignature = '';
@@ -248,12 +275,16 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     };
     const semanticHit = (event: PointerEvent): SceneIntent | undefined => {
       const wildcardTargeting = ownerWildcard?.phase === 'TARGETING';
-      if ((!interactionsEnabled && !wildcardTargeting) || options.viewerId === undefined || (arrival && !arrival.finished)) return undefined;
+      if ((!interactionsEnabled && !wildcardTargeting) || options.viewerId === undefined || exitWalks.has(options.viewerId) || (arrival && !arrival.finished)) return undefined;
       const bounds = renderer.domElement.getBoundingClientRect();
       pointer.set(((event.clientX - bounds.left) / bounds.width) * 2 - 1, -((event.clientY - bounds.top) / bounds.height) * 2 + 1);
       raycaster.setFromCamera(pointer, camera);
       const hit = raycaster.intersectObjects(interactiveTargets, true).find(value => {
-        for (let node: Object3D | null = value.object; node; node = node.parent) if (!node.visible) return false;
+        for (let node: Object3D | null = value.object; node; node = node.parent) {
+          if (!node.visible) return false;
+          const semantic = node.userData.semantic as SceneIntent | undefined;
+          if (semantic?.kind === 'POCKET' && semantic.ownerId !== options.viewerId && (!aimPockets || !aimTargets.includes(semantic.ownerId))) return false;
+        }
         return true;
       });
       let node: Object3D | null = hit?.object ?? null;
@@ -261,7 +292,7 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       const semantic = node?.userData.semantic as SceneIntent | undefined;
       if (!interactionsEnabled && !(semantic?.kind === 'PLAYER' && wildcardTargeting && aimTargets.includes(semantic.playerId))) return undefined;
       const wildcardEligible = semantic?.kind === 'WILDCARD' && canInteractWithWildcardDeck(room, options.viewerId, wildcardDrawEnabled);
-      hoverOutline.visible = Boolean(node && (semantic?.kind === 'ITEM' || semantic?.kind === 'CHEST' || wildcardEligible));
+      hoverOutline.visible = Boolean(node && (semantic?.kind === 'ITEM' || semantic?.kind === 'CHEST' || semantic?.kind === 'POCKET' || wildcardEligible));
       if (node && hoverOutline.visible) hoverOutline.setFromObject(node);
       return node?.userData.semantic as SceneIntent | undefined;
     };
@@ -283,7 +314,7 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       renderer.domElement.style.cursor = dragging ? 'grabbing' : intent && (intent.kind !== 'WILDCARD' || wildcardEligible) ? 'pointer' : 'grab';
       wildcardDeck.setHovered(Boolean(!dragging && wildcardEligible));
       if (dragging) hoverOutline.visible = false;
-      const aimCharacter = intent?.kind === 'PLAYER' && aimTargets.includes(intent.playerId) ? characters.get(intent.playerId) : undefined;
+      const aimCharacter = !aimPockets && intent?.kind === 'PLAYER' && aimTargets.includes(intent.playerId) ? characters.get(intent.playerId) : undefined;
       aimLight.intensity = aimCharacter ? 1.4 : 0;
       if (aimCharacter) { platePoint.set(0, 1.3, .25); aimCharacter.localToWorld(platePoint); aimLight.position.copy(platePoint); }
       const itemName = (value: string) => value.replace(/-/g, ' ').toUpperCase();
@@ -294,6 +325,7 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
         : intent?.kind === 'MARKET_PUBLIC' ? 'PUBLIC SHOP'
         : intent?.kind === 'MARKET_BLACK' ? 'PRIVATE BLACK MARKET'
         : intent?.kind === 'WILDCARD' ? wildcardDeckTooltip(room, options.viewerId, wildcardDrawEnabled)
+        : intent?.kind === 'POCKET' ? intent.ownerId === options.viewerId ? 'YOUR POCKET' : `${room.players.find(player => player.id === intent.ownerId)?.name.toUpperCase() ?? ''} · POCKET ${intent.pocketIndex + 1}`
         : intent?.kind === 'SELL' ? 'SELL-BACK' : '';
       tooltip.style.whiteSpace = intent?.kind === 'WILDCARD' ? 'pre-line' : 'nowrap';
       tooltip.style.display = tooltip.textContent ? 'block' : 'none';
@@ -409,18 +441,22 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
           const key = `${player.id}:${index}`;
           livePockets.add(key);
           let model = pocketModels.get(key);
-          if (!model) { model = kit.createPocket(!occupied); model.scale.setScalar(1); bundle.scene.add(model); pocketModels.set(key, model); }
+          if (!model) {
+            model = kit.createPocket(!occupied); model.scale.setScalar(1); bundle.scene.add(model); pocketModels.set(key, model);
+            model.userData.semantic = { kind: 'POCKET', ownerId: player.id, pocketIndex: index }; interactiveTargets.push(model);
+          }
           model.getObjectByName('lid')!.rotation.x = occupied ? 0 : -1.9;
           const seat = seats.find(value => value.id === player.id)!;
           const own = seat.position[2] > 0;
           const outward = new Vector3(seat.position[0], 0, seat.position[2]).normalize();
           const right = new Vector3(outward.z, 0, -outward.x);
           model.position.copy(seatPlacement(player.id, 2.5)).addScaledVector(right, 1.15 + index * .27).addScaledVector(outward, own ? .22 : .16);
+          model.userData.restY = model.position.y;
           model.rotation.y = seat.rotationY - Math.PI - .1;
         });
       }
       for (const [id, entry] of inventoryModels) if (!live.has(id)) { removeInteractive(entry.anchor); inventoryModels.delete(id); }
-      for (const [id, model] of pocketModels) if (!livePockets.has(id)) { model.removeFromParent(); pocketModels.delete(id); }
+      for (const [id, model] of pocketModels) if (!livePockets.has(id)) { removeInteractive(model); pocketModels.delete(id); }
       const myCoins = room.players.find(player => player.id === options.viewerId)?.coins ?? 0;
       coins.children.forEach((coin, index) => { coin.visible = index < Math.min(5, myCoins); });
     };
@@ -440,7 +476,7 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       if (disposed) return;
       const delta = Math.max(0, Math.min(.05, (now - lastFrame) / 1000)); lastFrame = now;
       // The media query value can change before its change callback is delivered.
-      if (motion.matches) { finishArrival(); clearEffects(); falling = undefined; }
+      if (motion.matches) { finishArrival(); clearEffects(); falling = undefined; if (exitWalks.size) clearExitWalks(); }
       if (arrival && !arrival.finished) {
         const phase = arrival.update((now - arrivalStart) / 1000);
         if (arrival.finished) finishArrival(true); else setPhase(phase);
@@ -473,6 +509,60 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       target.dataset.presentationSelection = String(Boolean(selectedItem && inventoryModels.has(selectedItem)));
       target.dataset.presentationIntro = introPhase ?? 'none';
       if (!arrival || arrival.finished) syncCamera(delta, now);
+      if (chestFocus) {
+        const seconds = (now - chestFocus.start) / 1000;
+        if (seconds >= 3.2) chestFocus = undefined;
+        else camera.lookAt(cameraAim.clone().lerp(chestFocus.position, .35 * ease(seconds / .5) * (1 - ease((seconds - 2.5) / .7))));
+      }
+      // Exit playback is independent of the short item-effect pool and all game clocks.
+      let activeDoor = false;
+      for (const [id, departure] of exitWalks) {
+        const seconds = (now - departure.start) / 1000, pose = sampleExit(departure.path, seconds, departure.origin);
+        for (const beat of departure.beats.advance(seconds, document.visibilityState !== 'hidden')) options.onExitBeat?.(beat);
+        const model = departing.get(id)!;
+        const ownExit = id === options.viewerId;
+        if (ownExit && seconds >= EXIT_DURATION && !matchLayout?.querySelector('.scene-exit-confirmation')) {
+          exitWalks.delete(id); clearOwnerExit(); continue;
+        }
+        model.visible = !ownExit && seconds >= .7 && seconds < 13.9;
+        if (model.visible) {
+          kit.animateCharacter(model, now / 1000);
+          model.position.copy(pose.position).setY(Math.sin(pose.progress * departure.path.getLength() / EXIT_STRIDE * Math.PI) * .012);
+          model.getObjectByName('upper')!.position.y = .76 + .22 * ease((seconds - .7) / 1);
+          const direction = departure.path.getTangentAt(pose.progress);
+          model.rotation.y = Math.atan2(direction.x, direction.z);
+        }
+        if (ownExit) {
+          camera.position.copy(pose.position); camera.lookAt(pose.lookAt);
+          if (arrivalBody) { arrivalBody.chair.position.z = pose.chairZ; arrivalBody.chair.rotation.y = pose.chairYaw; arrivalBody.legs.visible = seconds < .7; arrivalBody.hands.visible = false; }
+          screenFlash.style.background = '#e6dfd0'; screenFlash.style.opacity = String(pose.flash);
+          exitFade.style.opacity = String(pose.black);
+          target.dataset.presentationExitPhase = pose.phase;
+          target.dataset.presentationExitProgress = String(Math.min(1, seconds / EXIT_DURATION));
+          if (matchLayout) {
+            matchLayout.dataset.exitPlaying = 'true'; matchLayout.dataset.exitResultVisible = String(seconds >= 14);
+            matchLayout.style.setProperty('--scene-exit-hud-opacity', String(pose.hudOpacity));
+            matchLayout.style.setProperty('--scene-exit-result-opacity', String(pose.resultOpacity));
+            const confirmation = matchLayout.querySelector<HTMLElement>('.scene-exit-confirmation');
+            if (confirmation) {
+              const wasInert = confirmation.inert; confirmation.inert = seconds < 14;
+              if (wasInert && !confirmation.inert) confirmation.querySelector('button')?.focus({ preventScroll: true });
+            }
+          }
+        }
+        if (seconds < EXIT_DURATION) {
+          activeDoor = true;
+          if (doorHinge) doorHinge.rotation.y = pose.hingeYaw;
+          doorLight.intensity = pose.doorIntensity;
+          if (doorGlow && 'material' in doorGlow) (doorGlow.material as MeshBasicMaterial).color.setRGB(.16 + .62 * pose.lighting, .15 + .59 * pose.lighting, .13 + .53 * pose.lighting);
+          for (const [watcherId, character] of characters) {
+            if (watcherId === id || room.players.find(player => player.id === watcherId)?.life !== 'ACTIVE') continue;
+            const local = character.worldToLocal(pose.position.clone());
+            const head = character.getObjectByName('head')!;
+            head.rotation.y += (Math.max(-1.25, Math.min(1.25, Math.atan2(local.x, local.z))) - head.rotation.y) * ease((seconds - .9) / .9);
+          }
+        } else if (!ownExit) exitWalks.delete(id);
+      }
       const orderFrame = target.clientWidth >= 801 ? orderRevealFrame(room, Date.now()) : undefined;
       orderProps.apply(orderFrame, motion.matches);
       target.dataset.presentationOrder = orderFrame?.phase ?? 'none';
@@ -496,10 +586,11 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
         if (slot < 0) continue;
         const base = seatPlacement(entry.ownerId, slot), selected = id === selectedItem;
         const blend = motion.matches ? 1 : 1 - Math.pow(.86, delta * 60);
-        const y = base.y + (selected ? .3 + (motion.matches ? 0 : Math.sin(now / 1000 * 2.2) * .015) : 0);
+        const y = base.y + (selected ? .07 : 0);
         entry.anchor.position.y += (y - entry.anchor.position.y) * blend;
-        entry.anchor.position.z += (base.z - (selected ? .1 : 0) - entry.anchor.position.z) * blend;
-        if (selected) { if (!motion.matches) entry.anchor.rotation.y += delta * .9; entry.anchor.rotation.x += (.3 - entry.anchor.rotation.x) * blend; selectionLight.position.copy(entry.anchor.position).add(new Vector3(0, .2, .3)); }
+        entry.anchor.position.z += (base.z - entry.anchor.position.z) * blend;
+        kit.setInteractionOutline(entry.anchor, selected);
+        if (selected) { entry.anchor.rotation.x += (.25 - entry.anchor.rotation.x) * blend; selectionLight.position.copy(entry.anchor.position).add(new Vector3(0, .2, .3)); }
         else {
           entry.anchor.rotation.x += -entry.anchor.rotation.x * blend;
           const baseYaw = (seats.find(seat => seat.id === entry.ownerId)?.rotationY ?? Math.PI) - Math.PI + (entry.itemId === 'bullet' ? 0 : slot * .4 - .3);
@@ -507,6 +598,14 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
         }
       }
       selectionLight.intensity = selectedItem && inventoryModels.get(selectedItem)?.anchor.visible ? 1.8 : 0;
+      for (const [id, character] of characters) kit.setInteractionOutline(character, !aimPockets && aimTargets.includes(id));
+      for (const model of pocketModels.values()) {
+        const semantic = model.userData.semantic as Extract<SceneIntent, { kind: 'POCKET' }>;
+        const aimed = aimPockets && aimTargets.includes(semantic.ownerId);
+        kit.setInteractionOutline(model, aimed);
+        const blend = motion.matches ? 1 : 1 - Math.pow(.86, delta * 60);
+        model.position.y += (Number(model.userData.restY) + (aimed ? .07 : 0) - model.position.y) * blend;
+      }
       if (room.mode === 'tutorial') {
         const pulse = motion.matches ? 1 : (Math.sin(now / 380) + 1) / 2;
         for (const [id, character] of characters) kit.setTutorialOutline(character, tutorialFocus === 'dealer' && id === 'dealer', pulse);
@@ -517,6 +616,21 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       camera.updateMatrixWorld();
       // Inherit projected coordinates into React overlays without a per-frame React render.
       const sceneFrame = target.parentElement!;
+      const selected = selectedItem ? inventoryModels.get(selectedItem) : undefined;
+      if (selected?.anchor.visible) {
+        selected.anchor.getWorldPosition(platePoint); platePoint.y += .1; platePoint.project(camera);
+        const inFrame = platePoint.z < 1 && Math.abs(platePoint.x) <= 1 && Math.abs(platePoint.y) <= 1;
+        const card = sceneFrame.querySelector<HTMLElement>('.scene-item-card');
+        const cardWidth = card?.offsetWidth || 230, cardHeight = card?.offsetHeight || 250;
+        const width = target.clientWidth, height = target.clientHeight;
+        const x = inFrame ? (platePoint.x + 1) / 2 * width : width * .5;
+        const y = inFrame ? (1 - platePoint.y) / 2 * height : height * .7;
+        // Account for the source's 30% horizontal offset and the full card height.
+        sceneFrame.style.setProperty('--scene-item-x', `${Math.max(Math.max(width * .1, cardWidth * .3 + 16), Math.min(Math.min(width * .9, width - cardWidth * .7 - 16), x))}px`);
+        sceneFrame.style.setProperty('--scene-item-y', `${Math.min(height * .9, Math.max(cardHeight + 24, height * .1, y - 16))}px`);
+      } else {
+        sceneFrame.style.removeProperty('--scene-item-x'); sceneFrame.style.removeProperty('--scene-item-y');
+      }
       for (const [name, x, y, z] of [['standard', -1.15, 1.412, -.6], ['black', 1.2, 1.412, -.6], ['door', 2.4, 2.85, -5.9]] as const) {
         platePoint.set(x, y, z).project(camera);
         const px = (platePoint.x + 1) / 2 * target.clientWidth, py = (1 - platePoint.y) / 2 * target.clientHeight;
@@ -535,7 +649,7 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
         sceneFrame.style.setProperty('--scene-door-x', `${(platePoint.x + 1) / 2 * target.clientWidth}px`);
         sceneFrame.dataset.doorPrompt = inside ? 'inside' : 'above';
       }
-      doorLight.intensity = exitReady ? 4.5 + (motion.matches ? 0 : Math.sin(now / 1000 * 3) * .7) : 2.2;
+      if (!activeDoor) doorLight.intensity = exitReady ? 4.5 + (motion.matches ? 0 : Math.sin(now / 1000 * 3) * .7) : 2.2;
       for (const [id, plate] of plates) {
         const character = characters.get(id)!;
         platePoint.set(0, 2.08, 0); character.localToWorld(platePoint); platePoint.project(camera);
@@ -592,8 +706,9 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
         };
         if (event.itemId === 'pistol') { const direction = targetPoint.clone().sub(geometry.start); geometry.actorYaw = Math.atan2(-direction.x, -direction.z); }
         const presentation = action;
-        addEffect(key, COMPACT_ACTION_SECONDS, elapsed => {
-          const seconds = elapsed / COMPACT_ACTION_SECONDS * ACTION_DURATION[event.itemId];
+        const duration = event.itemId === 'stimulant' ? ACTION_DURATION.stimulant : COMPACT_ACTION_SECONDS;
+        addEffect(key, duration, elapsed => {
+          const seconds = elapsed / duration * ACTION_DURATION[event.itemId];
           const hit = presentation.apply(seconds, geometry);
           if (hit > 0) {
             const character = characters.get(event.targetId)!;
@@ -610,6 +725,15 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       } else if (event.type === 'chest-tool') {
         const actor = seats.find(value => value.id === event.playerId), chest = chests.get(event.kind);
         if (!actor || !chest) return;
+        if (event.itemId === 'key' || event.itemId === 'blackKey') {
+          const key = kit.createItem(event.itemId); chest.add(key);
+          key.rotation.y = Math.PI / 2;
+          addEffect(`tool:${event.kind}`, 1.2, seconds => {
+            key.position.set(0, .2, .48 - .21 * ease(seconds / .3));
+            key.rotation.z = Math.PI / 2 * ease((seconds - .3) / .15);
+          }, () => { key.removeFromParent(); });
+          return;
+        }
         let tool = toolModels.get(event.itemId);
         if (!tool) { tool = createChestToolPresentation(kit, event.itemId); toolModels.set(event.itemId, tool); bundle.scene.add(tool.anchor); }
         chest.updateMatrixWorld(true);
@@ -625,24 +749,27 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
         if (!original || !seat) return;
         let ghost = departing.get(event.playerId);
         if (!ghost) {
-          ghost = original.clone(true);
-          const chair = ghost.getObjectByName('chair'); if (chair) chair.visible = false;
-          // Clones share kit resources. Never dispose one separately.
+          // Build an independent rig: Object3D.clone would leave skinned arm
+          // skeletons pointing at the seated figure's bones.
+          ghost = kit.createCharacter(seat.role, seat.color, seat.label, event.type === 'exit' ? 'standing' : 'seated');
           bundle.scene.add(ghost); departing.set(event.playerId, ghost);
         }
         const model = ghost, upper = model.getObjectByName('upper')!;
         upper.visible = true;
-        const exit = event.type === 'exit', start = new Vector3(...seat.position);
-        const aisle = start.clone().addScaledVector(start.clone().normalize(), 1.2);
-        const side = new Vector3(seat.position[0] < 0 ? -3.9 : 3.9, 0, -3.5), door = new Vector3(2.4, 0, -5.5);
-        addEffect(`depart:${event.playerId}`, exit ? 2.8 : 1.2, t => {
+        const start = new Vector3(...seat.position);
+        if (event.type === 'exit') {
+          finishArrival();
+          const ownExit = event.playerId === options.viewerId;
+          const origin = ownExit ? { position: camera.position.clone(), lookAt: cameraAim.clone() }
+            : { position: start.clone().setY(1.6), lookAt: new Vector3(1.7, 2.15, -3.6) };
+          const path = createExitPath(seat);
+          exitWalks.set(event.playerId, { start: performance.now(), path, origin, beats: new ExitBeatTimeline(path) });
+          model.visible = !ownExit;
+          return;
+        }
+        addEffect(`depart:${event.playerId}`, 1.2, t => {
           model.visible = true; model.position.copy(start); upper.rotation.set(0, 0, 0);
-          if (exit) {
-            if (t < 0.6) model.position.lerp(aisle, ease(t / 0.6));
-            else if (t < 1.65) model.position.copy(aisle).lerp(side, ease((t - 0.6) / 1.05));
-            else model.position.copy(side).lerp(door, ease((t - 1.65) / 1.15));
-            model.position.y = Math.sin(t * 15) * 0.025; upper.position.y = 0.76 + 0.2 * ease(t / 0.35);
-          } else { upper.rotation.x = ease(t / 0.8) * 0.6; upper.rotation.z = ease(t / 1.1) * 0.2; }
+          upper.rotation.x = ease(t / .8) * .6; upper.rotation.z = ease(t / 1.1) * .05;
         }, () => { model.visible = false; });
       } else if (event.type === 'chest-loot') {
         const chest = chests.get(event.kind)!;
@@ -665,12 +792,14 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
         }
       } else if (event.type === 'chest') {
         const model = chests.get(event.kind)!, lid = model.getObjectByName('lid')!;
+        chestFocus = { start: performance.now(), position: model.position.clone().add(new Vector3(0, .2, 0)) };
         const glow = new PointLight(0xffc070, 0, 1.4, 2); glow.position.set(0, .48, 0); model.add(glow);
         if (!chestBanner.textContent?.includes('CHEST')) chestBanner.textContent = `${event.kind === 'BLACK' ? 'BLACK' : 'STANDARD'} CHEST · OPENED`;
         addEffect(`chest:${event.kind}`, 2.95, elapsed => {
           // Key and tool arrive first; latch, lid, loot hold, then transfer.
           const u = Math.max(0, Math.min(1, (elapsed - .7) / .75));
-          lid.rotation.x = -1.95 * ease(u) + (elapsed > 1.3 && elapsed < 1.6 ? Math.sin((elapsed - 1.3) / .3 * Math.PI) * .05 : 0);
+          const latch = elapsed > .45 && elapsed < .7 ? -.06 * Math.sin((elapsed - .45) / .25 * Math.PI) : 0;
+          lid.rotation.x = (event.kind === 'BLACK' ? -1.9 : -1.95) * ease(u) + latch + (elapsed > 1.3 && elapsed < 1.6 ? Math.sin((elapsed - 1.3) / .3 * Math.PI) * .05 : 0);
           glow.intensity = elapsed < 1.2 ? 0 : elapsed < 1.7 ? 2.2 * ease((elapsed - 1.2) / .5) : elapsed < 2.45 ? 2.2 : 2.2 * (1 - ease((elapsed - 2.45) / .5));
           chestBanner.hidden = elapsed < 1.45 || elapsed >= 2.45;
         }, () => { lid.rotation.x = room.chests?.find(value => value.kind === event.kind)?.availability === 'OPENED' ? -1.9 : 0; glow.removeFromParent(); chestBanner.hidden = true; chestBanner.textContent = ''; });
@@ -780,7 +909,12 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       render(performance.now());
     };
     const changeMotion = () => { if (motion.matches) { finishArrival(); clearEffects(); falling = undefined; wildcardDeck.apply(performance.now(), true); } redraw(); };
-    const visibility = () => { if (document.visibilityState === 'hidden') { finishArrival(); clearEffects(); falling = undefined; cancelAnimationFrame(frame); } else redraw(); };
+    const visibility = () => {
+      // Consume unheard beats on both sides of a hidden interval; never burst them on return.
+      const now = performance.now();
+      for (const departure of exitWalks.values()) departure.beats.advance((now - departure.start) / 1000, false);
+      if (document.visibilityState === 'hidden') { finishArrival(); clearEffects(); falling = undefined; cancelAnimationFrame(frame); } else redraw();
+    };
     motion.addEventListener('change', changeMotion); document.addEventListener('visibilitychange', visibility);
     cleanups.push(() => { motion.removeEventListener('change', changeMotion); document.removeEventListener('visibilitychange', visibility); });
     const resize = new ResizeObserver(entries => {
@@ -805,6 +939,6 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     }
     target.dataset.arrivalDuration = String(ARRIVAL_DURATION);
     redraw();
-    return { setTutorialFocus(value) { tutorialFocus = value; redraw(); }, update(next) { try { update(next); } catch { fail(); } }, setInteractionsEnabled(value) { interactionsEnabled = value; if (!value && ownerWildcard?.phase !== 'TARGETING') tooltip.style.display = 'none'; if (motion.matches) render(performance.now()); }, setExitReady(value) { exitReady = value; if (motion.matches) render(performance.now()); }, setWildcardDrawEnabled(value) { wildcardDrawEnabled = value; hoverOutline.visible = false; wildcardDeck.setHovered(false); if (motion.matches) render(performance.now()); }, setOwnerWildcard(value) { ownerWildcard = options.viewerId === undefined ? undefined : value; wildcardDeck.setOwnerWildcard(ownerWildcard, performance.now(), motion.matches); redraw(); }, setFocus(value) { focus = value; if (motion.matches) render(performance.now()); }, setItemSelection(value, targets) { selectedItem = value; aimTargets = targets; aimLight.intensity = 0; if (motion.matches) render(performance.now()); }, setSpyglass(id, active) { if (active && (!spyglassActive || spyglassTargetId !== id)) spyglassStart = performance.now(); spyglassTargetId = id; spyglassActive = active; redraw(); }, skipIntro() { if (canSkipIntro) { finishArrival(); redraw(); } }, dispose };
+    return { setTutorialFocus(value) { tutorialFocus = value; redraw(); }, update(next) { try { update(next); } catch { fail(); } }, setInteractionsEnabled(value) { interactionsEnabled = value; if (!value && ownerWildcard?.phase !== 'TARGETING') tooltip.style.display = 'none'; if (motion.matches) render(performance.now()); }, setExitReady(value) { exitReady = value; if (motion.matches) render(performance.now()); }, setWildcardDrawEnabled(value) { wildcardDrawEnabled = value; hoverOutline.visible = false; wildcardDeck.setHovered(false); if (motion.matches) render(performance.now()); }, setOwnerWildcard(value) { ownerWildcard = options.viewerId === undefined ? undefined : value; wildcardDeck.setOwnerWildcard(ownerWildcard, performance.now(), motion.matches); redraw(); }, setFocus(value) { focus = value; if (motion.matches) render(performance.now()); }, setItemSelection(value, targets, pockets = false) { selectedItem = value; aimTargets = targets; aimPockets = pockets; aimLight.intensity = 0; if (motion.matches) render(performance.now()); }, setSpyglass(id, active) { if (active && (!spyglassActive || spyglassTargetId !== id)) spyglassStart = performance.now(); spyglassTargetId = id; spyglassActive = active; redraw(); }, skipIntro() { if (canSkipIntro) { finishArrival(); redraw(); } }, dispose };
   } catch (error) { dispose(); throw error; }
 }

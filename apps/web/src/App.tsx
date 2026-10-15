@@ -312,6 +312,24 @@ function EntryView(props: {
   const { mode, setMode, name, setName, joinCode, setJoinCode, error, working, connected, onSubmit, audio, audioStarted, onEnableAudio } = props;
   const [creating, setCreating] = useState(false);
   const [utility, setUtility] = useState<'rules' | 'items' | 'settings' | null>(null);
+  const utilityOpener = useRef<HTMLElement | null>(null);
+  const utilityDialog = useRef<HTMLDivElement>(null);
+  const openUtility = (value: 'rules' | 'items' | 'settings', opener: HTMLElement) => { utilityOpener.current = opener; setUtility(value); };
+  useEffect(() => {
+    if (!utility) return;
+    const dialog = utilityDialog.current;
+    dialog?.querySelector<HTMLElement>('button:not([tabindex="-1"])')?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); setUtility(null); }
+      if (event.key !== 'Tab' || !dialog) return;
+      const controls = [...dialog.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex="0"]')].filter(control => !control.hasAttribute('disabled') && control.tabIndex >= 0);
+      const first = controls[0], last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => { window.removeEventListener('keydown', handleKey); const opener = utilityOpener.current; requestAnimationFrame(() => opener?.focus()); };
+  }, [utility]);
   const playButtonPress = (event: React.MouseEvent<HTMLElement>) => {
     if (audioStarted && (event.target as HTMLElement).closest('button:not(:disabled)')) audio.play(AUDIO_CUE_IDS.uiSelect);
   };
@@ -336,11 +354,11 @@ function EntryView(props: {
       <div className="entry-copy">
         <h1>The Table</h1>
         {!creating ? <div className="entry-menu" role="group" aria-label="Room choice"><button className="selected" type="button" onClick={() => setCreating(true)}>▶ CREATE ROOM</button><button type="button" onClick={() => setMode('join')}>JOIN ROOM</button><button type="button" onClick={props.onTutorial}>{props.tutorialResume ? 'RESUME TUTORIAL' : 'TUTORIAL'}</button></div> : <form className="entry-form entry-create-form" onSubmit={onSubmit} noValidate><label>NAME AT THE TABLE<input autoFocus autoComplete="nickname" maxLength={24} value={name} onChange={event => setName(event.target.value)} placeholder="VESNA_" required /></label>{error && <p className="form-error" role="alert">✕ {error.message.toUpperCase()}</p>}<button className="button primary" type="submit" disabled={working || !connected}>{working ? '⧗ KNOCKING…' : 'CREATE ROOM'}</button><button className="button quiet" type="button" onClick={() => setCreating(false)}>← BACK</button></form>}
-        <div className="entry-links"><button type="button" onClick={() => setUtility('rules')}>HOW TO PLAY</button><button type="button" onClick={() => setUtility('items')}>ITEM HANDBOOK</button><button type="button" onClick={() => setUtility('settings')}>SETTINGS · AUDIO</button></div>
+        <div className="entry-links"><button type="button" onClick={event => openUtility('rules', event.currentTarget)}>HOW TO PLAY</button><button type="button" onClick={event => openUtility('items', event.currentTarget)}>HANDBOOK</button><button type="button" onClick={event => openUtility('settings', event.currentTarget)}>SETTINGS · AUDIO</button></div>
       </div>
-      {utility && <div className={`entry-utility-overlay entry-utility-${utility}`} role="dialog" aria-modal="true" aria-label={utility === 'rules' ? 'How to play' : utility === 'items' ? 'Item handbook' : 'Settings'}>
-        <button className="entry-utility-close" type="button" onClick={() => setUtility(null)}>× CLOSE</button>
-        {utility === 'rules' ? <HowToPlay onTutorial={props.onTutorial} /> : utility === 'items' ? <ReferenceHandbook /> : <ReferenceSettings engine={audio} started={audioStarted} onStart={onEnableAudio} />}
+      {utility && <div ref={utilityDialog} className={`entry-utility-overlay entry-utility-${utility}`} role="dialog" aria-modal="true" aria-label={utility === 'rules' ? 'How to play' : utility === 'items' ? 'Handbook' : 'Settings'}>
+        {utility !== 'items' && <button className="entry-utility-close" type="button" onClick={() => setUtility(null)}>× CLOSE</button>}
+        {utility === 'rules' ? <HowToPlay onTutorial={props.onTutorial} /> : utility === 'items' ? <ReferenceHandbook onClose={() => setUtility(null)} /> : <ReferenceSettings engine={audio} started={audioStarted} onStart={onEnableAudio} />}
       </div>}
     </section>
   </Shell>;

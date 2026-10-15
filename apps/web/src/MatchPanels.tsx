@@ -139,7 +139,7 @@ export function RoleAbilityDetail({ detail, room, compact = false }: { detail: P
   return <aside className="role-ability-detail" data-compact={compact || undefined} aria-label="Role ability"><span>ROLE · {ROLE_COPY[player.roleId].name.toUpperCase()}</span><strong>{ability.name.toUpperCase()}</strong><p>{ability.cost}</p>{!compact && <p>{ability.description}</p>}<b>{availability}</b></aside>;
 }
 
-export function PrivateDetail({ detail, room, title = 'Your objective' }: { detail: PlayerPrivateView; room: PublicRoomView; title?: string }) {
+export function PrivateDetail({ detail, room, title = 'Your objective', setup = false }: { detail: PlayerPrivateView; room: PublicRoomView; title?: string; setup?: boolean }) {
   const objective = detail.objective;
   const state = objective?.status;
   const fulfilled = state === 'EXIT_READY' || state === 'BANKED';
@@ -147,8 +147,9 @@ export function PrivateDetail({ detail, room, title = 'Your objective' }: { deta
   const canConcede = detail.capabilities?.includes('CONCEDE') ?? false;
   const waitingForNextTurn = state === 'EXIT_READY' && !canLeave;
   const lostRequirements = objective ? objectiveProgressItems(objective, room).filter(item => !item.complete).map(item => `${item.label}: ${item.value}`).join(' · ') : '';
-  return <section className={`panel private-info reference-contract ${fulfilled ? 'fulfilled' : ''} ${state === 'FAILED' ? 'failed' : ''}`} aria-label={title}><header><span>CONTRACT · PRIVATE</span><span>OBJECTIVE STATE · {state ? words(state) : 'ASSIGNING'}</span></header><ObjectiveDetail objective={objective} room={room} /><RoleAbilityDetail detail={detail} room={room} />
-    {state === 'FAILED' ? <div className="contract-failure" role="status"><strong>CONTRACT FAILED</strong>{objective?.failureReason && <p>{objective.failureReason}</p>}<p>This objective can no longer be completed.</p><p>{canConcede ? 'You may continue playing or Concede for 0 points now.' : 'You may continue playing or Concede for 0 points on your next normal turn.'}</p></div>
+  return <section className={`panel private-info reference-contract ${fulfilled ? 'fulfilled' : ''} ${state === 'FAILED' ? 'failed' : ''} ${setup ? 'setup-contract-card' : ''}`} aria-label={title}><header><span>{setup ? 'CONTRACT' : 'CONTRACT · PRIVATE'}</span><span>{setup ? (fulfilled ? '✓ FULFILLED' : '◆ SEALED') : `OBJECTIVE STATE · ${state ? words(state) : 'ASSIGNING'}`}</span></header><ObjectiveDetail objective={objective} room={room} />{!setup && <RoleAbilityDetail detail={detail} room={room} />}
+    {setup ? <footer className="contract-privacy-band">PRIVATE — DO NOT REVEAL</footer>
+      : state === 'FAILED' ? <div className="contract-failure" role="status"><strong>CONTRACT FAILED</strong>{objective?.failureReason && <p>{objective.failureReason}</p>}<p>This objective can no longer be completed.</p><p>{canConcede ? 'You may continue playing or Concede for 0 points now.' : 'You may continue playing or Concede for 0 points on your next normal turn.'}</p></div>
       : state === 'EXIT_READY' ? <><div className="contract-leave">{waitingForNextTurn ? 'OBJECTIVE COMPLETE' : 'EXIT READY'}</div><p className="contract-unlock-copy">{waitingForNextTurn ? 'Leave Table unlocks at the start of your next normal turn.' : 'You may leave now or stay.'}</p><div className="contract-stamp">FULFILLED</div></>
       : state === 'BANKED' ? <><div className="contract-leave">OBJECTIVE BANKED</div><div className="contract-stamp">BANKED</div></>
       : objective?.rewardGranted ? <><div className="contract-leave">EXIT LOCKED</div><p className="contract-unlock-copy">Requirement lost: {lostRequirements || 'required possessions'}. Restore it to become Exit Ready again.</p></>
