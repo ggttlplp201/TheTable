@@ -64,6 +64,10 @@ export class TutorialController {
   get instruction() { return TUTORIAL_STEPS[this.step]; }
   view(): AuthorizedRoomView {
     const view = projectAuthorizedRoom(this.room, HUMAN);
+    // The income lesson has its own presentation beat. Keep the engine-created
+    // reveal private until prepareShop retimes it, otherwise the die begins near
+    // the end of this beat and is visibly restarted when the shop lesson opens.
+    if (this.step === 'income' && view.public.shop) delete view.public.shop.orderReveal;
     if (view.public.turn) view.public.turn.pausedRemainingMs = RULES.turnMs;
     if (view.public.pendingTrade) view.public.pendingTrade.deadlineAt = this.clock() + RULES.responseMs;
     if (view.public.pendingThreat) view.public.pendingThreat.deadlineAt = this.clock() + RULES.responseMs;
