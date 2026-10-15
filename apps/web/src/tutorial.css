@@ -31,12 +31,8 @@ button.tutorial-continue { margin-top:10px; background:#e0a040; color:#130e07; b
 .tutorial-trade-trail [data-done] { color:#a8c05a; }
 .tutorial-trade-trail [aria-current] { color:#e0a040; }
 .tutorial-complete { position:fixed; inset:0; display:grid; place-content:center; gap:18px; padding:32px; box-sizing:border-box; background:#090807; text-align:center; }
-.tutorial-complete h1 { margin:0 0 12px; color:#cfe08d; font:54px/1 'IM Fell English',serif; }
+.tutorial-complete h1 { margin:0 0 18px; color:#cfe08d; font:54px/1 'IM Fell English',serif; }
 .tutorial-complete button { width:min(420px,calc(100vw - 40px)); }
-.tutorial-complete>p { margin:0; font-size:26px; color:#b8ab92; }
-.tutorial-complete .tutorial-escaped { color:#a8c05a; font-size:20px; letter-spacing:.2em; }
-.tutorial-learned { display:grid; grid-template-columns:repeat(3,1fr); gap:8px 24px; padding:0; margin:8px 0; list-style:none; text-align:left; font-size:23px; color:#b8ab92; }
-.tutorial-learned span { color:#e0a040; }
 .tutorial-welcome-backdrop { position:fixed; inset:0; z-index:200; display:grid; place-items:center; background:#0008; }
 .tutorial-welcome { padding:32px; width:min(420px,calc(100vw - 32px)); background:rgba(5,4,3,.9); border:2px solid rgba(216,204,176,.18); box-shadow:0 8px 32px #0008; }
 .tutorial-welcome h2 { font:30px 'IM Fell English',serif; margin:0 0 16px; }
@@ -69,7 +65,7 @@ button.tutorial-continue { margin-top:10px; background:#e0a040; color:#130e07; b
 .tutorial-shell[data-step='trade']:has(.reference-trade) .action-buttons>button:first-child { outline:none; animation:none; }
 .tutorial-shell[data-step='practice']:has(.reference-threat) .reference-threat .threat-mode { outline:2px solid #e0a040; outline-offset:5px; }
 @media(max-width:1100px) { .tutorial-guide { width:min(620px,calc(100vw - 32px)); }.tutorial-guide header { padding-left:120px; }.tutorial-exit { top:19px; left:18px; padding:5px 8px; font-size:14px; } }
-@media(max-width:680px) { .tutorial-guide { top:8px; padding:7px 11px; }.tutorial-guide p { font-size:18px; }.tutorial-guide h2 { font-size:23px; margin:6px 0 3px; }.tutorial-guide>small,.tutorial-chapters { display:none; }.tutorial-exit { top:13px; left:22px; }.tutorial-complete { padding:24px; gap:12px; }.tutorial-complete h1 { font-size:40px; }.tutorial-learned { font-size:19px; gap:6px 14px; }.tutorial-privacy { gap:8px; }.tutorial-privacy span { font-size:18px; }.tutorial-trade-trail { font-size:14px; gap:3px 8px; }.tutorial-shell:is([data-step='pocket'],[data-step='chest']) .tutorial-guide { bottom:100px; } }
+@media(max-width:680px) { .tutorial-guide { top:8px; padding:7px 11px; }.tutorial-guide p { font-size:18px; }.tutorial-guide h2 { font-size:23px; margin:6px 0 3px; }.tutorial-guide>small,.tutorial-chapters { display:none; }.tutorial-exit { top:13px; left:22px; }.tutorial-complete { padding:24px; gap:12px; }.tutorial-complete h1 { font-size:40px; }.tutorial-privacy { gap:8px; }.tutorial-privacy span { font-size:18px; }.tutorial-trade-trail { font-size:14px; gap:3px 8px; }.tutorial-shell:is([data-step='pocket'],[data-step='chest']) .tutorial-guide { bottom:100px; } }
 @media(max-width:960px) {
   .tutorial-shell .match-viewport.match-layout[data-response='true']>.match-utility { top:auto; bottom:12px; left:12px; right:12px; width:auto; justify-content:center; }
   .tutorial-shell .match-viewport.match-layout[data-response='true'] .forced-decision { padding-bottom:116px; }
