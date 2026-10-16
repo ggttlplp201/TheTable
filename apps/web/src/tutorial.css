@@ -31,7 +31,7 @@ button.tutorial-continue { margin-top:10px; background:#e0a040; color:#130e07; b
 .tutorial-trade-trail [data-done] { color:#a8c05a; }
 .tutorial-trade-trail [aria-current] { color:#e0a040; }
 .tutorial-complete { position:fixed; inset:0; display:grid; place-content:center; gap:18px; padding:32px; box-sizing:border-box; background:#090807; text-align:center; }
-.tutorial-complete h1 { margin:0 0 18px; color:#cfe08d; font:54px/1 'IM Fell English',serif; }
+.tutorial-complete h1 { margin:0 0 18px; color:#cfe08d; font:54px/1 'IM Fell English SC',serif; font-weight:400; }
 .tutorial-complete button { width:min(420px,calc(100vw - 40px)); }
 .tutorial-welcome-backdrop { position:fixed; inset:0; z-index:200; display:grid; place-items:center; background:#0008; }
 .tutorial-welcome { padding:32px; width:min(420px,calc(100vw - 32px)); background:rgba(5,4,3,.9); border:2px solid rgba(216,204,176,.18); box-shadow:0 8px 32px #0008; }

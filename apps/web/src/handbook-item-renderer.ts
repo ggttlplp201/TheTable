@@ -8,10 +8,27 @@ export type HandbookModelOptions = {
 
 type ViewerEntry = {
   canvas: HTMLCanvasElement; options: HandbookModelOptions; object: Three.Object3D;
-  yaw: number; pitch: number; yawVelocity: number; pitchVelocity: number;
+  yaw: number; pitch: number; roll: number; spin: 'yaw' | 'roll'; yawVelocity: number; pitchVelocity: number;
   drag?: { x: number; y: number; pointerId: number } | undefined; dirty: boolean;
 };
 let viewerStage: ReturnType<typeof createViewerStage> | undefined;
+
+type ViewerPose = Pick<ViewerEntry, 'yaw' | 'pitch' | 'roll' | 'spin'>;
+const DEFAULT_POSE: ViewerPose = { yaw: .3, pitch: 0, roll: 0, spin: 'yaw' };
+const ITEM_PRESENTATION_POSES: Readonly<Record<string, ViewerPose>> = {
+  key: { yaw: 0, pitch: Math.PI / 2 + .315, roll: -Math.PI / 4, spin: 'roll' },
+  'black-key': { yaw: 0, pitch: Math.PI / 2 + .28, roll: -Math.PI / 4, spin: 'roll' },
+  pickpocket: { yaw: 0, pitch: Math.PI / 2 + .315, roll: -Math.PI / 4, spin: 'roll' },
+  lockpick: { yaw: 0, pitch: Math.PI / 2 + .28, roll: -Math.PI / 4, spin: 'roll' },
+  crowbar: { yaw: 0, pitch: Math.PI / 2 + .315, roll: -Math.PI / 4, spin: 'roll' },
+  handcuffs: { yaw: 0, pitch: Math.PI / 2 + .315, roll: -Math.PI / 4, spin: 'roll' },
+  'passage-token': { yaw: 0, pitch: Math.PI / 2 + .35, roll: 0, spin: 'roll' },
+  'red-ledger': { yaw: 0, pitch: Math.PI / 2 + .315, roll: 0, spin: 'roll' },
+};
+
+function presentationPose(options: HandbookModelOptions): ViewerPose {
+  return options.kind === 'items' ? ITEM_PRESENTATION_POSES[options.modelId] ?? DEFAULT_POSE : DEFAULT_POSE;
+}
 
 function contractTexture(name: string, description: string) {
   const canvas = document.createElement('canvas'); canvas.width = 192; canvas.height = 256;
@@ -87,11 +104,12 @@ function createViewerStage() {
     if (options.thumbnail && !entry.dirty) return;
     if (!entry.drag && !reduced.matches && !options.thumbnail) {
       entry.yawVelocity *= Math.pow(.94, step); entry.pitchVelocity *= Math.pow(.94, step);
-      entry.yaw += (entry.yawVelocity + .0009) * step; entry.pitch += entry.pitchVelocity * step;
+      entry.yaw += entry.yawVelocity * step; entry.pitch += entry.pitchVelocity * step;
+      entry[entry.spin] += .0009 * step;
     }
     if (options.kind === 'chars') { entry.pitch = 0; entry.pitchVelocity = 0; }
     object.visible = true; disc.visible = chart.visible = options.kind === 'chars';
-    object.rotation.set(entry.pitch, entry.yaw, 0, 'XYZ');
+    object.rotation.set(entry.pitch, entry.yaw, entry.roll, 'XYZ');
     if (options.kind === 'chars') {
       object.position.y = 0; kit.idle(object, reduced.matches || options.thumbnail ? 0 : elapsed, 0, true);
       const scale = ['tallyman', 'fence', 'dealer'].includes(options.modelId) ? 1.06 : 1;
@@ -106,7 +124,7 @@ function createViewerStage() {
     still.render(scene, camera, { t: reduced.matches || options.thumbnail ? 0 : elapsed });
     const context = canvas.getContext('2d'); context?.clearRect(0, 0, width, height); context?.drawImage(still.r.domElement, 0, 0, width, height);
     object.visible = false; entry.dirty = false;
-    canvas.dataset.yaw = entry.yaw.toFixed(4); canvas.dataset.pitch = entry.pitch.toFixed(4); canvas.dataset.motion = reduced.matches ? 'reduced' : 'idle';
+    canvas.dataset.yaw = entry.yaw.toFixed(4); canvas.dataset.pitch = entry.pitch.toFixed(4); canvas.dataset.roll = entry.roll.toFixed(4); canvas.dataset.motion = reduced.matches ? 'reduced' : 'idle';
   }
   function tick(now: number) {
     animation = 0; if (document.hidden) return;
@@ -127,11 +145,12 @@ function createViewerStage() {
   return { attach(canvas: HTMLCanvasElement, options: HandbookModelOptions) {
     let object: Three.Object3D;
     try { object = objectFor(options); } catch (error) { if (!entries.size) dispose(); throw error; }
-    const entry: ViewerEntry = { canvas, options, object, yaw: .3, pitch: 0, yawVelocity: 0, pitchVelocity: 0, dirty: true }; entries.add(entry);
+    const pose = presentationPose(options);
+    const entry: ViewerEntry = { canvas, options, object, ...pose, yawVelocity: 0, pitchVelocity: 0, dirty: true }; entries.add(entry);
     const down = (event: PointerEvent) => { if (options.thumbnail || event.button !== 0) return; canvas.focus(); entry.drag = { x: event.clientX, y: event.clientY, pointerId: event.pointerId }; entry.yawVelocity = entry.pitchVelocity = 0; canvas.setPointerCapture(event.pointerId); };
     const move = (event: PointerEvent) => { if (!entry.drag || entry.drag.pointerId !== event.pointerId) return; const dx = event.clientX - entry.drag.x, dy = event.clientY - entry.drag.y; entry.drag.x = event.clientX; entry.drag.y = event.clientY; entry.yaw += dx * .012; entry.yawVelocity = Math.max(-.15, Math.min(.15, dx * .012)); if (options.kind !== 'chars') { entry.pitch += dy * .012; entry.pitchVelocity = Math.max(-.15, Math.min(.15, dy * .012)); } entry.dirty = true; draw(entry, 0); };
     const up = (event: PointerEvent) => { if (entry.drag?.pointerId !== event.pointerId) return; entry.drag = undefined; if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId); };
-    const key = (event: KeyboardEvent) => { if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home'].includes(event.key)) return; event.preventDefault(); if (event.key === 'Home') { entry.yaw = .3; entry.pitch = 0; } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') entry.yaw += event.key === 'ArrowLeft' ? -.12 : .12; else if (options.kind !== 'chars') entry.pitch += event.key === 'ArrowUp' ? -.12 : .12; entry.yawVelocity = entry.pitchVelocity = 0; entry.dirty = true; draw(entry, 0); };
+    const key = (event: KeyboardEvent) => { if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home'].includes(event.key)) return; event.preventDefault(); if (event.key === 'Home') Object.assign(entry, presentationPose(options)); else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') entry.yaw += event.key === 'ArrowLeft' ? -.12 : .12; else if (options.kind !== 'chars') entry.pitch += event.key === 'ArrowUp' ? -.12 : .12; entry.yawVelocity = entry.pitchVelocity = 0; entry.dirty = true; draw(entry, 0); };
     canvas.addEventListener('pointerdown', down); canvas.addEventListener('pointermove', move); canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up); canvas.addEventListener('lostpointercapture', up); canvas.addEventListener('keydown', key);
     const observer = new ResizeObserver(() => { entry.dirty = true; draw(entry, 0); }); observer.observe(canvas); resume();
     return () => { observer.disconnect(); canvas.removeEventListener('pointerdown', down); canvas.removeEventListener('pointermove', move); canvas.removeEventListener('pointerup', up); canvas.removeEventListener('pointercancel', up); canvas.removeEventListener('lostpointercapture', up); canvas.removeEventListener('keydown', key); entries.delete(entry); if (!entries.size) dispose(); };

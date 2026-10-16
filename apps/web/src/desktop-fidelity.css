@@ -183,9 +183,7 @@
 .handbook-viewer canvas { display:block; width:100%; height:100%; image-rendering:pixelated; touch-action:none; cursor:grab; }
 .handbook-viewer canvas:active { cursor:grabbing; }
 .handbook-viewer canvas:focus-visible { outline:2px solid #e0a040; outline-offset:-4px; }
-.handbook-drag-hint,.handbook-viewer-kind { position:absolute; color:#b8ab92; font-size:16px; letter-spacing:.14em; pointer-events:none; text-shadow:0 2px #000; }
-.handbook-drag-hint { left:12px; bottom:10px; }
-.handbook-viewer-kind { right:12px; top:10px; }
+.handbook-viewer-kind { position:absolute; right:12px; top:10px; color:#b8ab92; font-size:16px; letter-spacing:.14em; pointer-events:none; text-shadow:0 2px #000; }
 .handbook-model-fallback { position:absolute; inset:0; display:grid; place-items:center; padding:12px; color:#b8ab92; font-size:18px; text-align:center; }
 .handbook-description { min-width:0; min-height:0; display:flex; flex-direction:column; gap:14px; padding:0; overflow-y:auto; overscroll-behavior:contain; }
 .handbook-description header { padding-bottom:14px; border-bottom:2px solid rgba(216,204,176,.14); }
@@ -200,7 +198,13 @@
 .handbook-description .coin-amount { color:#e0a040; }
 .handbook-contingency { padding:10px 14px; background:rgba(5,4,3,.72); border:2px solid rgba(216,204,176,.18); }
 .handbook-contingency h4 { margin:0 0 6px; color:#e0a040; font-size:18px; font-weight:400; letter-spacing:.14em; }
-.handbook-case-file { min-width:0; min-height:0; display:flex; flex-direction:column; overflow-y:auto; overscroll-behavior:contain; background:#d6c9ab; color:#1a1410; box-shadow:inset 0 0 0 1px rgba(26,20,16,.4); }
+.handbook-case-file { min-width:0; min-height:0; display:flex; flex-direction:column; overflow-y:auto; overscroll-behavior:contain; background:#d6c9ab; color:#1a1410; box-shadow:inset 0 0 0 1px rgba(26,20,16,.4); transform-origin:76% 62%; animation:handbook-file-slap 320ms cubic-bezier(.22,1,.36,1) both; }
+@keyframes handbook-file-slap {
+  0% { transform:translate3d(38px,-30px,0) rotate(2.8deg) scale(1.025); filter:brightness(1.14); }
+  58% { transform:translate3d(-3px,2px,0) rotate(-.45deg) scale(.994); filter:brightness(.98); }
+  78% { transform:translate3d(1px,-1px,0) rotate(.16deg) scale(1.002); }
+  100% { transform:none; filter:none; }
+}
 .handbook-file-body { position:relative; display:flex; flex-direction:column; gap:12px; min-height:132px; padding:20px 20px 22px; }
 .handbook-case-heading { position:relative; padding-right:132px; min-height:100px; }
 .handbook-case-heading > p { margin:0 0 2px; color:#5a4a36; font-size:16px; letter-spacing:.14em; }
@@ -220,8 +224,10 @@
 .handbook-behaviour p { font-size:19px; }
 .handbook-ability h5 { margin:0 0 4px; color:#7c1f19; font:24px/1 'VT323',monospace; }
 .handbook-ability h4 span { font-size:14px; letter-spacing:.1em; }
-.handbook-starting-kit,.handbook-stock { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; font-size:20px; }
-.handbook-starting-kit li,.handbook-stock li { display:flex; align-items:center; gap:8px; }
+.handbook-starting-kit { margin:0; padding:0 0 0 20px; display:flex; flex-direction:column; gap:4px; font-size:20px; list-style:disc; }
+.handbook-starting-kit li { display:list-item; padding-left:2px; }
+.handbook-stock { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; font-size:20px; }
+.handbook-stock li { display:flex; align-items:center; gap:8px; }
 .handbook-stock li { justify-content:space-between; border-bottom:1px solid rgba(26,20,16,.15); }
 .reference-animated-item { position:relative; display:block; flex:none; overflow:hidden; background:#050403; }
 .reference-animated-item > canvas { position:absolute; inset:0; width:100%; height:100%; display:block; image-rendering:pixelated; }
@@ -254,10 +260,16 @@
   .handbook-row-copy small { font-size:14px; }
   .handbook-items button { grid-template-columns:32px minmax(0,1fr); gap:5px; padding-left:3px; }
   .handbook-items .reference-item-art,.handbook-character-thumbnail,.handbook-card-thumb { width:32px!important; height:32px!important; }
-  .handbook-drag-hint { left:6px; right:6px; font-size:13px; letter-spacing:0; text-align:center; }
   .handbook-case-heading { padding-right:92px; min-height:72px; }
   .handbook-seal { width:88px; height:88px; }
   .handbook-description h3 { font-size:46px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .handbook-case-file { animation:handbook-file-settle 120ms ease-out both; }
+}
+@keyframes handbook-file-settle {
+  from { transform:translateY(-4px); }
+  to { transform:none; }
 }
 .reference-social { height:100%; padding:22px; box-sizing:border-box; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 .reference-interface .reference-social > .panel { padding:14px; background:rgba(10,8,6,.92); border:2px solid rgba(216,204,176,.22); display:flex; flex-direction:column; gap:8px; min-height:0; }
