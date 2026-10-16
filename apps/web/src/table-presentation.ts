@@ -40,8 +40,8 @@ const ITEM_EVENTS: Readonly<Record<string, PublicActionKind>> = {
 
 export type ChestToolClip = Extract<PresentationClipId, 'key' | 'lockpick' | 'crowbar' | 'blackKey'>;
 const CHEST_TOOLS: Readonly<Record<string, ChestToolClip>> = { key: 'key', lockpick: 'lockpick', crowbar: 'crowbar', 'black-key': 'blackKey' };
-/** Seconds into each tool clip at which the lock gives. The lid and the loot wait for this beat. */
-export const CHEST_TOOL_OPEN_AT: Readonly<Record<ChestToolClip, number>> = { key: .6, lockpick: .65, crowbar: .55, blackKey: .6 };
+/** Seconds into each authored tool clip at which the lock gives. The lid and loot wait for the physical contact beat. */
+export const CHEST_TOOL_OPEN_AT: Readonly<Record<ChestToolClip, number>> = { key: 2, lockpick: 2.2, crowbar: 1.7, blackKey: 2.1 };
 /* Buying, selling and complying are transfers, not uses: they get the brass exchange ring only.
    Playing an item's use clip for them (a knife stabbing the air on purchase) is never correct. */
 

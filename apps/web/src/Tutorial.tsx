@@ -9,7 +9,7 @@ import { TutorialClient } from './tutorial-client';
 import { recordTutorialMetric, saveTutorialPreferences } from './tutorial-storage';
 import './tutorial.css';
 const CONTINUE = new Set<TutorialStep>(['dealer', 'inventory', 'privacy', 'reward', 'bluff', 'practiceDone', 'income', 'objective', 'burn']);
-const AUTO_ADVANCE_MS: Partial<Record<TutorialStep, number>> = { privacy: 2500, reward: 1700, bluff: 1500, income: 4500, objective: 2500, burn: 2500 };
+const AUTO_ADVANCE_MS: Partial<Record<TutorialStep, number>> = { privacy: 2500, reward: 1700, bluff: 1500, income: 4500, objective: 7500, burn: 2500 };
 const CHAPTERS = ['Take a seat', 'Trade & Tasks', 'Threats & bluffs', 'Stay alive', 'Spend & explore', 'Wildcard & exit'];
 const TRADE_TRAIL = ['TRADE', 'THE DEALER', 'KEY', '2 GOLD', 'SEND'];
 const STRIPS: Partial<Record<TutorialStep, [string, string]>> = {

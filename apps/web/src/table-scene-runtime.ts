@@ -212,7 +212,7 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       exitWalks.clear(); departing.forEach(model => { model.visible = false; }); clearOwnerExit();
     };
     cleanups.push(clearExitWalks);
-    let chestFocus: { start: number; position: Vector3 } | undefined;
+    let chestFocus: { start: number; position: Vector3; duration: number } | undefined;
     const markers = new Map<string, Object3D>();
     let shopKit: VisualKit | undefined;
     let shop = new Group(), shopSignature = '';
@@ -521,8 +521,8 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       if (!arrival || arrival.finished) syncCamera(delta, now);
       if (chestFocus) {
         const seconds = (now - chestFocus.start) / 1000;
-        if (seconds >= 3.2) chestFocus = undefined;
-        else camera.lookAt(cameraAim.clone().lerp(chestFocus.position, .35 * ease(seconds / .5) * (1 - ease((seconds - 2.5) / .7))));
+        if (seconds >= chestFocus.duration) chestFocus = undefined;
+        else camera.lookAt(cameraAim.clone().lerp(chestFocus.position, .35 * ease(seconds / .7) * (1 - ease((seconds - (chestFocus.duration - .9)) / .9))));
       }
       // Exit playback is independent of the short item-effect pool and all game clocks.
       let activeDoor = false;
@@ -735,22 +735,13 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
       } else if (event.type === 'chest-tool') {
         const actor = seats.find(value => value.id === event.playerId), chest = chests.get(event.kind);
         if (!actor || !chest) return;
-        if (event.itemId === 'key' || event.itemId === 'blackKey') {
-          const key = kit.createItem(event.itemId); chest.add(key);
-          key.rotation.y = Math.PI / 2;
-          addEffect(`tool:${event.kind}`, 1.2, seconds => {
-            key.position.set(0, .2, .48 - .21 * ease(seconds / .3));
-            key.rotation.z = Math.PI / 2 * ease((seconds - .3) / .15);
-          }, () => { key.removeFromParent(); });
-          return;
-        }
         let tool = toolModels.get(event.itemId);
         if (!tool) { tool = createChestToolPresentation(kit, event.itemId); toolModels.set(event.itemId, tool); bundle.scene.add(tool.anchor); }
         chest.updateMatrixWorld(true);
         const keyhole = chest.localToWorld(KEYHOLE[event.kind].clone());
         const forward = new Vector3(0, 0, 1).applyAxisAngle(new Vector3(0, 1, 0), chest.rotation.y);
         const presentation = tool, geometry = { start: seatPlacement(actor.id, event.sourceSlot ?? 0), keyhole, forward, chestYaw: chest.rotation.y };
-        addEffect(`tool:${event.kind}`, 1.2, seconds => presentation.apply(seconds / 1.2 * presentation.duration, geometry), () => presentation.finish());
+        addEffect(`tool:${event.kind}`, presentation.duration, seconds => presentation.apply(seconds, geometry), () => presentation.finish());
       } else if (event.type === 'impact') {
         const upper = characters.get(event.playerId)?.getObjectByName('upper'); if (!upper) return;
         addEffect(`impact:${event.playerId}`, 0.6, t => { upper.rotation.x = publicImpactTilt(room.players.find(player => player.id === event.playerId)!.life, t); }, syncPlayers);
@@ -783,6 +774,11 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
         }, () => { model.visible = false; });
       } else if (event.type === 'chest-loot') {
         const chest = chests.get(event.kind)!;
+        const openAt = event.delay ?? 0;
+        const revealAt = openAt + 1.05;
+        const riseEnds = revealAt + .9;
+        const holdEnds = riseEnds + .7;
+        const flyEnds = holdEnds + 1.3;
         const received = event.instanceIds.map(id => inventoryModels.get(id)?.itemId).filter((id): id is string => Boolean(id));
         chestBanner.textContent = `${event.kind === 'BLACK' ? 'BLACK' : 'STANDARD'} CHEST · ${event.playerId === options.viewerId ? 'YOU TOOK' : 'TAKEN'} ${received.map(itemName).join(' + ').toUpperCase()}`;
         for (const id of event.instanceIds) {
@@ -792,26 +788,32 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
           const destination = seatPlacement(event.playerId, slot), above = new Vector3(chest.position.x, 1.45, chest.position.z);
           const out = (value: number) => 1 - Math.pow(1 - value, 3);
           const inOut = (value: number) => value < .5 ? 2 * value * value : 1 - Math.pow(-2 * value + 2, 2) / 2;
-          addEffect(`loot:${id}`, 2.95, elapsed => {
-            entry.anchor.visible = elapsed >= 1.2;
-            if (elapsed < 1.7) entry.anchor.position.set(chest.position.x, 1 + .45 * out(Math.max(0, (elapsed - 1.2) / .5)), chest.position.z);
-            else if (elapsed < 2.45) entry.anchor.position.copy(above);
-            else { const q = inOut(Math.min(1, (elapsed - 2.45) / .5)); entry.anchor.position.lerpVectors(above, destination, q); entry.anchor.position.y += Math.sin(q * Math.PI) * .25; }
+          addEffect(`loot:${id}`, flyEnds, elapsed => {
+            entry.anchor.visible = elapsed >= revealAt;
+            if (elapsed < revealAt) entry.anchor.position.set(chest.position.x, 1, chest.position.z);
+            else if (elapsed < riseEnds) entry.anchor.position.set(chest.position.x, 1 + .45 * out((elapsed - revealAt) / .9), chest.position.z);
+            else if (elapsed < holdEnds) entry.anchor.position.copy(above);
+            else { const q = inOut(Math.min(1, (elapsed - holdEnds) / 1.3)); entry.anchor.position.lerpVectors(above, destination, q); entry.anchor.position.y += Math.sin(q * Math.PI) * .25; }
             entry.anchor.rotation.y = elapsed * 2;
           }, () => { entry.anchor.visible = true; entry.anchor.position.copy(destination); entry.anchor.rotation.y = (seats.find(seat => seat.id === event.playerId)?.rotationY ?? Math.PI) - Math.PI; });
         }
       } else if (event.type === 'chest') {
         const model = chests.get(event.kind)!, lid = model.getObjectByName('lid')!;
-        chestFocus = { start: performance.now(), position: model.position.clone().add(new Vector3(0, .2, 0)) };
+        const openAt = event.delay ?? 0;
+        const lidEnds = openAt + 1.35;
+        const sequenceEnds = openAt + 4.05;
+        chestFocus = { start: performance.now(), position: model.position.clone().add(new Vector3(0, .2, 0)), duration: sequenceEnds };
         const glow = new PointLight(0xffc070, 0, 1.4, 2); glow.position.set(0, .48, 0); model.add(glow);
         if (!chestBanner.textContent?.includes('CHEST')) chestBanner.textContent = `${event.kind === 'BLACK' ? 'BLACK' : 'STANDARD'} CHEST · OPENED`;
-        addEffect(`chest:${event.kind}`, 2.95, elapsed => {
-          // Key and tool arrive first; latch, lid, loot hold, then transfer.
-          const u = Math.max(0, Math.min(1, (elapsed - .7) / .75));
-          const latch = elapsed > .45 && elapsed < .7 ? -.06 * Math.sin((elapsed - .45) / .25 * Math.PI) : 0;
-          lid.rotation.x = (event.kind === 'BLACK' ? -1.9 : -1.95) * ease(u) + latch + (elapsed > 1.3 && elapsed < 1.6 ? Math.sin((elapsed - 1.3) / .3 * Math.PI) * .05 : 0);
-          glow.intensity = elapsed < 1.2 ? 0 : elapsed < 1.7 ? 2.2 * ease((elapsed - 1.2) / .5) : elapsed < 2.45 ? 2.2 : 2.2 * (1 - ease((elapsed - 2.45) / .5));
-          chestBanner.hidden = elapsed < 1.45 || elapsed >= 2.45;
+        addEffect(`chest:${event.kind}`, sequenceEnds, elapsed => {
+          // The authored tool reaches the lock first. The lid then opens deliberately before loot rises and travels.
+          const u = Math.max(0, Math.min(1, (elapsed - openAt) / 1.35));
+          const latchStart = openAt - .18;
+          const latch = elapsed > latchStart && elapsed < openAt + .18 ? -.06 * Math.sin((elapsed - latchStart) / .36 * Math.PI) : 0;
+          const settleStart = openAt + 1.05;
+          lid.rotation.x = (event.kind === 'BLACK' ? -1.9 : -1.95) * ease(u) + latch + (elapsed > settleStart && elapsed < settleStart + .3 ? Math.sin((elapsed - settleStart) / .3 * Math.PI) * .05 : 0);
+          glow.intensity = elapsed < openAt + .8 ? 0 : elapsed < lidEnds + .35 ? 2.2 * ease((elapsed - (openAt + .8)) / .9) : elapsed < sequenceEnds - .7 ? 2.2 : 2.2 * (1 - ease((elapsed - (sequenceEnds - .7)) / .7));
+          chestBanner.hidden = elapsed < lidEnds || elapsed >= sequenceEnds - .7;
         }, () => { lid.rotation.x = room.chests?.find(value => value.kind === event.kind)?.availability === 'OPENED' ? -1.9 : 0; glow.removeFromParent(); chestBanner.hidden = true; chestBanner.textContent = ''; });
       } else if (event.type === 'shop') {
         addEffect('shop', 0.65, t => { shop.position.y = -0.12 * (1 - ease(t / 0.65)); }, () => { shop.position.y = 0; });

@@ -60,7 +60,13 @@ export class TutorialController {
     this.room = room;
     this.loadout(HUMAN, ['medicine', 'knife', 'key']); this.loadout(DEALER, ['antidote', 'cloth', 'pistol', 'bullet']);
     this.room.players.forEach(player => { player.inventory.coins = 5; }); this.room.players[0]!.hp = 2;
-    this.room.chests!.forEach(chest => { for (const loot of chest.loot) if (loot.kind === 'ITEM' && ['brass-idol','glass-eye','red-ledger'].includes(loot.stack.itemId)) this.room.match!.artifactPool.push(loot.stack.itemId); chest.loot = [{ kind: 'COINS', amount: 1 }]; });
+    this.room.chests!.forEach(chest => {
+      for (const loot of chest.loot) if (loot.kind === 'ITEM' && ['brass-idol','glass-eye','red-ledger'].includes(loot.stack.itemId)) this.room.match!.artifactPool.push(loot.stack.itemId);
+      // The chest lesson must visibly teach receiving loot, not silently change only the Gold counter.
+      chest.loot = chest.kind === 'STANDARD'
+        ? [{ kind: 'ITEM', stack: stack(this.room, 'spyglass') }, { kind: 'COINS', amount: 1 }]
+        : [{ kind: 'COINS', amount: 1 }];
+    });
     this.room.sideJobsByPlayer = {}; this.freeze();
     this.metrics.push({ kind: 'started', at: now, chapter: 1 });
   }
@@ -131,7 +137,8 @@ export class TutorialController {
       case 'blackMarket': this.enter('finishShopping'); break;
       case 'finishShopping':
         this.room.players[0]!.objective = { objectiveId: 'chest-raider', status: 'ACTIVE', progress: {}, rewardGranted: false };
-        this.room.chests![0]!.availability = 'AVAILABLE'; this.room.chests![0]!.loot = [{ kind: 'COINS', amount: 1 }];
+        this.room.chests![0]!.availability = 'AVAILABLE';
+        this.room.chests![0]!.loot = [{ kind: 'ITEM', stack: stack(this.room, 'spyglass') }, { kind: 'COINS', amount: 1 }];
         this.enter('chest'); break;
       case 'chest': this.enter('objective'); break;
       case 'draw': this.enter('use'); break;
