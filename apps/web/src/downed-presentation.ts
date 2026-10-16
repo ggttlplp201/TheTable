@@ -5,6 +5,8 @@ import { matchPresentationKey } from './table-presentation';
 export const SOURCE_WEAPON_CONTACT = { pistol: 1.5, knife: .9 } as const;
 export const COMPACT_ACTION_SECONDS = .8;
 export const WEAPON_CONTACT = { pistol: 1.5 / 2.8 * COMPACT_ACTION_SECONDS, knife: .9 / 2.7 * COMPACT_ACTION_SECONDS } as const;
+/** A short human reaction beat keeps the fall visibly after, rather than on, weapon contact. */
+export const DOWNED_REACTION_DELAY = .18;
 export const DOWNED_FALL_DURATION = 1.5;
 export function downedFallProgress(seconds: number): number {
   const t = Math.max(0, Math.min(1, seconds / DOWNED_FALL_DURATION));
@@ -32,7 +34,7 @@ export function updateDownedPresentation(previous: DownedPresentationState, room
         const weapon = [...fresh].reverse().find(event => event.kind === 'WEAPON_USED' && event.sequence < damage.sequence && event.actorId === down.actorId && event.targetIds.includes(playerId));
         const item = weapon?.presentation?.itemId;
         if (item !== 'pistol' && item !== 'knife') continue;
-        pending.push({ playerId, hp: before.hp, until: now + WEAPON_CONTACT[item] * 1000 });
+        pending.push({ playerId, hp: before.hp, until: now + (WEAPON_CONTACT[item] + DOWNED_REACTION_DELAY) * 1000 });
       }
     }
   }

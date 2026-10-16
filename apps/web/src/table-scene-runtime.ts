@@ -12,7 +12,7 @@ import { PublicPresentationObserver, arrivalEligible, hasSeenArrival, hasStarted
 import { ACTION_DURATION, actionFlash, actionSeatPoint, createChestToolPresentation, createPublicActionPresentation, spyglassZoom } from './table-action-presentation';
 import { orderRevealFrame } from './order-reveal';
 import { createOrderProps } from './order-props';
-import { downedFallProgress } from './downed-presentation';
+import { DOWNED_FALL_DURATION, downedFallProgress } from './downed-presentation';
 import { createSeatRestraint } from './table-restraints';
 import { itemName } from './gameplay';
 import { canInteractWithWildcardDeck, createWildcardDeckPresentation, publicWildcardDeckSnapshot, wildcardDeckTooltip } from './wildcard-scene';
@@ -237,6 +237,7 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     let lookX = 0, lookY = 0, currentLookX = 0, currentLookY = 0, dragX = 0, dragY = 0, dragOriginX = 0, dragOriginY = 0, dragging = false, moved = false;
     let lastFrame = performance.now();
     let falling: { startedAt: number; position: Vector3; rotation: Quaternion; destination: Quaternion } | undefined;
+    const characterFallStarts = new Map<string, number>();
     const syncCamera = (delta: number, now: number) => {
       // Reference .06/frame interpolation, normalized so high-refresh displays feel the same.
       const blend = motion.matches ? 1 : 1 - Math.pow(.94, delta * 60);
@@ -497,8 +498,8 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
         const time = motion.matches ? 0 : now / 1000, offset = seats.findIndex(seat => seat.id === id) * 1.7;
         if (player?.life === 'ACTIVE') kit.animateCharacter(character, time, offset);
         if (player?.life === 'DOWNED') {
-          const event = [...(room.events ?? [])].reverse().find(entry => entry.kind === 'DOWNED' && entry.targetIds.includes(id));
-          kit.animateDownedCharacter(character, event ? Math.max(0, (Date.now() - event.at) / 1000) : 1.5, time, offset);
+          const startedAt = characterFallStarts.get(id);
+          kit.animateDownedCharacter(character, startedAt === undefined ? DOWNED_FALL_DURATION : Math.max(0, (now - startedAt) / 1000), time, offset);
         }
       });
       syncPlayers();
@@ -886,13 +887,19 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
     const update = (next: PublicRoomView) => {
       if (disposed || next.revision < room.revision) return;
       const wasDowned = room.players.find(player => player.id === options.viewerId)?.life === 'DOWNED';
+      const previousLife = new Map(room.players.map(player => [player.id, player.life]));
       room = next;
       const isDowned = room.players.find(player => player.id === options.viewerId)?.life === 'DOWNED';
+      const transitionAt = performance.now();
+      for (const player of room.players) {
+        if (player.life === 'DOWNED' && previousLife.get(player.id) !== 'DOWNED' && !motion.matches && document.visibilityState !== 'hidden') characterFallStarts.set(player.id, transitionAt);
+        else if (player.life !== 'DOWNED' || motion.matches || document.visibilityState === 'hidden') characterFallStarts.delete(player.id);
+      }
       if (isDowned && !wasDowned && !motion.matches && document.visibilityState !== 'hidden') {
         const destination = camera.clone();
         destination.position.set(...CAMERA_VIEWS.downed.position);
         destination.lookAt(...CAMERA_VIEWS.downed.lookAt); destination.rotateZ(CAMERA_VIEWS.downed.roll);
-        falling = { startedAt: performance.now(), position: camera.position.clone(), rotation: camera.quaternion.clone(), destination: destination.quaternion.clone() };
+        falling = { startedAt: transitionAt, position: camera.position.clone(), rotation: camera.quaternion.clone(), destination: destination.quaternion.clone() };
       } else if (!isDowned || motion.matches || document.visibilityState === 'hidden') falling = undefined;
       for (const [kind, model] of chests) {
         const state = room.chests?.find(chest => chest.kind === kind)?.availability;
