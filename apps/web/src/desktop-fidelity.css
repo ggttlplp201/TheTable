@@ -157,6 +157,7 @@
 .reference-response.trade-response .response-clock .countdown { color:#d8ccb0; }
 .reference-overflow footer button { padding:8px 18px; border:2px solid rgba(216,204,176,.35); background:none; font:26px 'VT323',monospace; border-radius:0; color:#d8ccb0; }
 .reference-interface[data-panel=HANDBOOK],.reference-interface[data-panel=SETTINGS] { background:radial-gradient(ellipse 75% 65% at 50% 38%,#221b15,#060504 78%); border:2px solid #1e1a16; }
+.match-overlay.reference-interface[data-panel=HANDBOOK] { position:fixed; inset:0; width:100vw; height:100dvh; box-sizing:border-box; }
 .reference-handbook { height:100%; padding:26px 30px; box-sizing:border-box; display:flex; flex-direction:column; color:#d8ccb0; font-family:'VT323',monospace; }
 .handbook-header { display:flex; align-items:flex-end; gap:18px; padding-bottom:16px; margin-bottom:18px; border-bottom:2px solid rgba(216,204,176,.14); }
 .handbook-header h2 { margin:0; font:52px/.9 'IM Fell English SC',serif; font-weight:400; }
