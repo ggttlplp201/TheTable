@@ -10,6 +10,7 @@ import { recordTutorialMetric, saveTutorialPreferences } from './tutorial-storag
 import './tutorial.css';
 const CONTINUE = new Set<TutorialStep>(['dealer', 'inventory', 'privacy', 'reward', 'bluff', 'practiceDone', 'income', 'objective', 'burn']);
 const AUTO_ADVANCE_MS: Partial<Record<TutorialStep, number>> = { privacy: 2500, reward: 1700, bluff: 1500, income: 4500, objective: 7500, burn: 2500 };
+const EXIT_RESULT_HOLD_MS = 4_000;
 const CHAPTERS = ['Take a seat', 'Trade & Tasks', 'Threats & bluffs', 'Stay alive', 'Spend & explore', 'Wildcard & exit'];
 const TRADE_TRAIL = ['TRADE', 'THE DEALER', 'KEY', '2 GOLD', 'SEND'];
 const STRIPS: Partial<Record<TutorialStep, [string, string]>> = {
@@ -57,8 +58,9 @@ export default function Tutorial({ chapter, audio, audioStarted, onEnableAudio, 
   const [title, text] = controller.step === 'trade' ? [tradeTitles[tradeStage]!, 'Give your Key to The Dealer in exchange for 2 Gold.'] : STRIPS[controller.step] ?? [lessonTitle, lessonText];
   useEffect(() => {
     if (!completed) { setCompletionVisible(false); return; }
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setCompletionVisible(true); return; }
-    const timer = window.setTimeout(() => setCompletionVisible(true), EXIT_DURATION * 1000);
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const delay = (reducedMotion ? 0 : EXIT_DURATION * 1000) + EXIT_RESULT_HOLD_MS;
+    const timer = window.setTimeout(() => setCompletionVisible(true), delay);
     return () => window.clearTimeout(timer);
   }, [completed]);
   useEffect(() => {
