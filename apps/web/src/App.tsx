@@ -389,7 +389,7 @@ function LobbyView(props: {
             <span className="role-name">{detail.name}</span>
             <span className="role-kit" aria-label={detail.kit}>{ROLE_KITS[roleId].startingItems.map((itemId, itemIndex) => <ReferenceItemArt itemId={itemId} size={30} label="" key={`${itemId}-${itemIndex}`} />)}</span>
             <span className="role-ability">{detail.ability}</span>
-            <span className="role-state">{unavailable ? `TAKEN · ${owner?.name.toUpperCase()}` : selected ? '▶ SELECTED' : 'AVAILABLE'}</span>
+            {(unavailable || selected) && <span className="role-state">{unavailable ? `TAKEN · ${owner?.name.toUpperCase()}` : '▶ SELECTED'}</span>}
           </button>;
         })}
       </div>

@@ -648,7 +648,7 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
       </div>
       <RoleAbilityDetail detail={room.private} room={room.public} compact />
       <details className="hand-items scene-inventory-access" aria-label="Visible inventory"><summary>Visible items ▾</summary>
-        {presentItems(me.visibleInventory).map(item => <button type="button" key={item.instanceId} onClick={() => openIntent({ kind: 'ITEM', instanceId: item.instanceId, ownerId: viewerId, itemId: item.itemId })}><span>{stackName(item)}</span><small>Inspect</small></button>)}
+        {presentItems(me.visibleInventory).map(item => <button type="button" key={item.instanceId} onClick={() => openIntent({ kind: 'ITEM', instanceId: item.instanceId, ownerId: viewerId, itemId: item.itemId })}><span>{stackName(item)}</span></button>)}
       </details>
     </aside>}
 

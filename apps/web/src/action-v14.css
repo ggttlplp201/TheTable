@@ -17,16 +17,6 @@
   background: rgba(10, 8, 6, .78);
 }
 
-.selected-scene-item span {
-  display: grid;
-  gap: .2rem;
-}
-
-.selected-scene-item small {
-  color: #8f8270;
-  letter-spacing: .12em;
-}
-
 .selected-scene-item strong {
   color: #e0a040;
   font-size: 1.15rem;

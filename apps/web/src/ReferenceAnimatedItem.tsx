@@ -16,7 +16,6 @@ export function HandbookModel({ kind, modelId, name, description = '', tint = 0x
   return <div className={thumbnail ? 'handbook-character-thumbnail' : 'handbook-viewer'} data-model-kind={kind}>
     <canvas ref={canvas} role="img" aria-label={`${name} ${thumbnail ? 'portrait' : '3D model. Drag or use arrow keys to rotate.'}`} tabIndex={thumbnail ? -1 : 0} width={thumbnail ? 44 : 235} height={thumbnail ? 44 : 330} />
     {failed && <span className="handbook-model-fallback">{name}{!thumbnail && ' · Model unavailable'}</span>}
-    {!thumbnail && <span className="handbook-viewer-kind">{kind === 'chars' ? ['tallyman', 'fence'].includes(modelId) ? 'SHOPKEEPER' : modelId === 'dealer' ? 'TUTORIAL' : 'PLAYABLE ROLE' : kind === 'items' ? 'ITEM' : kind === 'contracts' ? 'CONTRACT' : 'WILDCARD'}</span>}
   </div>;
 }
 

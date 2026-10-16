@@ -29,7 +29,7 @@ export function HowToPlay({ onTutorial }: { onTutorial?: () => void } = {}) {
 
   return <section className="how-to-play" aria-label="How to play The Table">
     <nav className="rules-nav" aria-label="How to play chapters">
-      <header><span>PLAYER HANDBOOK</span><strong>How to Play</strong></header>
+      <header><strong>How to Play</strong></header>
       {CHAPTERS.map(([id, label], index) => <button type="button" key={id} className={active === id ? 'selected' : ''} aria-current={active === id ? 'page' : undefined} onClick={() => go(id)}><span>{String(index + 1).padStart(2, '0')}</span>{label}</button>)}
       <p><b>3–4</b> players<br /><b>{seconds(GAME_CONSTANTS.normalTurnMs)} sec</b> per turn</p>
     </nav>

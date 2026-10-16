@@ -1,6 +1,6 @@
 /* Approved Batch 03 DOM banners; the card itself is rendered in the table scene. */
 .wildcard-draw { display:grid; justify-items:center; align-content:center; gap:16px; max-width:600px; margin:auto; text-align:center; font:24px/1.15 'VT323',monospace; }
-.wildcard-draw h3 { margin:0 0 12px; font-size:30px; font-weight:400; }
+.wildcard-draw > span { color:#c5ad82; font-size:18px; letter-spacing:.14em; }
 .wildcard-draw p { margin:8px 0; }
 .match-viewport .contextual-actions > .wildcard-draw-action { min-height:56px; }
 .wildcard-resume { position:absolute; z-index:46; bottom:20px; left:50%; transform:translateX(-50%); min-height:56px; padding:12px 18px; border:2px solid #8a6a2a; background:#130e0a; color:#d8ccb0; font:22px/1 'VT323',monospace; }

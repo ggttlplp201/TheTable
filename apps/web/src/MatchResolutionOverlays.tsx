@@ -221,7 +221,7 @@ export function MatchResolutionOverlays({ room, viewerId }: { room: AnyRoomView;
     {room.public.status !== 'RESULTS' && spawn && <aside className="table-spawn-announcement" role="status" aria-live="polite"><strong>{spawn.heading}</strong><span>{spawn.detail}</span></aside>}
     {exit && exit.eventId !== dismissedExit && <section className="scene-exit-confirmation" role="dialog" aria-modal="true" aria-label="You left the table">
       <button ref={exitButton} type="button" aria-label="Return to the table as a spectator" onClick={() => setDismissedExit(exit.eventId)} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setDismissedExit(exit.eventId); } }}>
-        <span>⤴ ESCAPED · {exit.place} OUT</span><strong>You left the table</strong><small>Score locked · your contract is revealed to all · click to return</small>
+        <span>{exit.place} OUT</span><strong>You left the table</strong><small>Score locked · contract revealed · click to watch</small>
       </button>
     </section>}
   </>;

@@ -202,7 +202,6 @@ body:has(.match-viewport) .global-audio { display: none; }
 .hand-items button { transition: transform 120ms ease, border-color 120ms ease; }
 .hand-items button:hover { z-index: 1; border-color: #e0a040; transform: translateY(-9px); }
 .hand-items button span { font-family: "IM Fell English SC", Georgia, serif; font-size: 13px; }
-.hand-items button small { color: #c69c59; font-size: 10px; text-transform: uppercase; }
 .hand-items .empty-slot { color: #655b4d; background: rgb(8 7 6 / .6); font-size: 11px; }
 .pocket-indicators { min-width: 78px; display: grid; gap: 3px; }
 .pocket-indicators span { padding: 3px 5px; border: 1px solid #4d4438; color: #786f60; font-size: 10px; text-transform: uppercase; }

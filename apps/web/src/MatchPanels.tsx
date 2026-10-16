@@ -56,7 +56,7 @@ export function MatchHeader({ room, viewerId }: { room: AnyRoomView; viewerId: s
       <h1>{state.status === 'RESULTS' ? 'The final reckoning.' : intermission ? 'Intermission' : active?.id === viewerId ? 'Your turn.' : `${active?.name ?? 'The table'}’s turn`}</h1>
     </div>
     {state.round?.phase === 'TURN' && state.turn && <div className="turn-clock">
-      {state.turn.pausedRemainingMs !== undefined ? <><strong>{Math.ceil(state.turn.pausedRemainingMs / 1000)}s</strong><span>Turn paused</span></> : <><Countdown deadline={state.turn.deadlineAt} label="Turn remaining" /><span>Turn remaining</span></>}
+      {state.turn.pausedRemainingMs !== undefined ? <><strong>{Math.ceil(state.turn.pausedRemainingMs / 1000)}s</strong><span>Turn paused</span></> : <Countdown deadline={state.turn.deadlineAt} label="Turn remaining" />}
     </div>}
     <ol className="turn-order" aria-label={intermission ? 'Shopping order' : 'Seat order'}>
       {(intermission && state.shop ? state.shop.order.map(id => state.players.find(player => player.id === id)!).filter(Boolean) : state.players).map(player =>
@@ -114,7 +114,6 @@ export function ObjectiveDetail({ objective, room }: { objective: ObjectiveState
     {objective.targetPlayerId && <p>Assigned target: <strong>{playerName(room, objective.targetPlayerId)}</strong></p>}
     {objective.contingencyTargetId && <p>Contingency: personally kill <strong>{playerName(room, objective.contingencyTargetId)}</strong>, then leave when offered.</p>}
     <ul className="objective-progress" aria-label="Objective progress">{objectiveProgressItems(objective, room).map((item, index) => <li key={`${item.label}:${index}`} data-complete={item.complete ? 'true' : 'false'}><span aria-hidden="true">{item.complete ? '✓' : '○'}</span><span><strong>{item.label}</strong><small>{item.value}</small></span></li>)}</ul>
-    {definition && <p className="contract-rule">UNLOCKS ROUND {definition.unlockRound} · {definition.mode === 'SUSTAINED' ? 'KEEP THE REQUIREMENTS UNTIL YOU LEAVE.' : 'COMPLETION STAYS EARNED.'}</p>}
     {objective.contingency && <p className="contract-rule">CONTINGENCY · BANKS 80% OF THE EXIT SCORE.</p>}
   </div>;
 }

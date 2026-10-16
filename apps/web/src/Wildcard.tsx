@@ -9,7 +9,7 @@ import './wildcard.css';
 export function WildcardDraw({ room, send, busy }: ActionProps) {
   const allowed = hasCapability(room, 'DRAW_WILDCARD');
   return <section className="wildcard-draw" aria-label="Draw Wildcard">
-    <div><h3>One chance to change the table.</h3><p>Once per match. Costs your Primary Action.</p><p>Draw → Use or Burn immediately. Drawing cannot be cancelled.</p></div>
+    <span>PRIMARY ACTION · ONCE PER MATCH</span>
     <button type="button" className="button primary" disabled={busy || !allowed} onClick={() => void send({ type: 'DRAW_WILDCARD' })}>{allowed ? 'DRAW WILDCARD' : 'DRAW UNAVAILABLE'}</button>
     {!allowed && <p role="status">Your draw is unavailable. Wait for an eligible normal turn.</p>}
   </section>;
@@ -34,7 +34,7 @@ export function WildcardDecision({ room, send, busy, connected, targetPlayerId, 
       <p className="sr-only" id="wildcard-action-help">Use reveals the card publicly{card.targeting !== 'NONE' ? ', then you choose its target' : ' and resolves it'}. Burn keeps its identity secret. Choose before your normal turn ends. An undecided card is burned.</p>
       <div className="wildcard-buttons"><button type="button" className="wildcard-use" disabled={busy || !connected || !hasCapability(room, 'USE_WILDCARD')} onClick={() => void send({ type: 'USE_WILDCARD' })}>USE</button><button type="button" className="wildcard-burn" disabled={busy || !connected || !hasCapability(room, 'BURN_WILDCARD')} onClick={() => void send({ type: 'BURN_WILDCARD' })}>BURN</button></div>
     </>}
-    <div className="wildcard-commitment" id="wildcard-commitment"><strong>YOUR PRIMARY ACTION IS COMMITTED</strong><span>{targeting ? 'Choose a player at the table or below. Wildcard spent.' : 'Choose what happens to this Wildcard.'}</span><span className="sr-only">Primary Action committed · Wildcard spent</span></div>
+    <div className="wildcard-commitment" id="wildcard-commitment"><strong>PRIMARY ACTION COMMITTED</strong><span className="sr-only">Wildcard spent</span></div>
   </section>;
 }
 
@@ -61,29 +61,29 @@ export function WildcardTargetPicker({ room, send, busy, targetPlayerId, onTarge
   }}><fieldset disabled={busy || !allowed}><legend className="sr-only">Choose Wildcard targets</legend>
     {options.hasTargets ? <>
       <section className="wildcard-choice-block wildcard-player-block" aria-labelledby="wildcard-player-heading">
-        <div className="wildcard-choice-heading"><span>1</span><strong id="wildcard-player-heading">CHOOSE A PLAYER</strong><small>{target ? `${target.name.toUpperCase()} SELECTED` : 'ACTIVE PLAYERS'}</small></div>
+        <div className="wildcard-choice-heading"><span>1</span><strong id="wildcard-player-heading">CHOOSE A PLAYER</strong></div>
         <div className="wildcard-player-choices" role="group" aria-label="Choose a Wildcard target player">{options.players.map(player => <button type="button" key={player.id} aria-label={player.name} aria-pressed={targetId === player.id} onClick={() => chooseTarget(player.id)}><span className="wildcard-choice-mark" aria-hidden="true">{targetId === player.id ? '◆' : '◇'}</span><strong>{player.name.toUpperCase()}</strong><small>SEAT {player.seat + 1}{player.connection === 'DISCONNECTED' ? ' · OFFLINE' : ''}</small></button>)}</div>
         <label className="sr-only">Wildcard target player<select aria-label="Wildcard target player" value={targetId} onChange={event => chooseTarget(event.target.value)}><option value="">Choose a player</option>{options.players.map(player => <option key={player.id} value={player.id}>{player.name}</option>)}</select></label>
       </section>
       {target && (card.targeting === 'POCKET' ? <section className="wildcard-choice-block" aria-labelledby="wildcard-pocket-heading">
         <div className="wildcard-choice-heading"><span>2</span><strong id="wildcard-pocket-heading">CHOOSE AN OCCUPIED POCKET</strong><small>CONTENTS STAY HIDDEN</small></div>
-        <div className="wildcard-pocket-choices" role="group" aria-label="Choose an occupied Pocket">{target.pocketOccupancy.flatMap((occupied, index) => occupied ? [<button type="button" key={index} aria-label={`Pocket ${index + 1}`} aria-pressed={pocketIndex === String(index)} onClick={() => setPocketIndex(String(index))}><span aria-hidden="true">▰</span><strong>POCKET {index + 1}</strong><small>OCCUPIED · UNKNOWN</small></button>] : [])}</div>
+        <div className="wildcard-pocket-choices" role="group" aria-label="Choose an occupied Pocket">{target.pocketOccupancy.flatMap((occupied, index) => occupied ? [<button type="button" key={index} aria-label={`Pocket ${index + 1}`} aria-pressed={pocketIndex === String(index)} onClick={() => setPocketIndex(String(index))}><span aria-hidden="true">▰</span><strong>POCKET {index + 1}</strong></button>] : [])}</div>
         <label className="sr-only">Wildcard target Pocket<select aria-label="Wildcard target Pocket" value={pocketIndex} onChange={event => setPocketIndex(event.target.value)}><option value="">Choose a Pocket</option>{target.pocketOccupancy.flatMap((occupied, index) => occupied ? [<option key={index} value={index}>Pocket {index + 1} · Occupied</option>] : [])}</select></label>
       </section> : <section className="wildcard-choice-block" aria-labelledby="wildcard-item-heading">
-        <div className="wildcard-choice-heading"><span>2</span><strong id="wildcard-item-heading">CHOOSE THEIR VISIBLE ITEM</strong><small>{target.name.toUpperCase()} · ON THE TABLE</small></div>
+        <div className="wildcard-choice-heading"><span>2</span><strong id="wildcard-item-heading">CHOOSE THEIR VISIBLE ITEM</strong></div>
         <div className="wildcard-item-choices" role="group" aria-label="Choose their visible item">{visible.map(item => <button type="button" key={item.instanceId} aria-label={stackName(item)} aria-pressed={instanceId === item.instanceId} onClick={() => setInstanceId(item.instanceId)}><ReferenceItemArt itemId={item.itemId} size={52} label="" /><strong>{stackName(item).toUpperCase()}</strong>{item.quantity > 1 && <small>×{item.quantity}</small>}<span className="wildcard-item-check" aria-hidden="true">{instanceId === item.instanceId ? '◆' : ''}</span></button>)}</div>
         <label className="sr-only">Wildcard target item<select aria-label="Wildcard target item" value={instanceId} onChange={event => setInstanceId(event.target.value)}><option value="">Choose an item</option>{visible.map(item => <option key={item.instanceId} value={item.instanceId}>{stackName(item)}</option>)}</select></label>
       </section>)}
       {card.targeting === 'EXCHANGE' && <section className="wildcard-choice-block" aria-labelledby="wildcard-own-item-heading">
-        <div className="wildcard-choice-heading"><span>3</span><strong id="wildcard-own-item-heading">CHOOSE YOUR ITEM TO GIVE</strong><small>VISIBLE INVENTORY</small></div>
+        <div className="wildcard-choice-heading"><span>3</span><strong id="wildcard-own-item-heading">CHOOSE YOUR ITEM TO GIVE</strong></div>
         <div className="wildcard-item-choices wildcard-own-item-choices" role="group" aria-label="Choose your exchange item">{options.ownItems.map(item => <button type="button" key={item.instanceId} aria-label={`Give ${stackName(item)}`} aria-pressed={ownInstanceId === item.instanceId} onClick={() => setOwnInstanceId(item.instanceId)}><ReferenceItemArt itemId={item.itemId} size={52} label="" /><strong>{stackName(item).toUpperCase()}</strong>{item.quantity > 1 && <small>×{item.quantity}</small>}<span className="wildcard-item-check" aria-hidden="true">{ownInstanceId === item.instanceId ? '◆' : ''}</span></button>)}</div>
         <label className="sr-only">Your exchange item<select aria-label="Your exchange item" value={ownInstanceId} onChange={event => setOwnInstanceId(event.target.value)}><option value="">Choose an item to give</option>{options.ownItems.map(item => <option key={item.instanceId} value={item.instanceId}>{stackName(item)}</option>)}</select></label>
       </section>}
-      <p>{card.targeting === 'POCKET' ? 'Only occupancy is known. Safe blocks the reveal and the Wildcard remains spent.' : 'Visible inventory only. Pocket contents stay protected.'}</p>
+      {card.targeting === 'POCKET' && <p>Safe blocks the reveal.</p>}
     </> : <p role="status">No legal targets remain. Resolve without an effect; your Wildcard remains spent.</p>}
     {targetId && !target && options.hasTargets && <p role="status">That target is no longer available. Choose another player.</p>}
     <button className="button primary" disabled={busy || !command}>{options.hasTargets ? 'RESOLVE WILDCARD' : 'RESOLVE · NO EFFECT'}</button>
-  </fieldset><p className="wildcard-deadline-note" id="wildcard-action-help">Use is committed. Resolve before your normal turn ends, or the card expires without an effect.</p></form>;
+  </fieldset><p className="wildcard-deadline-note" id="wildcard-action-help">Resolve before your turn ends.</p></form>;
 }
 
 export function WildcardPublicFeedback({ room, ownerDecision = false }: { room: PublicRoomView; ownerDecision?: boolean }) {
