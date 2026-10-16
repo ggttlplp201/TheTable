@@ -9,13 +9,7 @@ import { ReferenceItemArt } from './ReferenceItemArt';
 import { HandbookModel } from './ReferenceAnimatedItem';
 import { HandbookCharacterThumbnail } from './ReferencePortrait';
 import { tableSealURL } from './reference-game-kit.js';
-
-const DISPLAY_KEY = 'the-table:display:v1';
-const DEFAULT_DISPLAY = { textSize: 'M', log: true, grain: false };
-function readDisplaySettings() {
-  if (typeof window === 'undefined') return DEFAULT_DISPLAY;
-  try { return { ...DEFAULT_DISPLAY, ...JSON.parse(localStorage.getItem(DISPLAY_KEY) ?? '{}') } as typeof DEFAULT_DISPLAY; } catch { return DEFAULT_DISPLAY; }
-}
+import { readDisplaySettings, saveDisplaySettings, TABLE_TEXT_SIZES } from './display-settings';
 
 type HandbookCharacter = {
   id: string; group: string; name: string; epithet: string; tint: number; no: string; stamp: string; stampCol: string;
@@ -127,13 +121,9 @@ export function ReferenceSettings({ engine, started, onStart, children }: { engi
     setState(engine.state());
   };
   useEffect(() => {
-    try { localStorage.setItem(DISPLAY_KEY, JSON.stringify({ textSize, log, grain })); } catch { /* Display settings still apply in this tab. */ }
-    document.documentElement.dataset.tableTextSize = textSize;
-    document.documentElement.dataset.tableLog = String(log);
-    document.documentElement.dataset.tableGrain = grain ? 'normal' : 'low';
-    window.dispatchEvent(new CustomEvent('table-visual-settings', { detail: { grain: grain ? .16 : .06, textSize, log } }));
+    saveDisplaySettings({ textSize, log, grain });
   }, [textSize, log, grain]);
-  return <section className="reference-settings" aria-label="Settings and accessibility"><div><h3>AUDIO</h3>{!started && <button type="button" className="reference-enable-audio" onClick={onStart}>ENABLE SOUND</button>}{([['MASTER', state.volume], ['MUSIC', state.roomVolume], ['EFFECTS', state.effectsVolume]] as const).map(([kind, amount]) => <label className="reference-volume" key={kind}><span>{kind}</span><input type="range" min="0" max="1" step=".01" value={amount} onChange={event => change(kind, Number(event.target.value))} style={{ '--volume-level': `${amount * 100}%` } as React.CSSProperties} /><output>{Math.round(amount * 100)}</output></label>)}<h3 className="text-size-title">TEXT SIZE</h3><div className="reference-text-size">{['S', 'M', 'L'].map(size => <button type="button" key={size} className={textSize === size ? 'selected' : ''} aria-pressed={textSize === size} onClick={() => setTextSize(size)}>{size}</button>)}</div><button className="reference-mute" type="button" onClick={() => { engine.setMuted(!state.muted); setState(engine.state()); }}>{state.muted ? '[■] MUTED' : '[□] MUTE'}</button></div><div><h3>READABILITY</h3><button className="reference-setting-toggle" type="button" onClick={() => setLog(value => !value)}><span>Event log</span><span>{log ? '[■] ON' : '[□] OFF'}</span></button><button className="reference-setting-toggle grain-toggle" type="button" onClick={() => setGrain(value => !value)}><span>Film grain</span><span>{grain ? '[■] NORMAL' : '[□] LOW'}</span></button><div className="reference-setting-toggle future-setting"><span>Reduced motion</span><span>[□] SYSTEM</span></div><div className="reference-camera-hint"><strong>CAMERA</strong><p>DRAG TO LOOK</p></div>{children && <details className="reference-voice"><summary>TABLE VOICE</summary>{children}</details>}</div></section>;
+  return <section className="reference-settings" aria-label="Settings and accessibility"><div><h3>AUDIO</h3>{!started && <button type="button" className="reference-enable-audio" onClick={onStart}>ENABLE SOUND</button>}{([['MASTER', state.volume], ['MUSIC', state.roomVolume], ['EFFECTS', state.effectsVolume]] as const).map(([kind, amount]) => <label className="reference-volume" key={kind}><span>{kind}</span><input type="range" min="0" max="1" step=".01" value={amount} onChange={event => change(kind, Number(event.target.value))} style={{ '--volume-level': `${amount * 100}%` } as React.CSSProperties} /><output>{Math.round(amount * 100)}</output></label>)}<h3 className="text-size-title">TEXT SIZE</h3><div className="reference-text-size">{TABLE_TEXT_SIZES.map(size => <button type="button" key={size} className={textSize === size ? 'selected' : ''} aria-pressed={textSize === size} onClick={() => setTextSize(size)}>{size}</button>)}</div><button className="reference-mute" type="button" onClick={() => { engine.setMuted(!state.muted); setState(engine.state()); }}>{state.muted ? '[■] MUTED' : '[□] MUTE'}</button></div><div><h3>READABILITY</h3><button className="reference-setting-toggle" type="button" onClick={() => setLog(value => !value)}><span>Event log</span><span>{log ? '[■] ON' : '[□] OFF'}</span></button><button className="reference-setting-toggle grain-toggle" type="button" onClick={() => setGrain(value => !value)}><span>Film grain</span><span>{grain ? '[■] NORMAL' : '[□] LOW'}</span></button><div className="reference-setting-toggle future-setting"><span>Reduced motion</span><span>[□] SYSTEM</span></div><div className="reference-camera-hint"><strong>CAMERA</strong><p>DRAG TO LOOK</p></div>{children && <details className="reference-voice"><summary>TABLE VOICE</summary>{children}</details>}</div></section>;
 }
 
 export function ReferenceStateOverlays({ room, viewerId, send, busy, openContract }: { room: AnyRoomView; viewerId: string; send: (command: PlayerCommand) => Promise<boolean>; busy: boolean; openContract: () => void }) {

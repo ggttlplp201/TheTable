@@ -415,8 +415,6 @@
 .reference-interface[data-panel=USE_ITEM] .item-choice-grid button { display:flex; flex-direction:column; align-items:center; gap:4px; min-height:0; padding:6px; background:rgba(0,0,0,.3); }
 .reference-interface[data-panel=USE_ITEM] .item-choice-grid button small { display:none; }
 .reference-interface[data-panel=USE_ITEM] .item-choice-grid button strong { font:18px 'VT323',monospace; }
-:root[data-table-text-size=L] .reference-interface .item-help,:root[data-table-text-size=L] .reference-contract .objective-detail > p { font-size:28px; }
-:root[data-table-text-size=S] .reference-interface .item-help,:root[data-table-text-size=S] .reference-contract .objective-detail > p { font-size:20px; }
 .match-viewport:has(.reference-interface,.forced-decision,.results-stage,.reference-downed-hud) > .scene-event-feed { display:none; }
 .match-viewport:has(.reference-downed-hud) > .match-hud-top,.match-viewport:has(.reference-downed-hud) > .seat-ribbon,.match-viewport:has(.reference-downed-hud) > .self-hand,.match-viewport:has(.reference-downed-hud) > .action-dock { display:none; }
 .match-viewport:has(.reference-interface,.forced-decision,.results-stage,.reference-downed-hud) .scene-nameplate { display:none; }

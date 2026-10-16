@@ -3,7 +3,10 @@
   background: #12100f;
   font-family: "Avenir Next", Avenir, "Helvetica Neue", sans-serif;
   font-synthesis: none;
+  --table-text-size-delta: 0px;
 }
+:root[data-table-text-size="S"] { --table-text-size-delta: -2px; }
+:root[data-table-text-size="L"] { --table-text-size-delta: 4px; }
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100dvh; background: #12100f; }
