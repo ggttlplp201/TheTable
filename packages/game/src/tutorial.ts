@@ -17,11 +17,13 @@ export const TUTORIAL_STEPS = {
   trade: { chapter: 2, title: 'TRADE WITH THE DEALER', text: 'Open Trade. Give your Key and request 2 Gold. Your private TRADE Task pays another 2 Gold.', focus: 'trade' },
   reward: { chapter: 2, title: 'TASK COMPLETE · +2 GOLD', text: 'The Key changed hands, you received 2 Gold, and your Task added 2 more. Your Primary Action is resolved, so your turn ended automatically.', focus: 'tasks' },
   refuse: { chapter: 3, title: 'REFUSE THE COVERED THREAT', text: 'The Dealer demands 2 Gold. The hidden item may be a weapon or a bluff. Refuse this one.', focus: 'response' },
-  bluff: { chapter: 3, title: 'BLUFF CALLED', text: 'An Antidote was under the Cloth. No attack occurred. Trade timeout = Decline. Threat timeout = Comply.', focus: 'dealer' },
+  tradePending: { chapter: 2, title: 'THE DEALER IS CONSIDERING YOUR OFFER', text: 'Your offer is on the table. The Dealer will answer in a moment.', focus: 'table' },
+  bluff: { chapter: 3, title: 'BLUFF CALLED', text: 'An Antidote was under the Cloth. No attack occurred. Trade timeout = Decline. Threat timeout = Comply.', focus: 'table' },
   practice: { chapter: 3, title: 'YOUR COVERED THREAT', text: 'Choose Threaten → Under Cloth. Back it with your Knife, cover it with Cloth, and demand 1 Gold from The Dealer.', focus: 'threat' },
-  practiceDone: { chapter: 3, title: 'THE DEALER COMPLIED', text: 'You received the Gold. The Knife was not used. Next you will practise surviving a lethal hit.', focus: 'dealer' },
+  threatPending: { chapter: 3, title: 'THE DEALER IS WEIGHING THE THREAT', text: 'Your demand is on the table. The Dealer will answer in a moment.', focus: 'table' },
+  practiceDone: { chapter: 3, title: 'THE DEALER COMPLIED', text: 'You received the Gold. The Knife was not used. Next you will practise surviving a lethal hit.', focus: 'table' },
   downed: { chapter: 4, title: 'DOWNED — NOT DEAD', text: 'You can still talk and inspect the table. You die immediately before The Dealer’s next normal turn if you remain Downed. It is your Downed turn: use REVIVE WITH MEDICINE.', focus: 'revive' },
-  income: { chapter: 5, title: 'ROUND COMPLETE · +2 ROUND INCOME', text: 'You revived to 2 HP. Every living player still at the table receives Round Income. Tasks can earn extra Gold.', focus: 'coins' },
+  income: { chapter: 5, title: 'REVIVED · INTERMISSION BEGINS', text: 'You are back at 2 HP. The round is over, every living player receives +2 Round Income, then the die and coin decide shopping order.', focus: 'coins' },
   publicShop: { chapter: 5, title: 'BUY A KEY AT THE PUBLIC SHOP', text: 'Shared stock: once someone buys an item, it is gone. Buy the Key before entering your private market.', focus: 'market' },
   blackMarket: { chapter: 5, title: 'YOUR PRIVATE BLACK MARKET', text: 'Your Public decision unlocked the Black Market. Other players cannot see these offers. Buy the Antidote.', focus: 'market' },
   finishShopping: { chapter: 5, title: 'FINISH SHOPPING', text: 'Use Finish Intermission to move on when you are ready.', focus: 'market' },
@@ -29,7 +31,7 @@ export const TUTORIAL_STEPS = {
   objective: { chapter: 5, title: 'OBJECTIVE COMPLETE', text: 'Leave Table unlocks at the start of your next normal turn. Until then, you are still exposed to other players.', focus: 'contract' },
   draw: { chapter: 6, title: 'ROUND 3 · DRAW A WILDCARD', text: 'Use DRAW WILDCARD at the bottom of the screen. You may draw once per match, and drawing spends your Primary Action.', focus: 'wildcard' },
   use: { chapter: 6, title: 'SEIZE · USE YOUR CARD', text: 'This card takes one visible item from another player. USE reveals it to the table; BURN discards it while keeping its identity secret.', focus: 'wildcard' },
-  seize: { chapter: 6, title: 'TAKE A VISIBLE DEALER ITEM', text: 'Choose The Dealer, select one visible item, and resolve SEIZE.', focus: 'dealer' },
+  seize: { chapter: 6, title: 'TAKE A VISIBLE DEALER ITEM', text: 'Choose The Dealer, select one visible item, and resolve SEIZE.', focus: 'table' },
   burn: { chapter: 6, title: 'YOU USED A WILDCARD', text: 'In a real match, you may BURN instead. A burned Wildcard stays secret. Your action is complete; leave on your next normal turn.', focus: 'wildcard' },
   exit: { chapter: 6, title: 'LEAVE THE TABLE', text: 'Your next normal turn has begun. Your completed Contract lets you leave successfully. Open Contract or click the exit.', focus: 'contract' },
   complete: { chapter: 6, title: 'YOU’RE READY FOR THE TABLE', text: '3–4 players. Secret Objectives. Trust nobody completely.', focus: 'table' },
@@ -68,6 +70,12 @@ export class TutorialController {
     // reveal private until prepareShop retimes it, otherwise the die begins near
     // the end of this beat and is visibly restarted when the shop lesson opens.
     if (this.step === 'income' && view.public.shop) delete view.public.shop.orderReveal;
+    // The completed training Contract is deliberately held until the Wildcard
+    // lesson is resolved; otherwise the real exit capability steals camera
+    // focus and lets the learner skip the final mechanic.
+    if (view.private.capabilities && ['draw', 'use', 'seize', 'burn'].includes(this.step)) {
+      view.private.capabilities = view.private.capabilities.filter(capability => capability !== 'LEAVE_TABLE' && capability !== 'STAY');
+    }
     if (view.public.turn) view.public.turn.pausedRemainingMs = RULES.turnMs;
     if (view.public.pendingTrade) view.public.pendingTrade.deadlineAt = this.clock() + RULES.responseMs;
     if (view.public.pendingThreat) view.public.pendingThreat.deadlineAt = this.clock() + RULES.responseMs;
@@ -96,7 +104,7 @@ export class TutorialController {
     this.freeze();
   }
   skipPractice(): void { if (this.step === 'practice') this.prepareDowned(); }
-  submit(command: GameCommand): void {
+  submit(command: GameCommand, deferDealerReaction = false): void {
     const correct = this.expected(command);
     if (!correct) { this.retry(command.type); throw new Error(this.instruction.text); }
     if (command.type === 'BURN_WILDCARD' && this.step === 'use') {
@@ -106,9 +114,15 @@ export class TutorialController {
     try { this.act(HUMAN, command); } catch (error) { this.retry(command.type); throw error; }
     switch (this.step) {
       case 'pocket': this.enter('privacy'); break;
-      case 'trade': this.act(DEALER, { type: 'RESPOND_TRADE', accept: true }); this.enter('reward'); break;
+      case 'trade':
+        if (deferDealerReaction) this.enter('tradePending');
+        else { this.act(DEALER, { type: 'RESPOND_TRADE', accept: true }); this.enter('reward'); }
+        break;
       case 'refuse': this.enter('bluff'); break;
-      case 'practice': this.act(DEALER, { type: 'RESPOND_THREAT', comply: true }); this.enter('practiceDone'); break;
+      case 'practice':
+        if (deferDealerReaction) this.enter('threatPending');
+        else { this.act(DEALER, { type: 'RESPOND_THREAT', comply: true }); this.enter('practiceDone'); }
+        break;
       case 'downed': this.enter('income'); break;
       case 'publicShop': this.finishDealerShopping(); this.enter('blackMarket'); break;
       case 'blackMarket': this.enter('finishShopping'); break;
@@ -123,6 +137,17 @@ export class TutorialController {
       case 'exit': this.enter('complete'); this.metrics.push({ kind: 'chapter', at: this.clock(), chapter: 6, elapsedMs: this.clock()-this.chapterStartedAt }); this.metrics.push({ kind: 'completed', at: this.clock(), chapter: 6 }); break;
     }
     this.freeze();
+  }
+  resolveDealerReaction(): boolean {
+    if (this.step === 'tradePending') {
+      this.act(DEALER, { type: 'RESPOND_TRADE', accept: true });
+      this.enter('reward'); this.freeze(); return true;
+    }
+    if (this.step === 'threatPending') {
+      this.act(DEALER, { type: 'RESPOND_THREAT', comply: true });
+      this.enter('practiceDone'); this.freeze(); return true;
+    }
+    return false;
   }
   /** Resume restages the last chapter through the exact same successful lesson transitions. */
   resume(chapter: number): void {

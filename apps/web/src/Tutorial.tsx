@@ -9,7 +9,8 @@ import { TutorialClient } from './tutorial-client';
 import { recordTutorialMetric, saveTutorialPreferences } from './tutorial-storage';
 import './tutorial.css';
 const CONTINUE = new Set<TutorialStep>(['dealer', 'inventory', 'privacy', 'reward', 'bluff', 'practiceDone', 'income', 'objective', 'burn']);
-const AUTO_ADVANCE_MS: Partial<Record<TutorialStep, number>> = { privacy: 2500, reward: 1700, bluff: 1500, income: 1600, objective: 2500, burn: 2500 };
+const AUTO_ADVANCE_MS: Partial<Record<TutorialStep, number>> = { privacy: 2500, reward: 1700, bluff: 1500, income: 4500, objective: 2500, burn: 2500 };
+const DEALER_REACTION_MS = 5000;
 const CHAPTERS = ['Take a seat', 'Trade & Tasks', 'Threats & bluffs', 'Stay alive', 'Spend & explore', 'Wildcard & exit'];
 const TRADE_TRAIL = ['TRADE', 'THE DEALER', 'KEY', '2 GOLD', 'SEND'];
 const STRIPS: Partial<Record<TutorialStep, [string, string]>> = {
@@ -117,6 +118,14 @@ export default function Tutorial({ chapter, audio, audioStarted, onEnableAudio, 
       controller.next();
       changed();
     }, duration);
+    return () => window.clearTimeout(timer);
+  }, [controller, controller.step, changed]);
+  useEffect(() => {
+    const step = controller.step;
+    if (step !== 'tradePending' && step !== 'threatPending') return;
+    const timer = window.setTimeout(() => {
+      if (controller.step === step && controller.resolveDealerReaction()) changed();
+    }, DEALER_REACTION_MS);
     return () => window.clearTimeout(timer);
   }, [controller, controller.step, changed]);
   useEffect(() => {

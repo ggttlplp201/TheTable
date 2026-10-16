@@ -457,6 +457,17 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
   const audio = useMatchAudio(room, viewerId, suppliedAudio, musicScene, sceneReady);
   const action = useMatchActions({ client, room, connected, viewerId, onView, onAccepted: request => { if (audio.started) playAcceptedActionAudio(audio.engine, room, request); } });
   const spectator = isSpectatorView(room);
+  const canLeave = !spectator && hasCapability(room, 'LEAVE_TABLE');
+  const [doorFocusActive, setDoorFocusActive] = useState(false);
+  const sawExitReady = useRef(false);
+  useEffect(() => {
+    if (!canLeave) { sawExitReady.current = false; setDoorFocusActive(false); return; }
+    if (sawExitReady.current) return;
+    sawExitReady.current = true;
+    setDoorFocusActive(true);
+    const timer = window.setTimeout(() => setDoorFocusActive(false), 2800);
+    return () => window.clearTimeout(timer);
+  }, [canLeave]);
   const presentedPublic = usePresentedHealth(room.public, sceneReady);
   const results = room.public.status === 'RESULTS';
   const intermission = room.public.round?.phase === 'INTERMISSION';
@@ -589,7 +600,7 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
     else showPanel('USE_ITEM', { itemInstanceId: sceneItem.instanceId });
   };
   const focusPlayerId = spectator ? undefined : interactionCameraTarget(room, viewerId, panel, sceneSelection);
-  const sceneFocus = !spectator && hasCapability(room, 'LEAVE_TABLE') && (!panel || panel === 'OBJECTIVE') ? 'door'
+  const sceneFocus = canLeave && doorFocusActive && (!panel || panel === 'OBJECTIVE') ? 'door'
     : focusPlayerId ? 'seat'
     : panel === 'USE_ITEM' || panel === 'OBJECTIVE' || panel === 'POCKETS' || panel === 'DOWNED' || (!spectator && hasCapability(room, 'OVERFLOW_CHOICE')) ? 'down' : 'seat';
 
@@ -597,7 +608,7 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
   return <div className="match-layout match-viewport" data-viewer={spectator ? 'spectator' : 'player'} data-market={panel === 'MARKETS' || undefined} data-response={forcedDecision || undefined} data-chat={chatOpen || undefined} data-downed={me?.life === 'DOWNED' || undefined} data-modal={modalOpen ? 'true' : undefined} data-objective-reveal={objectiveBlocking ? objectiveReveal.phase.toLowerCase() : undefined}>
     <MultiplayerHints room={room} blackMarketOpen={panel === 'MARKETS' && marketView === 'BLACK'} />
     <div className="match-scene-shell" aria-label={spectator ? 'Spectator table view' : 'First person table view'}>
-      <GameTableScene onExitBeat={beat => { if (audio.started) playExitBeatAudio(audio.engine, beat); }} tutorialFocus={guideFocus} onCameraTravel={onCameraTravel} room={presentedPublic} {...(ownerWildcard ? { ownerWildcard } : {})} wildcardDrawEnabled={hasCapability(room, 'DRAW_WILDCARD') && !action.busy} onReadyChange={setSceneReady} viewerId={spectator ? undefined : viewerId} onIntent={openIntent} interactionsEnabled={!presentationBlocking && !panel && !sceneChest && (!forcedDecision || wildcardTargeting) && !results} exitReady={!spectator && hasCapability(room, 'LEAVE_TABLE')} showOwnerMarket={!spectator && intermission} focus={sceneFocus} focusPlayerId={focusPlayerId} selectedItemId={!panel && !forcedDecision ? sceneItem?.instanceId : undefined} aimTargets={aimTargets} aimPockets={Boolean(aiming && sceneItem && ['spyglass', 'pickpocket', 'glass-eye'].includes(sceneItem.itemId))} spyglassTargetId={activeScope?.identity === scopeIdentity ? activeScope.targetId : undefined} spyglassActive={!spectator && !results && activeScope?.identity === scopeIdentity} onArrivalBeat={beat => { if (audio.started) audio.engine.play(ARRIVAL_AUDIO[beat]); }} onArrivalStateChange={active => setObjectiveReveal(current => {
+      <GameTableScene onExitBeat={beat => { if (audio.started) playExitBeatAudio(audio.engine, beat); }} tutorialFocus={guideFocus} onCameraTravel={onCameraTravel} room={presentedPublic} {...(ownerWildcard ? { ownerWildcard } : {})} wildcardDrawEnabled={hasCapability(room, 'DRAW_WILDCARD') && !action.busy} onReadyChange={setSceneReady} viewerId={spectator ? undefined : viewerId} onIntent={openIntent} interactionsEnabled={!presentationBlocking && !panel && !sceneChest && (!forcedDecision || wildcardTargeting) && !results} exitReady={canLeave} showOwnerMarket={!spectator && intermission} focus={sceneFocus} focusPlayerId={focusPlayerId} selectedItemId={!panel && !forcedDecision ? sceneItem?.instanceId : undefined} aimTargets={aimTargets} aimPockets={Boolean(aiming && sceneItem && ['spyglass', 'pickpocket', 'glass-eye'].includes(sceneItem.itemId))} spyglassTargetId={activeScope?.identity === scopeIdentity ? activeScope.targetId : undefined} spyglassActive={!spectator && !results && activeScope?.identity === scopeIdentity} onArrivalBeat={beat => { if (audio.started) audio.engine.play(ARRIVAL_AUDIO[beat]); }} onArrivalStateChange={active => setObjectiveReveal(current => {
         if (current.phase !== 'WAITING') return current;
         if (active) return { ...current, sawArrival: true };
         return { ...current, phase: 'VISIBLE' };

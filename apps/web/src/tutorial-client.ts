@@ -14,7 +14,7 @@ export class TutorialClient implements MatchClient {
     if (existing) return existing;
     let result: Result<RevisionAck>;
     try {
-      this.controller.submit({ type: envelope.type, ...envelope.payload } as GameCommand);
+      this.controller.submit({ type: envelope.type, ...envelope.payload } as GameCommand, true);
       result = { ok: true, data: { revision: this.controller.room.revision } };
     } catch (error) {
       result = { ok: false, error: { code: 'TUTORIAL_RETRY', message: error instanceof Error ? error.message : 'Try this lesson again.' } };
