@@ -1,6 +1,7 @@
 import { createIntroController } from './intro.js';
 import { handleCue, itemCue, routeEvent, WEAPON_HIT_AT } from './mappings.js';
-import { createMasterChain, playProcedural, startMusic, type MasterChain, type MusicLayer } from './synth.js';
+import { createMasterChain, playProcedural, playRecordedResidual, startMusic, type MasterChain, type MusicLayer } from './synth.js';
+import { playRecordedAccent, playRecordedCue, primeRecordedSamples } from './samples.js';
 import type {
   AudioContextFactory,
   AudioContextLike,
@@ -16,6 +17,7 @@ import type {
 export * from './types.js';
 export * from './mappings.js';
 export * from './intro.js';
+export * from './samples.js';
 export { MUSIC, VOICES, setSynthRandom } from './synth.js';
 
 const VOLUME_KEY = 'the-table.audio.volume';
@@ -87,7 +89,7 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
   let threat: MusicLayer | undefined;
   let threatOpen = false;
   let wantedMusic: MusicTrackId | undefined;
-  let lastWeapon: { at: number; hitAt: number } | undefined;
+  let lastWeapon: { at: number; hitAt: number; itemId: string } | undefined;
   let disposed = false;
   const receipts = new Set<string>();
   const receiptOrder: string[] = [];
@@ -111,7 +113,9 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
 
   const fx = (cue: AudioCueId, delay = 0): void => {
     ensure();
-    if (context && effectsBus && !muted) playProcedural(context, cue, effectsBus, delay);
+    if (!context || !effectsBus || muted) return;
+    if (playRecordedCue(context, cue, effectsBus, delay)) playRecordedResidual(context, cue, effectsBus, delay);
+    else playProcedural(context, cue, effectsBus, delay);
   };
 
   const SCENE_SWAP = new Set(['table|market', 'market|table', 'table|shop', 'shop|table', 'shop|market', 'market|shop']);
@@ -149,6 +153,7 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
     start: async () => {
       ensure();
       if (context?.resume) await context.resume();
+      if (context) primeRecordedSamples(context);
     },
     play: (cue) => fx(cue),
     handleEvent: (event, selfId) => {
@@ -156,12 +161,16 @@ export function createAudioEngine(options: AudioEngineOptions = {}): AudioEngine
       ensure();
       const now = context?.currentTime ?? 0;
       const weaponHit = event.kind === 'WEAPON_USED' ? WEAPON_HIT_AT[event.presentation?.itemId ?? ''] : undefined;
-      if (weaponHit !== undefined) lastWeapon = { at: now, hitAt: weaponHit };
+      const weaponId = event.presentation?.itemId;
+      if (weaponHit !== undefined && weaponId) lastWeapon = { at: now, hitAt: weaponHit, itemId: weaponId };
       // Damage that arrives with a weapon is heard when the blade or bullet lands, not when the event lands.
-      const followsWeapon = lastWeapon !== undefined && now - lastWeapon.at < 0.25 && ['DAMAGE', 'DOWNED', 'DEATH'].includes(event.kind);
+      const followsWeapon = lastWeapon !== undefined && now - lastWeapon.at < 0.25 && ['DAMAGE', 'ARMOR_BLOCKED', 'DOWNED', 'DEATH'].includes(event.kind);
       const hitAt = followsWeapon ? lastWeapon?.hitAt : undefined;
       const delay = hitAt === undefined ? 0 : hitAt + (event.kind === 'DAMAGE' ? 0 : 0.35);
       for (const request of routeEvent(event, selfId)) fx(request.cue, delay + (request.delaySeconds ?? 0));
+      if (event.kind === 'ARMOR_BLOCKED' && followsWeapon && lastWeapon?.itemId === 'knife' && context && effectsBus && !muted) {
+        playRecordedAccent(context, 'knife_snap', effectsBus, delay);
+      }
     },
     playItem: (itemId) => { const cue = handleCue(itemId); if (cue) fx(cue); },
     playUse: (itemId) => { const cue = itemCue(itemId); if (cue) fx(cue); },

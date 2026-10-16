@@ -10,7 +10,6 @@ import { recordTutorialMetric, saveTutorialPreferences } from './tutorial-storag
 import './tutorial.css';
 const CONTINUE = new Set<TutorialStep>(['dealer', 'inventory', 'privacy', 'reward', 'bluff', 'practiceDone', 'income', 'objective', 'burn']);
 const AUTO_ADVANCE_MS: Partial<Record<TutorialStep, number>> = { privacy: 2500, reward: 1700, bluff: 1500, income: 4500, objective: 2500, burn: 2500 };
-const DEALER_REACTION_MS = 5000;
 const CHAPTERS = ['Take a seat', 'Trade & Tasks', 'Threats & bluffs', 'Stay alive', 'Spend & explore', 'Wildcard & exit'];
 const TRADE_TRAIL = ['TRADE', 'THE DEALER', 'KEY', '2 GOLD', 'SEND'];
 const STRIPS: Partial<Record<TutorialStep, [string, string]>> = {
@@ -123,9 +122,10 @@ export default function Tutorial({ chapter, audio, audioStarted, onEnableAudio, 
   useEffect(() => {
     const step = controller.step;
     if (step !== 'tradePending' && step !== 'threatPending') return;
+    const delay = Math.max(0, (controller.dealerReactionDeadline ?? Date.now()) - Date.now());
     const timer = window.setTimeout(() => {
       if (controller.step === step && controller.resolveDealerReaction()) changed();
-    }, DEALER_REACTION_MS);
+    }, delay);
     return () => window.clearTimeout(timer);
   }, [controller, controller.step, changed]);
   useEffect(() => {
@@ -200,7 +200,7 @@ export default function Tutorial({ chapter, audio, audioStarted, onEnableAudio, 
       {controller.step === 'trade' && <ol className="tutorial-trade-trail" aria-label="Trade lesson steps">{TRADE_TRAIL.map((step, index) => <li key={step} aria-current={index === tradeStage ? 'step' : undefined} data-done={index < tradeStage || undefined}>{index < tradeStage ? '✓ ' : index === tradeStage ? '▸ ' : ''}{step}</li>)}</ol>}
       {CONTINUE.has(controller.step) && <button className="tutorial-continue" type="button" onClick={() => { controller.next(); changed(); }}>CONTINUE →</button>}
       {controller.step === 'practice' && <button className="tutorial-skip" type="button" onClick={() => { controller.skipPractice(); changed(); }}>Skip optional practice</button>}
-      <small>TRAINING · TIMERS PAUSED</small>
+      <small>{controller.step === 'tradePending' || controller.step === 'threatPending' ? 'TRAINING · DEALER RESPONDING' : 'TRAINING · TURN TIMERS PAUSED'}</small>
     </aside> : completionVisible && <section className="tutorial-complete" aria-label="Tutorial complete">
       <h1>Tutorial completed</h1>
       <button className="tutorial-continue" type="button" onClick={() => exit(true)}>JOIN A GAME</button>

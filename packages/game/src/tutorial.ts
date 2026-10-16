@@ -8,6 +8,7 @@ import type { AuthorizedRoomView, GameCommand, PlayerState, RoomState } from './
 export const TUTORIAL_VERSION = 2;
 export const HUMAN = 'student';
 export const DEALER = 'dealer';
+export const TUTORIAL_DEALER_REACTION_MS = 5000;
 export const TUTORIAL_STEPS = {
   look: { chapter: 1, title: 'LOOK AROUND THE TABLE', text: 'Move your cursor left and right to look around. Explore the room before you act.', focus: 'table' },
   dealer: { chapter: 1, title: 'THE DEALER', text: 'Your practice opponent sits opposite you. The Dealer follows a fixed lesson.', focus: 'dealer' },
@@ -49,6 +50,7 @@ export class TutorialController {
   private lookedLeft = false;
   private lookedRight = false;
   private chapterStartedAt: number;
+  private pendingDealerReactionDeadline: number | undefined;
   private wildcardCheckpoint?: RoomState;
   constructor(private readonly clock = () => Date.now()) {
     const now = clock(); this.chapterStartedAt = now;
@@ -77,10 +79,11 @@ export class TutorialController {
       view.private.capabilities = view.private.capabilities.filter(capability => capability !== 'LEAVE_TABLE' && capability !== 'STAY');
     }
     if (view.public.turn) view.public.turn.pausedRemainingMs = RULES.turnMs;
-    if (view.public.pendingTrade) view.public.pendingTrade.deadlineAt = this.clock() + RULES.responseMs;
-    if (view.public.pendingThreat) view.public.pendingThreat.deadlineAt = this.clock() + RULES.responseMs;
+    if (view.public.pendingTrade && this.pendingDealerReactionDeadline) view.public.pendingTrade.deadlineAt = this.pendingDealerReactionDeadline;
+    if (view.public.pendingThreat && this.pendingDealerReactionDeadline) view.public.pendingThreat.deadlineAt = this.pendingDealerReactionDeadline;
     return view;
   }
+  get dealerReactionDeadline() { return this.pendingDealerReactionDeadline; }
   look(headingDegrees: number): boolean {
     if (this.step !== 'look') return false;
     this.lookedLeft ||= headingDegrees <= -18;
@@ -188,7 +191,7 @@ export class TutorialController {
     }
   }
   private retry(action: string) { this.retries++; this.metrics.push({ kind:'retry', at:this.clock(), chapter:this.chapter, action }); }
-  private enter(step: TutorialStep) { event(this.room, this.clock(), 'TUTORIAL_STEP_COMPLETED', '', HUMAN, [], { [HUMAN]: { step: this.step, chapter: this.chapter } }); const chapter = TUTORIAL_STEPS[step].chapter; if (chapter !== this.chapter) { this.metrics.push({ kind:'chapter', at:this.clock(), chapter:this.chapter, elapsedMs:this.clock()-this.chapterStartedAt }); this.chapterStartedAt=this.clock(); event(this.room, this.clock(), 'TUTORIAL_CHAPTER_STARTED', '', HUMAN, [], { [HUMAN]: { chapter } }); } this.step=step; if(step === 'complete') event(this.room, this.clock(), 'TUTORIAL_COMPLETED', 'Tutorial complete.', HUMAN); }
+  private enter(step: TutorialStep) { event(this.room, this.clock(), 'TUTORIAL_STEP_COMPLETED', '', HUMAN, [], { [HUMAN]: { step: this.step, chapter: this.chapter } }); const chapter = TUTORIAL_STEPS[step].chapter; if (chapter !== this.chapter) { this.metrics.push({ kind:'chapter', at:this.clock(), chapter:this.chapter, elapsedMs:this.clock()-this.chapterStartedAt }); this.chapterStartedAt=this.clock(); event(this.room, this.clock(), 'TUTORIAL_CHAPTER_STARTED', '', HUMAN, [], { [HUMAN]: { chapter } }); } this.step=step; this.pendingDealerReactionDeadline = step === 'tradePending' || step === 'threatPending' ? this.clock() + TUTORIAL_DEALER_REACTION_MS : undefined; if(step === 'complete') event(this.room, this.clock(), 'TUTORIAL_COMPLETED', 'Tutorial complete.', HUMAN); }
   private loadout(id: string, items: string[]) { const player=this.room.players.find(player=>player.id===id)!; player.inventory.visible=Array(6).fill(null); player.inventory.pockets=[{source:'DEFAULT',protectedBySafe:false,item:null}]; for(const id of items) this.give(player.id,id); }
   private give(owner: string, itemId: string) { const player=this.room.players.find(player=>player.id===owner)!; if (!item(this.room,owner,itemId)) player.inventory.visible[player.inventory.visible.findIndex(value=>!value)] = stack(this.room,itemId); }
   private act(owner: string, command: GameCommand) { this.freeze(); const now=Math.max(this.clock(),this.room.updatedAt+1); this.room=applyCommand(this.room,owner,command,now); this.freeze(); }

@@ -1,4 +1,5 @@
 import { GAME_CONSTANTS } from '@the-table/content';
+import { TUTORIAL_DEALER_REACTION_MS } from '@the-table/game/tutorial';
 import { CoinAmount } from './ReferenceItemArt';
 import { useEffect, useRef, useState } from 'react';
 import type { ChestState, ItemStack, ObjectiveState, PlayerPrivateView, PublicPlayerView, PublicRoomView, RoleId, ShopOffer } from '@the-table/game';
@@ -182,8 +183,8 @@ export function PendingInteraction({ room, send, busy }: { room: AnyRoomView; se
   const assets = (ids: string[], coins: number) => [...assetNames(room.public, ids), `${coins} Gold`].join(', ');
   const visualAssets = (ids: string[], amount: number) => <><div className="response-asset-art">{ids.map(id => { const item = room.public.players.flatMap(player => presentItems(player.visibleInventory)).find(item => item.instanceId === id); return item ? <ReferenceItemArt key={id} itemId={item.itemId} size={72} /> : null; })}{amount > 0 && <span className="response-coins"><ReferenceItemArt itemId="coin" size={28} />{amount}</span>}</div><span>{assets(ids, amount)}</span></>;
   return <section ref={focus} className={`decision-panel reference-response ${trade ? 'trade-response' : 'threat-response'}`} aria-label={trade ? 'Pending Trade' : 'Pending Threat'}>
-    <header><div><p>{trade ? '⇄ OFFER' : '⚠ THREAT'} {actorView ? `TO ${playerName(room.public, proposal.targetId).toUpperCase()}` : `FROM ${playerName(room.public, proposal.actorId).toUpperCase()}`}</p><h2 tabIndex={-1}>{trade ? 'Trade offer' : 'Threat'}</h2></div><div className="response-clock"><Countdown deadline={proposal.deadlineAt} label="Response remaining" format="seconds" paused={room.public.mode === 'tutorial'} /><span>{room.public.mode === 'tutorial' ? 'SEC · PAUSED ·' : 'SEC ·'} {responseAllowed ? 'YOU' : playerName(room.public, proposal.targetId).toUpperCase()}</span></div></header>
-    <ResponseProgress deadline={proposal.deadlineAt} paused={room.public.mode === 'tutorial'} />
+    <header><div><p>{trade ? '⇄ OFFER' : '⚠ THREAT'} {actorView ? `TO ${playerName(room.public, proposal.targetId).toUpperCase()}` : `FROM ${playerName(room.public, proposal.actorId).toUpperCase()}`}</p><h2 tabIndex={-1}>{trade ? 'Trade offer' : 'Threat'}</h2></div><div className="response-clock"><Countdown deadline={proposal.deadlineAt} label="Response remaining" format="seconds" /><span>SEC · {responseAllowed ? 'YOU' : playerName(room.public, proposal.targetId).toUpperCase()}</span></div></header>
+    <ResponseProgress deadline={proposal.deadlineAt} duration={room.public.mode === 'tutorial' ? TUTORIAL_DEALER_REACTION_MS : GAME_CONSTANTS.interactionResponseMs} />
     {trade ? <div className="response-trade-assets"><div><h3>{actorView ? 'YOU GIVE' : 'YOU GET'}</h3>{visualAssets(trade.offeredItems, trade.offeredCoins)}</div><span className="exchange-arrow">⇄</span><div><h3>{actorView ? 'YOU GET' : 'YOU GIVE'}</h3>{visualAssets(trade.requestedItems, trade.requestedCoins)}</div></div> : <><div className="response-demand">{threat!.demandedItems.map(id => { const item = room.public.players.flatMap(player => presentItems(player.visibleInventory)).find(item => item.instanceId === id); return item ? <div key={id}><ReferenceItemArt itemId={item.itemId} size={56} /><span>{stackName(item).toUpperCase()}</span></div> : null; })}{threat!.demandedCoins > 0 && <div><ReferenceItemArt itemId="coin" size={48} /><span>{threat!.demandedCoins} GOLD</span></div>}{!threat!.demandedItems.length && !threat!.demandedCoins && <div>NO ASSETS DEMANDED</div>}</div><div className="response-backing"><ReferenceItemArt itemId={threat!.committedItemType ?? 'cloth'} size={64} /><div><strong>{threat!.committedItemType ? `BACKED BY ${itemName(threat!.committedItemType).toUpperCase()}` : 'BACKED BY A COVERED ITEM'}</strong></div></div></>}
     {responseAllowed && <div className="button-row">
       <button className="button primary" aria-keyshortcuts="Y" disabled={busy} onClick={() => void send(trade ? { type: 'RESPOND_TRADE', accept: true } : { type: 'RESPOND_THREAT', comply: true })}><kbd aria-hidden="true">Y</kbd>{trade ? 'Accept Trade' : 'Comply'}</button>
@@ -193,10 +194,10 @@ export function PendingInteraction({ room, send, busy }: { room: AnyRoomView; se
   </section>;
 }
 
-function ResponseProgress({ deadline, paused }: { deadline: number; paused: boolean }) {
+function ResponseProgress({ deadline, duration }: { deadline: number; duration: number }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 250); return () => window.clearInterval(id); }, []);
-  return <div className="response-progress"><div style={{ width: `${paused ? 100 : Math.max(0, Math.min(100, (deadline - now) / GAME_CONSTANTS.interactionResponseMs * 100))}%` }} /></div>;
+  return <div className="response-progress"><div style={{ width: `${Math.max(0, Math.min(100, (deadline - now) / duration * 100))}%` }} /></div>;
 }
 
 export function OverflowDecision({ room, send, busy }: ActionProps) {

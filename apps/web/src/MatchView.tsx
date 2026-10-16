@@ -309,15 +309,15 @@ export function audioDeadline(room: AnyRoomView, viewerId: string): { kind: 'tur
 
 export type MusicScene = 'table' | 'shop' | 'market';
 /** Which bed plays: results → silence, dead/left/spectating → "After", Black Market → "Under the Table", Intermission → shop, else the table. */
-export function musicFor(room: AnyRoomView, viewerId: string, scene: MusicScene): 'table' | 'shop' | 'market' | 'after' | undefined {
+export function musicFor(room: AnyRoomView, viewerId: string, scene: MusicScene, holdIntermission = false): 'table' | 'shop' | 'market' | 'after' | undefined {
   if (room.public.status === 'RESULTS') return undefined;
   const life = room.public.players.find(player => player.id === viewerId)?.life;
   if (isSpectatorView(room) || (life !== undefined && life !== 'ACTIVE' && life !== 'DOWNED')) return 'after';
-  if (room.public.round?.phase === 'INTERMISSION') return scene === 'market' ? 'market' : 'shop';
+  if (room.public.round?.phase === 'INTERMISSION' && !holdIntermission) return scene === 'market' ? 'market' : 'shop';
   return 'table';
 }
 
-function useMatchAudio(room: AnyRoomView, viewerId: string, supplied?: { engine: AudioEngine; started: boolean; start: () => void }, scene: MusicScene = 'table', sceneReady = false) {
+function useMatchAudio(room: AnyRoomView, viewerId: string, supplied?: { engine: AudioEngine; started: boolean; start: () => void }, scene: MusicScene = 'table', sceneReady = false, holdIntermission = false) {
   const engineRef = useRef<AudioEngine | undefined>(undefined);
   if (!supplied && !engineRef.current) engineRef.current = createAudioEngine();
   const engine = supplied?.engine ?? engineRef.current!;
@@ -335,7 +335,7 @@ function useMatchAudio(room: AnyRoomView, viewerId: string, supplied?: { engine:
     projectionPrimedRef.current = true;
   }, [engine, room, viewerId, started, sceneReady]);
 
-  const track = musicFor(room, viewerId, scene);
+  const track = musicFor(room, viewerId, scene, holdIntermission);
   const threatOpen = Boolean(room.public.pendingThreat) && track === 'table';
   useEffect(() => { if (started) engine.setMusic(track); }, [engine, track, started]);
   useEffect(() => { if (started) engine.setThreat(threatOpen); }, [engine, threatOpen, started]);
@@ -452,9 +452,10 @@ function SetupMatchView(props: Parameters<typeof ActiveMatchView>[0] & { room: R
 
 function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine, audioStarted, onEnableAudio, onView, onReturnHome, onCameraTravel, guideFocus }: { room: AnyRoomView; client: MatchClient; connected: boolean; viewerId: string; voice: VoiceCapability; audioEngine?: AudioEngine; audioStarted?: boolean; onEnableAudio?: () => void; onView: (view: AnyRoomView) => void; onReturnHome?: () => void; onCameraTravel?: (degrees: number) => void; guideFocus?: string }) {
   const suppliedAudio = audioEngine && audioStarted !== undefined && onEnableAudio ? { engine: audioEngine, started: audioStarted, start: onEnableAudio } : undefined;
+  const tutorialIntermissionHold = room.public.mode === 'tutorial' && guideFocus === 'coins';
   const [musicScene, setMusicScene] = useState<MusicScene>('table');
   const [sceneReady, setSceneReady] = useState(false);
-  const audio = useMatchAudio(room, viewerId, suppliedAudio, musicScene, sceneReady);
+  const audio = useMatchAudio(room, viewerId, suppliedAudio, musicScene, sceneReady, tutorialIntermissionHold);
   const action = useMatchActions({ client, room, connected, viewerId, onView, onAccepted: request => { if (audio.started) playAcceptedActionAudio(audio.engine, room, request); } });
   const spectator = isSpectatorView(room);
   const canLeave = !spectator && hasCapability(room, 'LEAVE_TABLE');
@@ -470,7 +471,7 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
   }, [canLeave]);
   const presentedPublic = usePresentedHealth(room.public, sceneReady);
   const results = room.public.status === 'RESULTS';
-  const intermission = room.public.round?.phase === 'INTERMISSION';
+  const intermission = room.public.round?.phase === 'INTERMISSION' && !tutorialIntermissionHold;
   const [panel, setPanel] = useState<MatchPanel>(intermission ? 'MARKETS' : spectator ? 'SPECTATOR' : null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
@@ -608,7 +609,7 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
   return <div className="match-layout match-viewport" data-viewer={spectator ? 'spectator' : 'player'} data-market={panel === 'MARKETS' || undefined} data-response={forcedDecision || undefined} data-chat={chatOpen || undefined} data-downed={me?.life === 'DOWNED' || undefined} data-modal={modalOpen ? 'true' : undefined} data-objective-reveal={objectiveBlocking ? objectiveReveal.phase.toLowerCase() : undefined}>
     <MultiplayerHints room={room} blackMarketOpen={panel === 'MARKETS' && marketView === 'BLACK'} />
     <div className="match-scene-shell" aria-label={spectator ? 'Spectator table view' : 'First person table view'}>
-      <GameTableScene onExitBeat={beat => { if (audio.started) playExitBeatAudio(audio.engine, beat); }} tutorialFocus={guideFocus} onCameraTravel={onCameraTravel} room={presentedPublic} {...(ownerWildcard ? { ownerWildcard } : {})} wildcardDrawEnabled={hasCapability(room, 'DRAW_WILDCARD') && !action.busy} onReadyChange={setSceneReady} viewerId={spectator ? undefined : viewerId} onIntent={openIntent} interactionsEnabled={!presentationBlocking && !panel && !sceneChest && (!forcedDecision || wildcardTargeting) && !results} exitReady={canLeave} showOwnerMarket={!spectator && intermission} focus={sceneFocus} focusPlayerId={focusPlayerId} selectedItemId={!panel && !forcedDecision ? sceneItem?.instanceId : undefined} aimTargets={aimTargets} aimPockets={Boolean(aiming && sceneItem && ['spyglass', 'pickpocket', 'glass-eye'].includes(sceneItem.itemId))} spyglassTargetId={activeScope?.identity === scopeIdentity ? activeScope.targetId : undefined} spyglassActive={!spectator && !results && activeScope?.identity === scopeIdentity} onArrivalBeat={beat => { if (audio.started) audio.engine.play(ARRIVAL_AUDIO[beat]); }} onArrivalStateChange={active => setObjectiveReveal(current => {
+      <GameTableScene onExitBeat={beat => { if (audio.started) { if (beat === 'chair-scrape') audio.engine.setMusic('exit'); playExitBeatAudio(audio.engine, beat); } }} tutorialFocus={guideFocus} onCameraTravel={onCameraTravel} room={presentedPublic} {...(ownerWildcard ? { ownerWildcard } : {})} wildcardDrawEnabled={hasCapability(room, 'DRAW_WILDCARD') && !action.busy} onReadyChange={setSceneReady} viewerId={spectator ? undefined : viewerId} onIntent={openIntent} interactionsEnabled={!presentationBlocking && !panel && !sceneChest && (!forcedDecision || wildcardTargeting) && !results} exitReady={canLeave} showOwnerMarket={!spectator && intermission} focus={sceneFocus} focusPlayerId={focusPlayerId} selectedItemId={!panel && !forcedDecision ? sceneItem?.instanceId : undefined} aimTargets={aimTargets} aimPockets={Boolean(aiming && sceneItem && ['spyglass', 'pickpocket', 'glass-eye'].includes(sceneItem.itemId))} spyglassTargetId={activeScope?.identity === scopeIdentity ? activeScope.targetId : undefined} spyglassActive={!spectator && !results && activeScope?.identity === scopeIdentity} onArrivalBeat={beat => { if (audio.started) audio.engine.play(ARRIVAL_AUDIO[beat]); }} onArrivalStateChange={active => setObjectiveReveal(current => {
         if (current.phase !== 'WAITING') return current;
         if (active) return { ...current, sawArrival: true };
         return { ...current, phase: 'VISIBLE' };

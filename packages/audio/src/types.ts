@@ -54,7 +54,7 @@ export const AUDIO_CUE_IDS = {
 } as const;
 
 /** Music beds. 'threat' is a layer that sits on top of whichever bed is playing. */
-export const MUSIC_TRACK_IDS = ['table', 'shop', 'market', 'after'] as const;
+export const MUSIC_TRACK_IDS = ['title', 'table', 'shop', 'market', 'tutorial', 'after', 'exit'] as const;
 export type MusicTrackId = typeof MUSIC_TRACK_IDS[number];
 
 export type AudioCueId = typeof AUDIO_CUE_IDS[keyof typeof AUDIO_CUE_IDS];
@@ -93,6 +93,7 @@ export interface FilterNodeLike extends AudioNodeLike {
   type: string;
   frequency: AudioParamLike;
   Q: AudioParamLike;
+  gain?: AudioParamLike;
 }
 
 export interface BufferLike {
@@ -119,10 +120,11 @@ export interface AudioContextLike {
   createBiquadFilter(): FilterNodeLike;
   createBuffer(channels: number, length: number, sampleRate: number): BufferLike;
   createBufferSource(): BufferSourceLike;
+  decodeAudioData?(audioData: ArrayBuffer): Promise<BufferLike>;
   /* Optional master-chain nodes. Missing nodes (tests, old browsers) fall back to a direct connection. */
   createWaveShaper?(): AudioNodeLike & { curve: Float32Array | null };
   createConvolver?(): AudioNodeLike & { buffer: BufferLike | null };
-  createDynamicsCompressor?(): AudioNodeLike & { threshold: AudioParamLike; ratio: AudioParamLike };
+  createDynamicsCompressor?(): AudioNodeLike & { threshold: AudioParamLike; ratio: AudioParamLike; attack?: AudioParamLike; release?: AudioParamLike };
 }
 
 export type AudioContextFactory = () => AudioContextLike;

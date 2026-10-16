@@ -25,9 +25,9 @@ function idempotencyKey(): string {
   return crypto.randomUUID();
 }
 
-/** The title and room lobby share the supplied "The Table" music bed. */
-export function preMatchMusic(screen: Screen): 'table' | undefined {
-  return screen === 'entry' || screen === 'lobby' ? 'table' : undefined;
+/** The title and room lobby share the supplied "The Long Room" music bed. */
+export function preMatchMusic(screen: Screen): 'title' | undefined {
+  return screen === 'entry' || screen === 'lobby' ? 'title' : undefined;
 }
 
 function loadSession(): SessionSnapshot | undefined {
@@ -96,14 +96,14 @@ export function App() {
 
   useEffect(() => {
     if (!audioStarted) return;
-    const track = preMatchMusic(screen);
+    const track = tutorial ? 'tutorial' : preMatchMusic(screen);
     if (track) {
       audio.setThreat(false);
       audio.setMusic(track);
     } else if (screen === 'connecting') {
       audio.setMusic(undefined);
     }
-  }, [audio, audioStarted, screen]);
+  }, [audio, audioStarted, screen, tutorial]);
 
   useEffect(() => {
     let cancelled = false;

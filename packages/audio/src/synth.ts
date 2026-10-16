@@ -1,4 +1,4 @@
-import type { AudioContextLike, AudioCueId, AudioParamLike, BufferLike, BufferSourceLike, GainNodeLike, AudioNodeLike } from './types.js';
+import type { AudioContextLike, AudioCueId, AudioParamLike, BufferLike, BufferSourceLike, GainNodeLike, AudioNodeLike, MusicTrackId } from './types.js';
 
 /*
  * The Table — sound design. Every cue is synthesized from a few primitives (filtered noise,
@@ -270,6 +270,18 @@ export function playProcedural(context: AudioContextLike, cue: AudioCueId, maste
   finally { if (previous) cueTiming.set(context, previous); else cueTiming.delete(context); }
 }
 
+/** Preserve the unsampled drink, recovery sting and revived heartbeat after recorded medicine cap sounds. */
+export function playRecordedResidual(context: AudioContextLike, cue: AudioCueId, master: GainNodeLike, delay = 0): void {
+  if (!['item.medicine', 'event.healed', 'event.revived'].includes(cue)) return;
+  const origin = context.currentTime + .01 + Math.max(0, delay), previous = cueTiming.get(context);
+  cueTiming.set(context, { origin, scale: .8 / 4.2 });
+  try {
+    [3.25, 3.55, 3.85].forEach(at => { tone(context, master, origin + at, { f: 160, fEnd: 80, gain: .34, a: .02, d: .14, lp: 500 }); noise(context, master, origin + at, { type: 'lowpass', f: 500, gain: .12, a: .02, d: .12 }); });
+    sting(context, master, origin + 3.6, [74, 78, 81], .09);
+    if (cue === 'event.revived') heart(context, master, origin + 3.9, .35);
+  } finally { if (previous) cueTiming.set(context, previous); else cueTiming.delete(context); }
+}
+
 // ---------- master chain
 function satCurve(k: number): Float32Array { const n = 2048, c = new Float32Array(n); for (let i = 0; i < n; i += 1) { const x = (i / (n - 1)) * 2 - 1; c[i] = Math.tanh(k * x) / Math.tanh(k); } return c; }
 function crushCurve(grit: number): Float32Array { const steps = Math.round(512 - grit * 464), n = 8192, c = new Float32Array(n); for (let i = 0; i < n; i += 1) { const x = (i / (n - 1)) * 2 - 1; c[i] = Math.round(x * steps) / steps; } return c; }
@@ -279,20 +291,25 @@ function roomImpulse(c: Ctx, seconds: number): BufferLike {
   return b;
 }
 export interface MasterChain { input: GainNodeLike; nodes: AudioNodeLike[] }
-/** The input feeds tape saturation → crush (grit .45) → lowpass 7.5 kHz → dry + 2.6 s dark room (.3) → compressor → destination. */
+/** Supplied chain: tape → grit → 16.2 kHz LP → mud/presence/air EQ → 38 Hz HP → 2.2 s room → compressor. */
 export function createMasterChain(c: Ctx, destination: AudioNodeLike): MasterChain {
   const input = c.createGain(); input.gain.value = 1;
   if (!c.createWaveShaper || !c.createConvolver || !c.createDynamicsCompressor) { input.connect(destination); return { input, nodes: [input] }; }
-  const sat = c.createWaveShaper(), crush = c.createWaveShaper(), lp = c.createBiquadFilter(), hp = c.createBiquadFilter(), verb = c.createConvolver(), wet = c.createGain(), dry = c.createGain(), comp = c.createDynamicsCompressor();
-  sat.curve = satCurve(1.8); crush.curve = crushCurve(0.45);
-  lp.type = 'lowpass'; lp.frequency.value = 7500; lp.Q.value = 0.5; hp.type = 'highpass'; hp.frequency.value = 32;
-  verb.buffer = roomImpulse(c, 2.6); wet.gain.value = 0.3; dry.gain.value = 1; comp.threshold.value = -14; comp.ratio.value = 3;
-  input.connect(sat); sat.connect(crush); crush.connect(lp); lp.connect(hp); hp.connect(dry); hp.connect(verb); verb.connect(wet); dry.connect(comp); wet.connect(comp); comp.connect(destination);
-  return { input, nodes: [input, sat, crush, lp, hp, verb, wet, dry, comp] };
+  const sat = c.createWaveShaper(), crush = c.createWaveShaper(), lp = c.createBiquadFilter(), mud = c.createBiquadFilter(), presence = c.createBiquadFilter(), air = c.createBiquadFilter(), hp = c.createBiquadFilter(), verb = c.createConvolver(), wet = c.createGain(), dry = c.createGain(), sum = c.createGain(), comp = c.createDynamicsCompressor();
+  sat.curve = satCurve(1.4); crush.curve = crushCurve(.3);
+  lp.type = 'lowpass'; lp.frequency.value = 16_200; lp.Q.value = .5;
+  mud.type = 'peaking'; mud.frequency.value = 280; mud.Q.value = .9; if (mud.gain) mud.gain.value = -3;
+  presence.type = 'peaking'; presence.frequency.value = 3200; presence.Q.value = .8; if (presence.gain) presence.gain.value = 4.5;
+  air.type = 'highshelf'; air.frequency.value = 7500; if (air.gain) air.gain.value = 4;
+  hp.type = 'highpass'; hp.frequency.value = 38;
+  verb.buffer = roomImpulse(c, 2.2); wet.gain.value = .21; dry.gain.value = 1;
+  comp.threshold.value = -12; comp.ratio.value = 2.5; if (comp.attack) comp.attack.value = .012; if (comp.release) comp.release.value = .18;
+  input.connect(sat); sat.connect(crush); crush.connect(lp); lp.connect(mud); mud.connect(presence); presence.connect(air); air.connect(hp); hp.connect(dry); hp.connect(verb); verb.connect(wet); dry.connect(sum); wet.connect(sum); sum.connect(comp); comp.connect(destination);
+  return { input, nodes: [input, sat, crush, lp, mud, presence, air, hp, verb, wet, dry, sum, comp] };
 }
 
 // ---------- music
-interface Track { bpm: number; beats: number; bars: number; bar(c: Ctx, o: Out, t: number, bar: number, spb: number): void }
+interface Track { bpm: number; beats: number; bars: number; loop?: boolean; bar(c: Ctx, o: Out, t: number, bar: number, spb: number): void }
 const PHRYGIAN = [0, 1, 3, 5, 7, 8, 10];
 const pad = (c: Ctx, o: Out, t: number, notes: readonly number[], dur: number, x: { type?: string; lp?: number; gain?: number; rel?: number } = {}) => {
   notes.forEach(m => [-9, 0, 8].forEach(det => {
@@ -312,7 +329,14 @@ const tremolo = (c: Ctx, o: Out, t: number, notes: readonly number[], dur: numbe
 }));
 
 /** Bar generators are seeded per bar so a loop sounds the same every pass. */
-export const MUSIC: Readonly<Record<'table' | 'threat' | 'shop' | 'market' | 'after', Track>> = {
+export const MUSIC: Readonly<Record<MusicTrackId | 'threat', Track>> = {
+  // "The Long Room" — title and lobby: the Debt motif waits behind a slow bell and distant room clock.
+  title: { bpm: 60, beats: 4, bars: 16, bar(c, o, t, b, spb) { const roots = [50, 50, 51, 50, 48, 46, 45, 50, 50, 51, 48, 46, 45, 46, 45, 50], root = roots[b] ?? 50;
+    if (b % 4 === 0) metal(c, o, t, midi(38), .07, 9, [1, 2, 2.38, 3.12]);
+    if (b % 2 === 0) pad(c, o, t, [root - 12, root - 5, root], spb * 8, { lp: 450, gain: .024, rel: 3 });
+    tone(c, o, t, { f: midi(root - 24), gain: .08, a: .01, hold: spb * 3.4, d: .4, lp: 300 });
+    for (let i = 0; i < 4; i += 1) click(c, o, t + i * spb, i % 2 ? 2300 : 3100, .022, .006);
+    if (b >= 4) [62, 63, 62, 60][b % 4] && piano(c, o, t, ([62, 63, 62, 60][b % 4] ?? 62) + (b >= 8 ? 0 : -12), .055, 3); } },
   // "The Table" — D Phrygian 54 BPM: drone, heartbeat kick, the lamp's 50 Hz hum, a piano that never finishes a phrase.
   table: { bpm: 54, beats: 4, bars: 8, bar(c, o, t, b, spb) { const r = seeded(b * 131 + 7), root = [50, 51, 50, 48][(b >> 1) % 4] ?? 50;
     if (b % 2 === 0) pad(c, o, t, [root - 12, root - 5], spb * 8, { lp: 380, gain: 0.038, rel: 2.5 });
@@ -339,11 +363,23 @@ export const MUSIC: Readonly<Record<'table' | 'threat' | 'shop' | 'market' | 'af
     hum(c, o, t, spb * 4, 41, 0.016); pizz(c, o, t, m - 12, 0.3); pizz(c, o, t + 2 * spb, m - 12, 0.2);
     if (b % 2 === 1) noise(c, o, t + spb, { f: 1400, q: 4, gain: 0.03, a: 1.2, hold: 0.3, d: 1.8 });
     if (r() < 0.35) metal(c, o, t + spb * (1 + r() * 2), 3100, 0.018, 0.3); } },
+  // "The Dealer's Lesson" — lighter and more legible than the match bed.
+  tutorial: { bpm: 72, beats: 4, bars: 8, bar(c, o, t, b, spb) { const chords = [[50, 57, 62], [48, 55, 60], [46, 53, 58], [45, 52, 57]] as const, ch = chords[(b >> 1) % 4]!, r = seeded(b * 67 + 1);
+    pizz(c, o, t, ch[0] - 12, .34); pizz(c, o, t + 2 * spb, ch[0] - 5, .24);
+    if (b % 2 === 0) ch.forEach(note => piano(c, o, t, note, .08, 3));
+    [0, 1, 2, 1, 0, 1, 2, 1].forEach((index, beat) => { if (r() < .75) musicBox(c, o, t + beat * spb / 2, ch[index]! + 12, .065, 1); });
+    for (let i = 0; i < 4; i += 1) click(c, o, t + i * spb, i % 2 ? 2400 : 3400, .06, .007); } },
   // "After" — spectator: cold glass pad, wind under the door, a music box in another room.
   after: { bpm: 48, beats: 4, bars: 8, bar(c, o, t, b, spb) { const r = seeded(b * 23 + 5);
     if (b % 4 === 0) pad(c, o, t, [57, 64, 71, 74], spb * 16, { type: 'triangle', lp: 2800, gain: 0.02, rel: 3 });
     if (b % 2 === 0) noise(c, o, t, { type: 'lowpass', f: 500, q: 0.5, gain: 0.045, a: 2, hold: 1, d: 2 });
     if (r() < 0.55) musicBox(c, o, t + spb * Math.floor(r() * 4), [69, 72, 74, 76, 79, 81, 84][Math.floor(r() * 7)] ?? 69, 0.065, 2.5); } },
+  // "Daylight" — the only major resolution. It is deliberately one-shot.
+  exit: { bpm: 50, beats: 4, bars: 4, loop: false, bar(c, o, t, b, spb) { const chords = [[50, 53, 57], [46, 50, 53], [43, 46, 50], [50, 54, 57]] as const, lows = [38, 46, 43, 50], chord = chords[b]!;
+    pad(c, o, t, chord.map(note => note - 12), spb * 4, { lp: 500 + b * 250, gain: .028, rel: b === 3 ? 5 : 1.5 });
+    tone(c, o, t, { f: midi(lows[b]!), gain: .07, a: .6, hold: spb * 3.2, d: b === 3 ? 4 : .8, lp: 700 });
+    if (b < 3) noise(c, o, t, { type: 'lowpass', f: 380, gain: .035 - b * .01, a: 1.5, hold: 1, d: 1.5 });
+    if (b === 3) { metal(c, o, t, midi(62), .05, 7, [1, 2, 2.38, 3.12]); [74, 78, 81, 86].forEach((note, index) => musicBox(c, o, t + spb * (.5 + index * .5), note, .05, 3)); } } },
 };
 
 export interface MusicLayer { stop(fade?: number): void }
@@ -352,7 +388,7 @@ export function startMusic(c: Ctx, out: AudioNodeLike, id: keyof typeof MUSIC, f
   const track = MUSIC[id], g = c.createGain(), spb = 60 / track.bpm, barLength = spb * track.beats;
   g.gain.value = 0.0001; setAt(g.gain, 0.0001, c.currentTime); linTo(g.gain, 1, c.currentTime + Math.max(0.05, fade)); g.connect(out);
   let next = c.currentTime + 0.08, bar = 0, stopped = false;
-  const tick = () => { if (stopped) return; while (next < c.currentTime + 1.2) { track.bar(c, g, next, bar % track.bars, spb); if (withCrackle) crackle(c, g, next, barLength); next += barLength; bar += 1; } };
+  const tick = () => { if (stopped) return; while (next < c.currentTime + 1.2 && (track.loop !== false || bar < track.bars)) { track.bar(c, g, next, bar % track.bars, spb); if (withCrackle) crackle(c, g, next, barLength); next += barLength; bar += 1; } };
   tick();
   const timer = globalThis.setInterval(tick, 150);
   return {
