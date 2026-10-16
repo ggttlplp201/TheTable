@@ -1,10 +1,14 @@
 import { BoxGeometry, Group, MeshBasicMaterial, OctahedronGeometry, Vector3 } from 'three';
 import { PRESENTATION_CLIPS, TABLE_TOP_Y, VisualKit, type SeatVisual } from '@the-table/visual';
 import type { ChestToolClip } from './table-presentation';
-import { SOURCE_WEAPON_CONTACT as WEAPON_CONTACT } from './downed-presentation';
+import { COMPACT_ACTION_SECONDS, SOURCE_WEAPON_CONTACT as WEAPON_CONTACT } from './downed-presentation';
 
 export type PublicActionKind = 'knife' | 'pistol' | 'medicine' | 'stimulant' | 'antidote' | 'poison' | 'handcuffs' | 'armor';
 export const ACTION_DURATION: Record<PublicActionKind, number> = { knife: 2.7, medicine: 4.2, stimulant: 2, antidote: 3.3, pistol: 2.8, poison: 3.2, handcuffs: 2.6, armor: 2.6 };
+export function actionPlaybackDuration(kind: PublicActionKind): number {
+  if (kind === 'medicine' || kind === 'stimulant') return ACTION_DURATION[kind];
+  return COMPACT_ACTION_SECONDS;
+}
 const clamp = (n: number) => Math.min(1, Math.max(0, n));
 const inOut = (n: number) => n < .5 ? 2 * n * n : 1 - (-2 * n + 2) ** 2 / 2;
 const out = (n: number) => 1 - (1 - n) ** 3;

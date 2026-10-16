@@ -261,7 +261,7 @@ export const VOICES: Readonly<Record<AudioCueId, Voice>> = {
 /** Play a cue `delay` seconds from now. Cues are fire-and-forget; their nodes stop themselves. */
 export function playProcedural(context: AudioContextLike, cue: AudioCueId, master: GainNodeLike, delay = 0): void {
   const origin = context.currentTime + .01 + Math.max(0, delay);
-  const scale: Partial<Record<AudioCueId, number>> = { 'item.knife': .8/2.7, 'item.pistol': .8/2.8, 'item.medicine': .8/4.2, 'event.healed': .8/4.2, 'event.revived': .8/4.2, 'item.stimulant': .8/2, 'item.antidote': .8/3.3, 'event.poison-cured': .8/3.3, 'item.poison': .8/3.2, 'item.handcuffs': .8/2.6, 'event.handcuffed': .8/2.6, 'item.armor': .8/2.6, 'event.armor-blocked': .8/2.6, 'item.key': .3, 'item.lockpick': .3, 'item.crowbar': .3, 'item.black-key': .3 };
+  const scale: Partial<Record<AudioCueId, number>> = { 'item.knife': .8/2.7, 'item.pistol': .8/2.8, 'item.stimulant': .8/2, 'item.antidote': .8/3.3, 'event.poison-cured': .8/3.3, 'item.poison': .8/3.2, 'item.handcuffs': .8/2.6, 'event.handcuffed': .8/2.6, 'item.armor': .8/2.6, 'event.armor-blocked': .8/2.6, 'item.key': .3, 'item.lockpick': .3, 'item.crowbar': .3, 'item.black-key': .3 };
   // Recipes schedule synchronously; only their envelopes and offsets are retimed.
   // Frequencies and the continuously running music clock retain their original pitch.
   const previous = cueTiming.get(context);
@@ -274,7 +274,7 @@ export function playProcedural(context: AudioContextLike, cue: AudioCueId, maste
 export function playRecordedResidual(context: AudioContextLike, cue: AudioCueId, master: GainNodeLike, delay = 0): void {
   if (!['item.medicine', 'event.healed', 'event.revived'].includes(cue)) return;
   const origin = context.currentTime + .01 + Math.max(0, delay), previous = cueTiming.get(context);
-  cueTiming.set(context, { origin, scale: .8 / 4.2 });
+  cueTiming.set(context, { origin, scale: 1 });
   try {
     [3.25, 3.55, 3.85].forEach(at => { tone(context, master, origin + at, { f: 160, fEnd: 80, gain: .34, a: .02, d: .14, lp: 500 }); noise(context, master, origin + at, { type: 'lowpass', f: 500, gain: .12, a: .02, d: .12 }); });
     sting(context, master, origin + 3.6, [74, 78, 81], .09);

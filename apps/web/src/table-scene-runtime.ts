@@ -1,5 +1,4 @@
 import { coinIconCanvas } from './reference-game-kit.js';
-import { COMPACT_ACTION_SECONDS } from './downed-presentation';
 import { BasicShadowMap, BoxGeometry, BoxHelper, CylinderGeometry, Group, MeshBasicMaterial, PlaneGeometry, PointLight, Raycaster, TorusGeometry, Vector2, Vector3, WebGLRenderer, type CanvasTexture, type Object3D, type Quaternion } from 'three';
 import {
   ARRIVAL_DURATION, CAMERA_VIEWS, COLOR_GRADES, ITEM_MODEL_IDS, ITEM_PRESENTATION, TABLE_TOP_Y,
@@ -9,7 +8,7 @@ import {
 import type { PendingWildcard, PublicRoomView } from '@the-table/game';
 import type { SceneFocus, SceneIntent } from './GameTableScene';
 import { PublicPresentationObserver, arrivalEligible, hasSeenArrival, hasStartedArrival, publicImpactTilt, publicSeats, publicThreatPose, rememberArrival, rememberArrivalStart, type TableCue } from './table-presentation';
-import { ACTION_DURATION, actionFlash, actionSeatPoint, createChestToolPresentation, createPublicActionPresentation, spyglassZoom } from './table-action-presentation';
+import { ACTION_DURATION, actionFlash, actionPlaybackDuration, actionSeatPoint, createChestToolPresentation, createPublicActionPresentation, spyglassZoom } from './table-action-presentation';
 import { orderRevealFrame } from './order-reveal';
 import { createOrderProps } from './order-props';
 import { DOWNED_FALL_DURATION, downedFallProgress } from './downed-presentation';
@@ -717,7 +716,7 @@ export function createTablePresentation(target: HTMLDivElement, initialRoom: Pub
         };
         if (event.itemId === 'pistol') { const direction = targetPoint.clone().sub(geometry.start); geometry.actorYaw = Math.atan2(-direction.x, -direction.z); }
         const presentation = action;
-        const duration = event.itemId === 'stimulant' ? ACTION_DURATION.stimulant : COMPACT_ACTION_SECONDS;
+        const duration = actionPlaybackDuration(event.itemId);
         addEffect(key, duration, elapsed => {
           const seconds = elapsed / duration * ACTION_DURATION[event.itemId];
           const hit = presentation.apply(seconds, geometry);

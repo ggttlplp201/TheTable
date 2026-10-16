@@ -40,9 +40,9 @@ const RECORDED_CUE_PLAN: Readonly<Partial<Record<AudioCueId, readonly SampleBeat
   'item.crowbar': [{ id: 'crowbar', at: .3 }],
   'event.damage': [{ id: 'hit', at: 0 }],
   // Medicine keeps its procedural drink/healing tail; these samples replace the cap performance.
-  'item.medicine': [{ id: 'med_unscrew', at: .11 }, { id: 'med_pop', at: .44 }],
-  'event.healed': [{ id: 'med_unscrew', at: .11 }, { id: 'med_pop', at: .44 }],
-  'event.revived': [{ id: 'med_unscrew', at: .11 }, { id: 'med_pop', at: .44 }],
+  'item.medicine': [{ id: 'med_unscrew', at: .6 }, { id: 'med_pop', at: 2.3 }],
+  'event.healed': [{ id: 'med_unscrew', at: .6 }, { id: 'med_pop', at: 2.3 }],
+  'event.revived': [{ id: 'med_unscrew', at: .6 }, { id: 'med_pop', at: 2.3 }],
 };
 
 const decoded = new WeakMap<object, Map<RecordedSampleId, LoadedSample>>();
