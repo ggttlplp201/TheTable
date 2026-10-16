@@ -12,7 +12,7 @@ export function SceneItemCard({ item, room, aiming, busy, onUse, onPutDown, send
   const definition = ITEM_BY_ID[item.itemId];
   const rarity = definition?.rarity ?? 'COMMON';
   const glyph = rarity === 'COMMON' ? '◆◇◇' : rarity === 'UNCOMMON' ? '◆◆◇' : rarity === 'RARE' ? '◆◆◆' : rarity === 'QUEST' ? '⬡' : rarity === 'ARTIFACT' ? '✧' : '✦';
-  const use = definition?.consumption === 'ONE_USE' ? 'One-use' : definition?.consumption === 'REUSABLE' ? 'Reusable' : 'Passive';
+  const use = definition?.consumption === 'ONE_USE' ? 'ONE-USE' : definition?.consumption === 'REUSABLE' ? 'REUSABLE' : 'PASSIVE';
   const usableItem = useItemOptions(room).some(option => option.instanceId === item.instanceId);
   const canUse = hasCapability(room, 'USE_ITEM') && usableItem;
   const emptyPockets = room.private.pockets.flatMap((pocket, index) => pocket.item ? [] : [index]);
@@ -35,9 +35,9 @@ export function SceneItemCard({ item, room, aiming, busy, onUse, onPutDown, send
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [aiming, busy, canPocket, canUse, onPutDown, onUse, item.instanceId, emptyPockets.join(','), send]);
-  const tags = [needsOpponent(item.itemId) || item.itemId === 'cloth' ? 'TARGETED' : null, use.toUpperCase()].filter(Boolean) as string[];
+  const targeted = needsOpponent(item.itemId) || item.itemId === 'cloth';
   return <section className="scene-item-card" aria-label={`Selected ${itemName(item.itemId)}`}>
-    <header><div className="scene-item-icon"><ReferenceItemArt itemId={item.itemId} size={60} label="" /></div><div><h2>{itemName(item.itemId)}</h2><span className="scene-item-tags"><b>{glyph} {words(rarity).toUpperCase()}</b>{tags.map(tag => <b key={tag} className={tag === 'TARGETED' ? 'targeted' : undefined}>{tag}</b>)}</span></div></header>
+    <header><div className="scene-item-icon"><ReferenceItemArt itemId={item.itemId} size={60} label="" /></div><div><h2>{itemName(item.itemId)}</h2><span className="scene-item-tags"><b>{glyph} {words(rarity).toUpperCase()}</b><b>{use}</b>{targeted && <b className="targeted">TARGETED</b>}</span></div></header>
     <p>{ITEM_HELP[item.itemId]}</p>
     <div className="scene-item-actions">{canUse && <button type="button" className="use" aria-keyshortcuts="E" disabled={busy || aiming} onClick={onUse}><kbd aria-hidden="true">E</kbd>{aiming ? 'CHOOSE…' : 'USE'}</button>}{canPocket && <button type="button" aria-keyshortcuts="Q" disabled={busy} onClick={choosePocket}><kbd aria-hidden="true">Q</kbd>POCKET</button>}<button type="button" className="put-down" aria-keyshortcuts="Escape" disabled={busy} onClick={onPutDown}><kbd aria-hidden="true">ESC</kbd>PUT DOWN</button></div>
     {pocketsOpen && canPocket && <div className="scene-item-actions" aria-label="Choose empty Pocket">{emptyPockets.map(index => <button type="button" key={index} disabled={busy} onClick={() => void send({ type: 'POCKET', instanceId: item.instanceId, pocketIndex: index })}>POCKET {index + 1} ◇</button>)}</div>}
@@ -59,13 +59,13 @@ export function SceneChestPrompt({ room, kind, busy, send, onClose }: {
   const items = useItemOptions(room).filter(item => (kind === 'BLACK' ? ['black-key'] : ['key', 'lockpick', 'crowbar']).includes(item.itemId));
   const tool = items.find(item => item.instanceId === draft) ?? items[0];
   const canOpen = chest?.availability === 'AVAILABLE' && Boolean(tool) && hasCapability(room, 'USE_ITEM');
-  const title = chest?.availability === 'OPENED' ? 'Already opened' : canOpen ? 'Open the chest?' : kind === 'BLACK' ? 'The Black Chest' : "It's locked";
-  const body = chest?.availability === 'OPENED' ? 'Opened this round.' : canOpen ? `Uses your ${itemName(tool!.itemId).toUpperCase()}.` : tool ? 'Wait for an eligible action on your turn.' : kind === 'BLACK' ? 'Only the BLACK KEY opens it. You have none.' : 'You need a Key, Lockpick or Crowbar.';
+  const title = chest?.availability === 'OPENED' ? 'Opened' : canOpen ? 'Open chest?' : kind === 'BLACK' ? 'Black Chest' : 'Locked';
+  const body = chest?.availability === 'OPENED' || canOpen ? '' : tool ? 'WAIT FOR YOUR TURN' : kind === 'BLACK' ? 'BLACK KEY REQUIRED' : 'KEY, LOCKPICK OR CROWBAR REQUIRED';
   useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [kind]);
   return <section className={`scene-chest-prompt ${kind.toLowerCase()}`} role="dialog" aria-label={kind === 'BLACK' ? 'Black Chest' : 'Standard Chest'} onKeyDown={event => { if (event.key === 'Escape') onClose(); }}>
-    <h2 ref={heading} tabIndex={-1}>{title}</h2><p>{body}</p>
+    <h2 ref={heading} tabIndex={-1}>{title}</h2>{body && <p>{body}</p>}
     {canOpen && items.length > 1 && <label className="scene-chest-tool">Use<select aria-label="Chest tool" value={tool!.instanceId} onChange={event => setDraft(event.target.value)}>{items.map(item => <option key={item.instanceId} value={item.instanceId}>{itemName(item.itemId)}</option>)}</select></label>}
-    <div>{canOpen && <button type="button" className="confirm" disabled={busy} onClick={() => void send(useItemCommand(tool!, 'self'))}>YES, OPEN</button>}<button type="button" disabled={busy} onClick={onClose}>{canOpen ? 'NO' : 'OK'}</button></div>
+    <div>{canOpen && <button type="button" className="confirm" disabled={busy} onClick={() => void send(useItemCommand(tool!, 'self'))}>OPEN WITH {itemName(tool!.itemId).toUpperCase()}</button>}<button type="button" disabled={busy} onClick={onClose}>{canOpen ? 'CANCEL' : 'OK'}</button></div>
   </section>;
 }
 

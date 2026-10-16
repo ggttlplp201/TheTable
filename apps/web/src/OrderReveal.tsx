@@ -41,7 +41,7 @@ export function useOrderReveal(room: PublicRoomView, play?: (cue: AudioCueId) =>
 
 export function OrderReveal({ frame, viewerId }: { frame: OrderRevealFrame; viewerId?: string | undefined }) {
   if (frame.phase === 'income' && frame.income) return <section className="order-reveal round-income-reveal" aria-label="Round Income" data-order-phase="income" data-order-key={frame.key}>
-    <div className="order-reveal-heading" role="status"><span>ROUND {frame.income.round} COMPLETE</span><h2>ROUND INCOME</h2><strong>+{frame.income.amount} GOLD TO EVERY ACTIVE PLAYER</strong></div>
+    <div className="order-reveal-heading" role="status"><h2>ROUND {frame.income.round} COMPLETE</h2><strong>+{frame.income.amount} GOLD · ACTIVE PLAYERS</strong></div>
   </section>;
   const position = frame.order.findIndex(player => player.id === viewerId);
   const result = frame.phase === 'result';
@@ -50,8 +50,7 @@ export function OrderReveal({ frame, viewerId }: { frame: OrderRevealFrame; view
     : frame.phase === 'coin-cue' || frame.phase === 'coin' ? 'Flipping the coin to decide shopping direction.'
     : `${frame.firstName} gets to go first.`;
   return <section className="order-reveal" aria-label="Shopping order reveal" data-order-phase={frame.phase} data-order-key={frame.key}>
-    <div className="order-reveal-heading" role="status" aria-live="polite"><span>ROUND OVER · SHOPPING ORDER</span><h2>{title}</h2></div>
-    {(frame.phase === 'first' || result) && <div className="order-reveal-first">SEAT {frame.seatNumber} · {frame.firstName}</div>}
+    <div className="order-reveal-heading" role="status" aria-live="polite"><h2>{title}</h2></div>
     {result && <div className="order-reveal-result"><p>{frame.direction === 'ASCENDING' ? 'HEADS · ASCENDING SEATS' : 'TAILS · DESCENDING SEATS'}</p><ol>{frame.order.map(player => <li key={player.id} className={player.id === viewerId ? 'is-you' : ''}>{player.name}</li>)}</ol><strong>{position >= 0 ? `YOUR TURN = ${position + 1}` : viewerId ? 'YOU ARE NOT SHOPPING THIS ROUND' : 'SHOPPING ORDER SET'}</strong></div>}
   </section>;
 }

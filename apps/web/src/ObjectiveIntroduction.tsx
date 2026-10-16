@@ -27,9 +27,8 @@ export function ObjectiveIntroduction({ room, onComplete }: { room: RoomView; on
   }, [deadline, onComplete]);
   return <section className="objective-introduction" aria-label="Your private objective" aria-live="polite">
     <div className="objective-introduction-stage">
-      <h2>Your objective</h2>
       <PrivateDetail detail={room.private} room={room.public} title="Your private objective" />
-      <footer><strong>ROUND I · {Math.max(1, Math.ceil(remaining / 1000))}</strong></footer>
+      <footer><strong>{Math.max(1, Math.ceil(remaining / 1000))}</strong></footer>
       <div className="objective-introduction-progress" aria-hidden="true"><i style={{ transform: `scaleX(${remaining / OBJECTIVE_REVEAL_MS})` }} /></div>
     </div>
   </section>;

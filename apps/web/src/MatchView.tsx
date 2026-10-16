@@ -1,5 +1,4 @@
 import { CoinAmount } from './ReferenceItemArt';
-import { MultiplayerHints } from './MultiplayerHints';
 import { MatchSetup } from './MatchSetup';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
@@ -196,7 +195,6 @@ function CoreHudHeader({ room, viewerId, spectator }: { room: AnyRoomView; viewe
     <strong>{title}</strong>
     {!spectator && state.round?.phase === 'TURN' && state.turn && <span className="core-clock"><HudClock deadline={state.turn.deadlineAt} mine={active?.id === viewerId} {...(state.turn.pausedRemainingMs !== undefined ? { pausedRemainingMs: state.turn.pausedRemainingMs } : {})} /></span>}
     {intermission && shopDeadline !== undefined && <Countdown deadline={shopDeadline} label="Intermission deadline" format="seconds" />}
-    {spectator && <small>ALL INPUT DISABLED · CHAT READ-ONLY</small>}
   </header>;
 }
 
@@ -219,7 +217,6 @@ export function ChatPanel({ room, sendChat, busy, draft, onDraftChange, selected
     if (sent) setText('');
   }
   return <section className="panel chat-panel" aria-label="Table chat"><h2 className="sr-only">Table chat</h2><div className="reference-chat-tabs"><button type="button" className={recipient === 'GLOBAL' ? 'selected' : ''} onClick={() => setRecipient('GLOBAL')}>◎ GLOBAL</button><label><span className="sr-only">Send to</span><select aria-label="Private recipient" value={recipient} onChange={event => setRecipient(event.target.value)}><option value="GLOBAL">◐ PRIVATE</option>{recipients.map(player => <option value={player.id} key={player.id}>Private: {player.name}{player.connection !== 'CONNECTED' || !['ACTIVE', 'DOWNED'].includes(player.life) ? ' · unavailable' : ''}</option>)}{recipient !== 'GLOBAL' && !recipientPlayer && <option value={recipient}>Private recipient · unavailable</option>}</select></label></div>
-    <p className="chat-destination">TO: {recipient === 'GLOBAL' ? 'GLOBAL · everyone at the table' : `PRIVATE · ${recipientPlayer?.name ?? 'unavailable recipient'}`}</p>
     {recipientUnavailable && <p className="form-error" role="status">Recipient unavailable. Your private draft is saved; choose a recipient to send.</p>}
     <ol className="chat-messages" role="log" aria-label="Messages" aria-relevant="additions text">{(room.messages ?? []).map(message => <li key={message.id} className={message.channel === 'PRIVATE' ? 'private-message' : ''}>
       <p className="message-meta"><strong>{playerName(room.public, message.fromPlayerId)}</strong><span>{message.channel === 'PRIVATE' ? `Private → ${playerName(room.public, message.toPlayerId)}` : 'Table'} · {new Date(message.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></p><p>{message.text}</p>
@@ -607,7 +604,6 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
 
   const modalOpen = !presentationBlocking && !results && ((panel !== null && panel !== 'MARKETS' && panel !== 'SPECTATOR') || forcedDecision);
   return <div className="match-layout match-viewport" data-viewer={spectator ? 'spectator' : 'player'} data-market={panel === 'MARKETS' || undefined} data-response={forcedDecision || undefined} data-chat={chatOpen || undefined} data-downed={me?.life === 'DOWNED' || undefined} data-modal={modalOpen ? 'true' : undefined} data-objective-reveal={objectiveBlocking ? objectiveReveal.phase.toLowerCase() : undefined}>
-    <MultiplayerHints room={room} blackMarketOpen={panel === 'MARKETS' && marketView === 'BLACK'} />
     <div className="match-scene-shell" aria-label={spectator ? 'Spectator table view' : 'First person table view'}>
       <GameTableScene onExitBeat={beat => { if (audio.started) { if (beat === 'chair-scrape') audio.engine.setMusic('exit'); playExitBeatAudio(audio.engine, beat); } }} tutorialFocus={guideFocus} onCameraTravel={onCameraTravel} room={presentedPublic} {...(ownerWildcard ? { ownerWildcard } : {})} wildcardDrawEnabled={hasCapability(room, 'DRAW_WILDCARD') && !action.busy} onReadyChange={setSceneReady} viewerId={spectator ? undefined : viewerId} onIntent={openIntent} interactionsEnabled={!presentationBlocking && !panel && !sceneChest && (!forcedDecision || wildcardTargeting) && !results} exitReady={canLeave} showOwnerMarket={!spectator && intermission} focus={sceneFocus} focusPlayerId={focusPlayerId} selectedItemId={!panel && !forcedDecision ? sceneItem?.instanceId : undefined} aimTargets={aimTargets} aimPockets={Boolean(aiming && sceneItem && ['spyglass', 'pickpocket', 'glass-eye'].includes(sceneItem.itemId))} spyglassTargetId={activeScope?.identity === scopeIdentity ? activeScope.targetId : undefined} spyglassActive={!spectator && !results && activeScope?.identity === scopeIdentity} onArrivalBeat={beat => { if (audio.started) audio.engine.play(ARRIVAL_AUDIO[beat]); }} onArrivalStateChange={active => setObjectiveReveal(current => {
         if (current.phase !== 'WAITING') return current;
@@ -631,7 +627,7 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
           <strong>{player.id === viewerId ? 'YOU' : player.name.toUpperCase()}</strong>
           <small>♥{player.hp}{(player.temporaryHp ?? 0) > 0 ? ` +${player.temporaryHp}` : ''} <CoinAmount amount={player.coins} /></small>
           <em>{publicStatus(player)}</em>
-          {room.public.wildcard?.unlocked && <small className="wildcard-seat-status">WILDCARD: {room.public.wildcard.drawUsedByPlayer[player.id] ? 'SPENT' : 'AVAILABLE'}</small>}
+          {room.public.wildcard?.unlocked && <small className="wildcard-seat-status">{room.public.wildcard.drawUsedByPlayer[player.id] ? 'WILDCARD SPENT' : 'WILDCARD READY'}</small>}
         </button>
       </li>)}
     </ol>}
@@ -661,7 +657,7 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
       {!spectator && <button type="button" aria-label="Settings" onClick={() => showPanel('SETTINGS')}>⚙</button>}
       <button type="button" aria-label={spectator ? 'God view' : 'Handbook'} onClick={() => showPanel(spectator ? 'SPECTATOR' : 'HANDBOOK')}>?</button>
     </nav>}
-    {!presentationBlocking && !spectator && !results && !panel && !forcedDecision && cameraHint && <button type="button" className="camera-onboarding" onClick={() => setCameraHint(false)}>Drag to look around · click an item or player · dismiss ×</button>}
+    {!presentationBlocking && !spectator && !results && !panel && !forcedDecision && cameraHint && <button type="button" className="camera-onboarding" onClick={() => setCameraHint(false)}>Drag to look · click to interact · ×</button>}
     {!presentationBlocking && intermission && panel !== 'MARKETS' && !results && room.public.shop && <p className="persistent-shop-order">PUBLIC ORDER: {room.public.shop.order.map((id, index) => `${index + 1}. ${playerName(room.public, id)}`).join(' → ')}{!spectator && <> · YOUR TURN = {room.public.shop.order.indexOf(viewerId) + 1 || '—'}</>}</p>}
     {!presentationBlocking && !spectator && <button type="button" className="scene-event-feed" onClick={() => showPanel('HISTORY')} aria-label="Open event log">
       {[...(room.public.events ?? [])].filter(event => event.publicText).slice(-3).map(event => <span key={event.id}>{event.publicText}</span>)}
@@ -671,7 +667,7 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
       <div className="action-buttons">
         {hasCapability(room, 'TRADE') && <button type="button" aria-label="[1] ⇄ Trade" aria-keyshortcuts="1" onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => showPanel('TRADE')}><kbd aria-hidden="true">1</kbd>⇄ Trade</button>}
         {hasCapability(room, 'THREAT') && <button type="button" className="threat" aria-label="[2] ⚠ Threaten" aria-keyshortcuts="2" onPointerEnter={() => setThreatMenuOpen(true)} onClick={() => showPanel('THREAT')}><kbd aria-hidden="true">2</kbd>⚠ Threaten</button>}
-        {hasCapability(room, 'DRAW_WILDCARD') && <button type="button" className="wildcard-draw-action" disabled={action.busy} onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => void action.send({ type: 'DRAW_WILDCARD' })}>✦ Draw Wildcard · Primary Action</button>}
+        {hasCapability(room, 'DRAW_WILDCARD') && <button type="button" className="wildcard-draw-action" disabled={action.busy} onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => void action.send({ type: 'DRAW_WILDCARD' })}>✦ Draw Wildcard</button>}
         {hasCapability(room, 'LOOT_DOWNED') && <button type="button" className="immediate-loot" onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => showPanel('DOWNED', { targetPlayerId: room.public.turn?.immediateLoot?.targetId, immediateLoot: true })}>Take immediate loot</button>}
         {hasCapability(room, 'SKIP_LOOT') && <button type="button" className="end-turn" disabled={action.busy} onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => void action.send({ type: 'SKIP_LOOT' })}>Skip loot</button>}
         {hasCapability(room, 'PASS_TURN') && !room.public.turn?.primaryUsed && <button type="button" aria-keyshortcuts="Space" className="end-turn pass-turn" disabled={action.busy} onPointerEnter={() => setThreatMenuOpen(false)} onClick={() => void action.send({ type: 'PASS_TURN' })}><kbd aria-hidden="true">␣</kbd>PASS TURN</button>}
@@ -715,12 +711,12 @@ function ActiveMatchView({ room, client, connected, viewerId, voice, audioEngine
     {!presentationBlocking && !panel && !forcedDecision && <ReferenceStateOverlays room={room} viewerId={viewerId} send={action.send} busy={action.busy} openContract={() => showPanel('OBJECTIVE')} />}
 
     {!presentationBlocking && chatOpen && !results && <aside className="match-chat-drawer" aria-label="Chat drawer"><button type="button" className="chat-close" onClick={() => setChatOpen(false)}>Close chat ×</button><ChatPanel room={room} sendChat={action.chat} busy={action.busy} draft={chatDraft} onDraftChange={setChatDraft} selectedRecipient={chatRecipient} onRecipientChange={setChatRecipient} /></aside>}
-    {concedeConfirm && hasCapability(room, 'CONCEDE') && <div className="concede-confirm" role="dialog" aria-label="Confirm Concede"><h2>Concede this match?</h2><p>Your objective can no longer be completed. Concede for 0 points and enter Spectator mode. Your hidden objective stays private.</p><button type="button" disabled={action.busy} onClick={() => void action.send({ type: 'CONCEDE' }).then(accepted => { if (accepted) setConcedeConfirm(false); })}>Concede · 0 points</button><button type="button" onClick={() => setConcedeConfirm(false)}>Keep playing</button></div>}
+    {concedeConfirm && hasCapability(room, 'CONCEDE') && <div className="concede-confirm" role="dialog" aria-label="Confirm Concede"><h2>Concede this match?</h2><p>0 points · enter Spectator mode</p><button type="button" disabled={action.busy} onClick={() => void action.send({ type: 'CONCEDE' }).then(accepted => { if (accepted) setConcedeConfirm(false); })}>Concede</button><button type="button" onClick={() => setConcedeConfirm(false)}>Keep playing</button></div>}
 
     {interactionParticipant && <div className="forced-decision"><PendingInteraction room={room} send={action.send} busy={action.busy} /></div>}
     {!spectator && hasCapability(room, 'OVERFLOW_CHOICE') && <div className="forced-decision"><OverflowDecision room={room} send={action.send} busy={action.busy} /></div>}
     {!spectator && wildcardPending && !results && <div hidden={Boolean(panel && panel !== 'WILDCARD')}><WildcardDecision key={room.private.pendingWildcard!.cardId} room={room} send={action.send} busy={action.busy} connected={connected} targetPlayerId={wildcardTargetId} onTargetPlayerChange={setWildcardTargetId} /></div>}
-    {wildcardPending && panel && panel !== 'WILDCARD' && <button type="button" className="wildcard-resume" onClick={closePanel}>Resume Wildcard · normal turn clock is running</button>}
+    {wildcardPending && panel && panel !== 'WILDCARD' && <button type="button" className="wildcard-resume" onClick={closePanel}>Resume Wildcard</button>}
     {!results && <WildcardPublicFeedback room={room.public} ownerDecision={wildcardPending} />}
     {results && <div className="results-stage"><Results room={room} /><section className="panel rematch-card"><h2>Match complete</h2>{!canRematch(room, viewerId) && <p>Waiting for the host to start a rematch.</p>}<div className="results-actions">{canRematch(room, viewerId) && <button className="button primary" disabled={action.busy} onClick={() => void action.rematch()}>Rematch</button>}{onReturnHome && <button className="button secondary return-home" type="button" onClick={onReturnHome}>Return to Home</button>}</div></section></div>}
     <MatchResolutionOverlays room={room} viewerId={viewerId} />

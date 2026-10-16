@@ -9,9 +9,8 @@ import './wildcard.css';
 export function WildcardDraw({ room, send, busy }: ActionProps) {
   const allowed = hasCapability(room, 'DRAW_WILDCARD');
   return <section className="wildcard-draw" aria-label="Draw Wildcard">
-    <span>PRIMARY ACTION · ONCE PER MATCH</span>
+    <span>PRIMARY ACTION</span>
     <button type="button" className="button primary" disabled={busy || !allowed} onClick={() => void send({ type: 'DRAW_WILDCARD' })}>{allowed ? 'DRAW WILDCARD' : 'DRAW UNAVAILABLE'}</button>
-    {!allowed && <p role="status">Your draw is unavailable. Wait for an eligible normal turn.</p>}
   </section>;
 }
 
@@ -25,8 +24,7 @@ export function WildcardDecision({ room, send, busy, connected, targetPlayerId, 
   useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [pending?.cardId, pending?.phase]);
   if (!pending || !card) return null;
   const targeting = pending.phase === 'TARGETING';
-  return <section className="wildcard-decision" data-phase={pending.phase} role="dialog" aria-label={targeting ? 'Resolve your Wildcard' : 'Private Wildcard decision'} aria-describedby="wildcard-commitment wildcard-action-help">
-    {targeting && <p className="wildcard-target-instruction">◎ CHOOSE A PLAYER{targetPlayerId ? card.targeting === 'POCKET' ? ' · CHOOSE AN OCCUPIED POCKET' : ' · SELECT THEIR ITEM BELOW' : ''}</p>}
+  return <section className="wildcard-decision" data-phase={pending.phase} role="dialog" aria-label={targeting ? 'Resolve your Wildcard' : 'Private Wildcard decision'} aria-describedby="wildcard-action-help">
     <div className="wildcard-ability-banner"><header><h2 tabIndex={-1} ref={heading}>{card.name.toUpperCase()}</h2><span>{targeting ? '◈ REVEALED TO THE TABLE' : '◈ WILDCARD · ONLY YOU'}</span></header><p className="wildcard-ability">{card.description}</p></div>
     <span className="sr-only">{!targeting && 'PRIVATE · ONLY YOU SEE THIS'}{room.public.turn && <Countdown deadline={room.public.turn.deadlineAt} label="Normal turn remaining" format="seconds" />}</span>
     {!connected && <p className="wildcard-connection" role="status">Reconnecting… Your decision is waiting for the table.</p>}
@@ -34,7 +32,7 @@ export function WildcardDecision({ room, send, busy, connected, targetPlayerId, 
       <p className="sr-only" id="wildcard-action-help">Use reveals the card publicly{card.targeting !== 'NONE' ? ', then you choose its target' : ' and resolves it'}. Burn keeps its identity secret. Choose before your normal turn ends. An undecided card is burned.</p>
       <div className="wildcard-buttons"><button type="button" className="wildcard-use" disabled={busy || !connected || !hasCapability(room, 'USE_WILDCARD')} onClick={() => void send({ type: 'USE_WILDCARD' })}>USE</button><button type="button" className="wildcard-burn" disabled={busy || !connected || !hasCapability(room, 'BURN_WILDCARD')} onClick={() => void send({ type: 'BURN_WILDCARD' })}>BURN</button></div>
     </>}
-    <div className="wildcard-commitment" id="wildcard-commitment"><strong>PRIMARY ACTION COMMITTED</strong><span className="sr-only">Wildcard spent</span></div>
+    <div className="wildcard-commitment"><strong>PRIMARY ACTION SPENT</strong></div>
   </section>;
 }
 

@@ -20,16 +20,12 @@ export function pocketDestinationMode(emptyPocketIndexes: number[]): { kind: 'UN
   return { kind: 'CHOOSE' };
 }
 
-function DraftSaved({ visible, phase = 'TURN' }: { visible: boolean; phase?: 'TURN' | 'INTERMISSION' }) {
-  return visible ? <p className="action-draft-saved" role="status">{phase === 'TURN' ? 'Turn ended. Draft saved.' : 'Intermission action unavailable. Selection saved.'}</p> : null;
-}
-
 export function ItemSelect({ items, label, name, value: selection, onChange }: { items: ItemStack[]; label: string; name: string; value?: string; onChange?: (id: string) => void }) {
   const [draft, setDraft] = useState(items[0]?.instanceId ?? '');
   const current = selection ?? (items.some(item => item.instanceId === draft) ? draft : items[0]?.instanceId ?? '');
   const choose = (id: string) => { setDraft(id); onChange?.(id); };
   return <fieldset className="visual-choice"><legend>{label}</legend><div className="choice-grid item-choice-grid">
-    {items.map(item => <button type="button" className={item.instanceId === current ? 'selected' : ''} aria-label={stackName(item)} title={`${stackName(item)} · ${ITEM_HELP[item.itemId]}`} aria-pressed={item.instanceId === current} key={item.instanceId} onClick={() => choose(item.instanceId)}><ReferenceItemArt itemId={item.itemId} /><strong>{stackName(item)}</strong><small>{ITEM_HELP[item.itemId]}</small></button>)}
+    {items.map(item => <button type="button" className={item.instanceId === current ? 'selected' : ''} aria-label={stackName(item)} title={`${stackName(item)} · ${ITEM_HELP[item.itemId]}`} aria-pressed={item.instanceId === current} key={item.instanceId} onClick={() => choose(item.instanceId)}><ReferenceItemArt itemId={item.itemId} /><strong>{stackName(item)}</strong></button>)}
     {!items.length && <p className="muted">No items available</p>}
   </div><label className="sr-only">{label}<select name={name} required value={current} onChange={event => choose(event.target.value)}>{!items.length && <option value="">No items available</option>}{items.map(item => <option key={item.instanceId} value={item.instanceId}>{stackName(item)}</option>)}</select></label></fieldset>;
 }
@@ -77,11 +73,10 @@ export function UseItemForm({ room, send, busy, preferredItemId, preferredTarget
     {item && <p className="item-help">{ITEM_HELP[item.itemId]}</p>}
     {!chestUse && opponentRequired && !preferredTargetId && <TargetSelect players={targets} value={targetId} onChange={setTarget} label="Item target" />}
     {pocketUse && (preferredPocketIndex !== undefined ? <div className="selected-target-pocket"><span>TARGET POCKET</span><strong>{target.name.toUpperCase()} · POCKET {preferredPocketIndex + 1} · {target.pocketOccupancy[preferredPocketIndex] ? 'OCCUPIED' : 'EMPTY'}</strong><input type="hidden" name="pocketIndex" value={preferredPocketIndex} /></div> : <label>Target Pocket<select name="pocketIndex">{target.pocketOccupancy.map((occupied, index) => <option value={index} key={index}>Pocket {index + 1} · {occupied ? 'Occupied' : 'Empty'}</option>)}</select></label>)}
-    {item?.itemId === 'pistol' && me(room).roleId === 'enforcer' && (room.private.abilities?.quickDrawUsed ? <p className="ability-spent">QUICK DRAW — USED</p> : <Check name="quickDraw">Use Quick Draw (Pistol modifier · once per match)</Check>)}
+    {item?.itemId === 'pistol' && me(room).roleId === 'enforcer' && (room.private.abilities?.quickDrawUsed ? <p className="ability-spent">QUICK DRAW — USED</p> : <Check name="quickDraw">Quick Draw</Check>)}
     {glassEyeSpent && ownItems(room).some(entry => entry.itemId === 'glass-eye') && <p className="ability-spent">GLASS EYE — USED THIS ROUND</p>}
     {stimulantNoBenefit && <p className="form-error" role="status">Stimulant would provide no HP or Temporary HP to this target.</p>}
     {(!item || (opponentRequired && !targetId)) && <p className="form-error" role="status">{!item ? 'You have no items that can be used as a Primary Action.' : item.itemId === 'knife' ? 'No active player is seated within Knife reach.' : 'No connected, active target is available for this item.'}</p>}
-    <DraftSaved visible={!allowed} />
     <button className="button primary" disabled={!allowed || !item || stimulantNoBenefit || (opponentRequired && !targetId)}>{allowed ? chestUse ? `Open ${item.itemId === 'black-key' ? 'Black' : 'Standard'} Chest` : item ? `Use ${itemName(item.itemId)}` : 'Use item' : 'TURN ENDED'}</button>
   </fieldset></form>;
 }
@@ -102,8 +97,7 @@ export function TradeForm({ room, send, busy, preferredTargetId, preferredReques
     <div className="reference-screen-heading"><h2>Propose a trade</h2><label className="reference-trade-target">WITH <select aria-label="Trade with" name="targetId" value={targetId} onChange={event => { setTarget(event.target.value); onTargetChange?.(event.target.value); }}>{others.map(player => <option key={player.id} value={player.id}>{player.name.toUpperCase()}</option>)}</select></label></div>
     <div className="reference-trade-columns"><Assets player={me(room)} prefix="offered" legend="You offer" /><div className="exchange-arrow" aria-hidden="true">⇄</div>{target && <Assets key={targetId} player={target} prefix="requested" legend="You request" preferredItemId={preferredRequestedItemId} />}</div>
     {!target && <p className="form-error" role="status">No connected, active player is available to trade.</p>}
-    <DraftSaved visible={!allowed} />
-    <footer><p>VISIBLE ITEMS + GOLD ONLY · POCKETS CAN’T BE TRADED</p><div><button type="button" className="reference-cancel" onClick={onCancel}>CANCEL</button><button className="button primary" aria-label="Propose Trade" disabled={!allowed || !target}>{allowed ? 'SEND OFFER' : 'TURN ENDED'}</button></div></footer>
+    <footer><div><button type="button" className="reference-cancel" onClick={onCancel}>CANCEL</button><button className="button primary" aria-label="Propose Trade" disabled={!allowed || !target}>{allowed ? 'SEND OFFER' : 'TURN ENDED'}</button></div></footer>
   </fieldset></form>;
 }
 
@@ -129,15 +123,14 @@ export function ThreatForm({ room, send, busy, preferredTargetId, preferredMode 
     });
   };
   return <form className="action-form reference-threat" onSubmit={submit} aria-label="Compose Threat"><fieldset disabled={busy}><legend className="sr-only">Make a Threat</legend>
-    <div className="reference-screen-heading"><h2>Make a demand</h2><span>⚠ THREAT</span></div>
+    <div className="reference-screen-heading"><h2>Make a demand</h2></div>
     <TargetSelect players={others} value={targetId} onChange={id => { setTarget(id); onTargetChange?.(id); }} label="Threaten" />
     {target && <Assets key={targetId} player={target} prefix="demanded" legend="You demand" />}
     <ItemSelect key={`${mode}-${targetId}`} items={committedItems} label={mode === 'OPEN' ? 'Visible weapon' : 'Visible item to cover'} name="committedItemId" />
-    <fieldset className="visual-choice threat-mode"><legend>Threat mode</legend><div className="choice-grid"><button type="button" className={mode === 'COVERED' ? 'selected' : ''} aria-pressed={mode === 'COVERED'} onClick={() => setMode('COVERED')}><ReferenceItemArt itemId="cloth" size={28} label="" /><strong>Under cloth</strong><small>Commit an unknown item and consume Cloth</small></button><button type="button" className={mode === 'OPEN' ? 'selected' : ''} aria-pressed={mode === 'OPEN'} onClick={() => setMode('OPEN')}><strong>Open</strong><small>Present a valid weapon</small></button></div><label className="sr-only">Threat mode<select name="mode" value={mode} onChange={event => setMode(event.target.value as 'OPEN' | 'COVERED')}><option value="OPEN">Open</option><option value="COVERED">Covered</option></select></label></fieldset>
+    <fieldset className="visual-choice threat-mode"><legend>Threat mode</legend><div className="choice-grid"><button type="button" className={mode === 'COVERED' ? 'selected' : ''} aria-pressed={mode === 'COVERED'} onClick={() => setMode('COVERED')}><ReferenceItemArt itemId="cloth" size={28} label="" /><strong>Under cloth</strong><small>Consumes Cloth</small></button><button type="button" className={mode === 'OPEN' ? 'selected' : ''} aria-pressed={mode === 'OPEN'} onClick={() => setMode('OPEN')}><strong>Open</strong></button></div><label className="sr-only">Threat mode<select name="mode" value={mode} onChange={event => setMode(event.target.value as 'OPEN' | 'COVERED')}><option value="OPEN">Open</option><option value="COVERED">Covered</option></select></label></fieldset>
     {mode === 'COVERED' && <label className="sr-only">Cloth to consume<select name="clothItemId" defaultValue={cloth[0]?.instanceId ?? ''}>{cloth.map(item => <option key={item.instanceId} value={item.instanceId}>{stackName(item)}</option>)}</select></label>}
-    {me(room).roleId === 'enforcer' && (room.private.abilities?.quickDrawUsed ? <p className="ability-spent">QUICK DRAW — USED</p> : <Check name="quickDraw">Commit Quick Draw if a Pistol is refused</Check>)}
+    {me(room).roleId === 'enforcer' && (room.private.abilities?.quickDrawUsed ? <p className="ability-spent">QUICK DRAW — USED</p> : <Check name="quickDraw">Quick Draw</Check>)}
     {blocked && <p className="form-error" role="status">{blocked}</p>}
-    <DraftSaved visible={!allowed} />
     <footer><button type="button" className="reference-cancel" onClick={onCancel}>CANCEL</button><button className="button primary" aria-label="Make Threat" disabled={!allowed || !target || !committedItems.length || (mode === 'COVERED' && !cloth.length)}>{allowed ? 'SEND THREAT' : 'TURN ENDED'}</button></footer>
   </fieldset></form>;
 }
@@ -163,7 +156,6 @@ export function DownedForm({ room, send, busy, immediate = false, preferredTarge
     {!immediate && <fieldset className="visual-choice"><legend>Interaction</legend><div className="choice-grid"><button type="button" className={kind === 'LOOT' ? 'selected' : ''} aria-pressed={kind === 'LOOT'} onClick={() => setKind('LOOT')}>Loot</button><button type="button" className={kind === 'REVIVE' ? 'selected' : ''} aria-pressed={kind === 'REVIVE'} onClick={() => setKind('REVIVE')}>Revive</button><button type="button" className={kind === 'HELP' ? 'selected' : ''} aria-pressed={kind === 'HELP'} onClick={() => setKind('HELP')}>Help</button></div><label className="sr-only">Interaction<select value={kind} onChange={event => setKind(event.target.value as typeof kind)}><option value="LOOT">Loot one visible item</option><option value="REVIVE">Revive with Medicine</option><option value="HELP">Help with Medicine or Antidote</option></select></label></fieldset>}
     <ItemSelect key={`${target?.id}-${actionKind}`} items={items} label={actionKind === 'LOOT' ? 'Their visible item' : 'Your help item'} name="instanceId" />
     {!items.length && <p className="form-error" role="status">{actionKind === 'LOOT' ? 'This player has no visible items to loot.' : actionKind === 'REVIVE' ? 'You need Medicine to revive this player.' : 'You need Medicine or Antidote to help this player.'}</p>}
-    <DraftSaved visible={!allowed} />
     <button className="button primary" disabled={!allowed || !items.length}>{allowed ? actionKind === 'LOOT' ? 'Loot item' : actionKind === 'REVIVE' ? 'Revive player' : 'Help player' : 'TURN ENDED'}</button>
   </fieldset></form>;
 }
@@ -191,14 +183,13 @@ export function InventoryForm({ room, send, busy, onSelectPocketItem }: ActionPr
     void send({ type, instanceId: value(data, 'instanceId'), pocketIndex: coins(data, 'pocketIndex') });
   };
   return <form className="action-form reference-pockets" onSubmit={submit} aria-label="Manage Pockets"><fieldset disabled={busy}><legend className="sr-only">Manage Pockets</legend>
-    <div className="reference-screen-heading"><h2>Your Pockets</h2>{!type && <span>PRIVATE</span>}</div>
+    <div className="reference-screen-heading"><h2>Your Pockets</h2></div>
     {(!type || !currentItem) && <p role="status">{!type ? room.private.overflows?.length ? 'Resolve your inventory overflow before arranging Pockets.' : 'Arrange Pockets during Intermission before you finish.' : type === 'ASSIGN_SAFE' ? 'You need a visible Safe to protect a Pocket.' : 'You have no visible items that can go into a Pocket.'}</p>}
-    {choosingDestination && currentItem && <div className="pocket-destination-prompt" role="status"><strong>CHOOSE A POCKET</strong><span>Selected: {itemName(currentItem.itemId).toUpperCase()}</span><button type="button" onClick={() => setChoosingDestination(false)}>Cancel</button></div>}
-    <div className="reference-pocket-row">{room.private.pockets.map((pocket, index) => <button className={`reference-pocket ${pocket.item ? 'occupied' : 'empty'}`} type="button" key={index} disabled={pocket.item ? !onSelectPocketItem : !type || !currentItem || (type === 'POCKET' && !choosingDestination) || (type === 'ASSIGN_SAFE' && pocket.protectedBySafe)} onClick={() => { if (pocket.item) { onSelectPocketItem?.(pocket.item.instanceId); return; } if (!currentItem || !type) return; if (type === 'POCKET') void place(currentItem, index); else void send({ type, instanceId: currentItem.instanceId, pocketIndex: index }); }}><span className="pocket-art">{pocket.item ? <ReferenceItemArt itemId={pocket.item.itemId} size={72} /> : '+'}{pocket.protectedBySafe && <i>⊡</i>}</span><span><small>POCKET {index + 1}{pocket.source === 'BAG' ? ' · BAG' : ''}</small><strong>{pocket.item ? `${itemName(pocket.item.itemId).toUpperCase()} · INSPECT` : `EMPTY${type === 'POCKET' && choosingDestination ? ' · CHOOSE' : ''}`}</strong></span></button>)}</div>
+    {choosingDestination && currentItem && <div className="pocket-destination-prompt" role="status"><strong>CHOOSE A POCKET</strong><span>{itemName(currentItem.itemId).toUpperCase()}</span><button type="button" onClick={() => setChoosingDestination(false)}>Cancel</button></div>}
+    <div className="reference-pocket-row">{room.private.pockets.map((pocket, index) => <button className={`reference-pocket ${pocket.item ? 'occupied' : 'empty'}`} type="button" key={index} disabled={pocket.item ? !onSelectPocketItem : !type || !currentItem || (type === 'POCKET' && !choosingDestination) || (type === 'ASSIGN_SAFE' && pocket.protectedBySafe)} onClick={() => { if (pocket.item) { onSelectPocketItem?.(pocket.item.instanceId); return; } if (!currentItem || !type) return; if (type === 'POCKET') void place(currentItem, index); else void send({ type, instanceId: currentItem.instanceId, pocketIndex: index }); }}><span className="pocket-art">{pocket.item ? <ReferenceItemArt itemId={pocket.item.itemId} size={72} /> : '+'}{pocket.protectedBySafe && <i>⊡</i>}</span><span><small>POCKET {index + 1}{pocket.source === 'BAG' ? ' · BAG' : ''}</small><strong>{pocket.item ? itemName(pocket.item.itemId).toUpperCase() : `EMPTY${type === 'POCKET' && choosingDestination ? ' · CHOOSE' : ''}`}</strong></span></button>)}</div>
     <div className="reference-pocket-inventory"><p>VISIBLE INVENTORY</p><div>{Array.from({ length: 6 }, (_, index) => me(room).visibleInventory[index] ?? null).map((item, index) => <button type="button" key={item?.instanceId ?? index} aria-label={item ? stackName(item) : `Empty slot ${index + 1}`} className={item?.instanceId === currentItem?.instanceId ? 'selected' : ''} disabled={!item || !items.some(eligible => eligible.instanceId === item.instanceId)} onClick={() => { if (item) { setSelectedItem(item.instanceId); setChoosingDestination(false); setFeedback(''); } }}>{item && <ReferenceItemArt itemId={item.itemId} size={64} />}</button>)}</div></div>
     <div className="reference-pocket-options">{options.map(option => <button type="button" className={type === option ? 'selected' : ''} key={option} disabled={!currentItem || (option === 'POCKET' && placement.kind === 'UNAVAILABLE')} onClick={() => { setAction(option); setFeedback(''); if (option === 'POCKET' && currentItem) { if (placement.kind === 'IMMEDIATE') void place(currentItem, placement.pocketIndex!); else if (placement.kind === 'CHOOSE') setChoosingDestination(true); } else setChoosingDestination(false); }}>{option === 'POCKET' ? placement.kind === 'CHOOSE' && choosingDestination ? 'CHOOSE DESTINATION' : 'PLACE IN POCKET' : 'ASSIGN SAFE'}</button>)}</div>
     {feedback && <p className="pocket-placement-feedback" role="status">{feedback}</p>}
-    <p className="reference-pocket-public">PUBLIC VIEW OF YOUR SEAT: POCKET {room.private.pockets.map(pocket => pocket.item ? '◆' : '◇').join(' ')} — CONTENTS NEVER SHOWN</p>
   </fieldset></form>;
 }
 
@@ -231,7 +222,7 @@ export function Markets({ room, send, busy }: ActionProps) {
     void send({ type: 'SELL', instanceId: value(new FormData(event.currentTarget), 'instanceId') });
   };
   return <section className="panel" aria-label="Intermission markets"><h2>Markets</h2>{hasCapability(room, 'INSPECT_CHEST') && <button className="button secondary full-width" disabled={busy} onClick={() => void send({ type: 'INSPECT_CHEST' })}>Inspect Standard Chest</button>}
-    <form className="action-form" aria-label="Sell item" onSubmit={sell}><fieldset disabled={busy}><legend>Sell old visible items</legend><ItemSelect items={sellable} name="instanceId" label="Item to sell" />{visible.filter(item => { const state = resaleState(room, item); return state.price === 0 || state.acquiredNow; }).map(item => <p className="market-item-lock" key={item.instanceId}><strong>{stackName(item)}</strong> · {resaleState(room, item).reason}</p>)}<DraftSaved visible={!hasCapability(room, 'SELL')} phase="INTERMISSION" /><button className="button secondary" disabled={!hasCapability(room, 'SELL') || !sellable.length}>Sell item</button></fieldset></form>
+    <form className="action-form" aria-label="Sell item" onSubmit={sell}><fieldset disabled={busy}><legend>Sell visible item</legend><ItemSelect items={sellable} name="instanceId" label="Item" />{visible.filter(item => { const state = resaleState(room, item); return state.price === 0 || state.acquiredNow; }).map(item => <p className="market-item-lock" key={item.instanceId}><strong>{stackName(item)}</strong> · {resaleState(room, item).reason}</p>)}<button className="button secondary" disabled={!hasCapability(room, 'SELL') || !sellable.length}>Sell item</button></fieldset></form>
     <h3>Public Shop</h3><MarketOffers room={room} send={send} busy={busy} offers={room.public.shop?.publicOffers ?? []} market="PUBLIC" />
     <h3>Your private Black Market</h3>{blackMarketUnlocked(room) ? <MarketOffers room={room} send={send} busy={busy} offers={room.private.blackMarket ?? []} market="BLACK" /> : <><p>{BLACK_MARKET_LOCK_REASON}</p>{hasCapability(room, 'SKIP_PUBLIC_SHOP') && <button type="button" disabled={busy} onClick={() => void send({ type: 'SKIP_PUBLIC_SHOP' })}>Skip Public Shop</button>}</>}
     {room.public.round?.phase === 'INTERMISSION' && <InventoryForm room={room} send={send} busy={busy} />}
@@ -261,13 +252,13 @@ export function TurnActions({ room, send, busy }: ActionProps) {
   const failed = room.private.objective?.status === 'FAILED';
   if (!actions.length && !immediate && !turn && !inspect && !failed) return <section className="panel"><h2>No actions available</h2></section>;
   return <section className="panel" aria-label="Your actions"><h2>Your actions</h2>
-    {hasCapability(room, 'LEAVE_TABLE') && <div className="exit-choice"><h3>Your exit is ready</h3><p>Leave now to bank your objective. Choosing to stay defers this chance to your next normal turn.</p><div className="button-row"><button className="button primary" disabled={busy} onClick={() => void send({ type: 'LEAVE_TABLE' })}>Leave Table</button>{hasCapability(room, 'STAY') && <button className="button secondary" disabled={busy} onClick={() => void send({ type: 'STAY' })}>Stay at Table</button>}</div></div>}
-    {failed && <div className="concede-choice"><h3>Contract failed</h3><p>You may keep playing, or Concede for 0 points on your normal turn.</p><button className="button secondary" disabled={busy || !canConcede} onClick={() => void send({ type: 'CONCEDE' })}>{canConcede ? 'Concede for 0 points' : 'Concede available on your normal turn'}</button></div>}
+    {hasCapability(room, 'LEAVE_TABLE') && <div className="exit-choice"><h3>Exit ready</h3><div className="button-row"><button className="button primary" disabled={busy} onClick={() => void send({ type: 'LEAVE_TABLE' })}>Leave Table</button>{hasCapability(room, 'STAY') && <button className="button secondary" disabled={busy} onClick={() => void send({ type: 'STAY' })}>Stay</button>}</div></div>}
+    {failed && <div className="concede-choice"><h3>Contract failed</h3><button className="button secondary" disabled={busy || !canConcede} onClick={() => void send({ type: 'CONCEDE' })}>{canConcede ? 'Concede · 0 points' : 'Concede unavailable'}</button></div>}
     {immediate && <DownedForm key={room.public.turn?.immediateLoot?.downEventId} room={room} send={send} busy={busy} immediate />}
     {actions.length > 0 && <div className="action-tabs" aria-label="Choose action">{actions.map(action => <button type="button" className={current === action ? 'selected' : ''} key={action.capability} aria-pressed={current === action} onClick={() => setSelected(action.capability)}>{action.label}</button>)}</div>}
     {Component && <Component key={current.capability} room={room} send={send} busy={busy} />}
     {inspect && <button className="button secondary full-width" disabled={busy} onClick={() => void send({ type: 'INSPECT_CHEST' })}>Inspect Standard Chest</button>}
     {me(room).roleId === 'locksmith' && room.private.abilities?.locksmithRound === room.public.round?.number && <p className="ability-spent">TUMBLER SENSE — USED THIS ROUND</p>}
-    {turn && <button className="button quiet full-width end-turn" disabled={busy} onClick={() => void send({ type: 'END_TURN' })}>{room.public.turn?.primaryUsed ? 'End turn' : 'Skip Primary Action & end turn'}</button>}
+    {turn && <button className="button quiet full-width end-turn" disabled={busy} onClick={() => void send({ type: 'END_TURN' })}>{room.public.turn?.primaryUsed ? 'End turn' : 'Pass turn'}</button>}
   </section>;
 }

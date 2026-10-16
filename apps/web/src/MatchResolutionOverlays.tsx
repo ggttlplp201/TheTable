@@ -26,7 +26,7 @@ export interface ThreatResolutionReveal {
   itemId?: string;
 }
 
-export interface SpawnAnnouncement { eventId: string; heading: string; detail: string }
+export interface SpawnAnnouncement { eventId: string; heading: string }
 
 const record = (value: unknown): Record<string, unknown> | undefined => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 
@@ -53,10 +53,10 @@ export function latestSpawnAnnouncement(room: AnyRoomView): SpawnAnnouncement | 
   const event = candidates.at(-1);
   if (!event) return;
   const paired = candidates.find(candidate => candidate.id !== event.id && candidate.at === event.at);
-  if (paired) return { eventId: `${paired.id}:${event.id}`, heading: 'BLACK CHEST + WILDCARDS HAVE ENTERED PLAY', detail: 'The Black Chest needs a Black Key. Draw Wildcard is now available on eligible turns and spends a Primary Action.' };
+  if (paired) return { eventId: `${paired.id}:${event.id}`, heading: 'BLACK CHEST + WILDCARDS HAVE ENTERED PLAY' };
   return event.kind === 'WILDCARD_DECK_UNLOCKED'
-    ? { eventId: event.id, heading: 'WILDCARDS HAVE ENTERED PLAY', detail: 'A DRAW WILDCARD action is now available on eligible turns.' }
-    : { eventId: event.id, heading: 'THE BLACK CHEST HAS APPEARED', detail: 'A Black Key opens it as a Primary Action.' };
+    ? { eventId: event.id, heading: 'WILDCARDS HAVE ENTERED PLAY' }
+    : { eventId: event.id, heading: 'THE BLACK CHEST HAS APPEARED' };
 }
 
 /** Never derive an inspection from another player's inventory or spectator god view. */
@@ -153,7 +153,7 @@ export function ThreatResolutionView({ result }: { result: ThreatResolutionRevea
   return <section className="threat-result-reveal" role="status" aria-live="assertive" aria-label="Threat result">
     {result.itemId && <div className="threat-cloth-reveal" aria-label={`The covered item was ${itemName(result.itemId)}`}><ReferenceItemArt itemId={result.itemId} size={132} label="" /><span aria-hidden="true" /></div>}
     <strong>{result.heading}</strong><p>{result.detail}</p>
-    {result.itemId && <small>UNDER THE CLOTH · {itemName(result.itemId).toUpperCase()}</small>}
+    {result.itemId && <small>{itemName(result.itemId).toUpperCase()}</small>}
   </section>;
 }
 
@@ -218,10 +218,10 @@ export function MatchResolutionOverlays({ room, viewerId }: { room: AnyRoomView;
   return <>
     {!isSpectatorView(room) && room.public.status !== 'RESULTS' && inspection?.identity === identity && <InspectionRevealView key={inspection.reveal.eventId} inspection={inspection.reveal} />}
     {room.public.status !== 'RESULTS' && threat && <ThreatResolutionView key={threat.eventId} result={threat} />}
-    {room.public.status !== 'RESULTS' && spawn && <aside className="table-spawn-announcement" role="status" aria-live="polite"><strong>{spawn.heading}</strong><span>{spawn.detail}</span></aside>}
+    {room.public.status !== 'RESULTS' && spawn && <aside className="table-spawn-announcement" role="status" aria-live="polite"><strong>{spawn.heading}</strong></aside>}
     {exit && exit.eventId !== dismissedExit && <section className="scene-exit-confirmation" role="dialog" aria-modal="true" aria-label="You left the table">
       <button ref={exitButton} type="button" aria-label="Return to the table as a spectator" onClick={() => setDismissedExit(exit.eventId)} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setDismissedExit(exit.eventId); } }}>
-        <span>{exit.place} OUT</span><strong>You left the table</strong><small>Score locked · contract revealed · click to watch</small>
+        <span>{exit.place} OUT</span><strong>You left the table</strong><small>WATCH</small>
       </button>
     </section>}
   </>;

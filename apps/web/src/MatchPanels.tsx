@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChestState, ItemStack, ObjectiveState, PlayerPrivateView, PublicPlayerView, PublicRoomView, RoleId, ShopOffer } from '@the-table/game';
 import type { AnyRoomView, PlayerCommand, RoomView, SpectatorRoomView } from './protocol';
 import { isSpectatorView, ROLE_COPY } from './protocol';
-import { assetNames, hasCapability, ITEM_HELP, itemName, OBJECTIVE_BY_ID, OBJECTIVE_HELP, playerName, presentItems, remainingSeconds, stackName, words } from './gameplay';
+import { assetNames, hasCapability, itemName, OBJECTIVE_BY_ID, OBJECTIVE_HELP, playerName, presentItems, remainingSeconds, stackName, words } from './gameplay';
 import { ReferenceItemArt } from './ReferenceItemArt';
 import { matchResultSummary } from './match-results';
 import { objectiveProgressItems } from './objective-progress';
@@ -69,7 +69,7 @@ export function MatchHeader({ room, viewerId }: { room: AnyRoomView; viewerId: s
 
 export function ItemList({ items, empty = 'No visible items' }: { items: Array<ItemStack | null>; empty?: string }) {
   const present = presentItems(items);
-  return present.length ? <ul className="item-list">{present.map(item => <li key={item.instanceId}><strong>{stackName(item)}</strong><span>{ITEM_HELP[item.itemId]}</span></li>)}</ul> : <p className="muted">{empty}</p>;
+  return present.length ? <ul className="item-list">{present.map(item => <li key={item.instanceId}><strong>{stackName(item)}</strong></li>)}</ul> : <p className="muted">{empty}</p>;
 }
 
 export function PlayerRoster({ room, viewerId, selectedPlayerId }: { room: PublicRoomView; viewerId: string; selectedPlayerId?: string }) {
@@ -86,7 +86,6 @@ export function PlayerRoster({ room, viewerId, selectedPlayerId }: { room: Publi
     {room.players.map(player => <details className="player-detail" key={player.id} ref={player.id === selectedPlayerId ? selectedDetail : undefined} open={openPlayerIds.has(player.id)} onToggle={event => { const open = event.currentTarget.open; setOpenPlayerIds(current => { const next = new Set(current); if (open) next.add(player.id); else next.delete(player.id); return next; }); }} data-selected={player.id === selectedPlayerId ? 'true' : undefined}>
       <summary aria-current={player.id === selectedPlayerId ? 'true' : undefined}><span><strong>{player.name}{player.id === viewerId ? ' (you)' : ''}</strong><small>{player.roleId ? ROLE_COPY[player.roleId].name : 'No role'} · {player.conceded ? 'Conceded' : words(player.life)}</small></span><span className="player-numbers">{player.hp}/5 HP{(player.temporaryHp ?? 0) > 0 ? ` +${player.temporaryHp}` : ''}<small>{player.coins} Gold</small></span></summary>
       <div className="player-body"><p className="muted">Seat {player.seat + 1} · {words(player.connection)}{player.objectiveCompleted ? ' · Objective ready' : ''}</p>
-        {room.wildcard?.unlocked && <p>WILDCARD: {room.wildcard.drawUsedByPlayer[player.id] ? 'SPENT' : 'AVAILABLE'}</p>}
         {player.statuses?.map(status => <p className="status-tag" key={status.id}>{words(status.kind)} · {status.remainingTurns} turn{status.remainingTurns === 1 ? '' : 's'}</p>)}
         <h3>Visible inventory <span className="muted">{presentItems(player.visibleInventory).length}/{player.visibleInventory.length}</span></h3><ItemList items={player.visibleInventory} />
         <p className="muted">{player.pocketOccupancy.map((occupied, index) => `Pocket ${index + 1}: ${occupied ? 'occupied' : 'empty'}`).join(' · ')}</p>
@@ -136,7 +135,7 @@ export function RoleAbilityDetail({ detail, room, compact = false }: { detail: P
     : player.roleId === 'locksmith' ? detail.abilities?.locksmithRound === round ? 'USED THIS ROUND' : detail.capabilities?.includes('INSPECT_CHEST') ? 'READY' : 'AVAILABLE WHEN THE STANDARD CHEST IS PRESENT'
     : player.roleId === 'scavenger' && detail.abilities?.salvageRound === round ? 'USED THIS INTERMISSION'
     : 'PASSIVE';
-  return <aside className="role-ability-detail" data-compact={compact || undefined} aria-label="Role ability"><span>ROLE · {ROLE_COPY[player.roleId].name.toUpperCase()}</span><strong>{ability.name.toUpperCase()}</strong><p>{ability.cost}</p>{!compact && <p>{ability.description}</p>}<b>{availability}</b></aside>;
+  return <aside className="role-ability-detail" data-compact={compact || undefined} aria-label={`${ROLE_COPY[player.roleId].name} ability`}><strong>{ability.name.toUpperCase()}</strong><p>{ability.cost}</p>{!compact && <p>{ability.description}</p>}<b>{availability}</b></aside>;
 }
 
 export function PrivateDetail({ detail, room, title = 'Your objective', setup = false }: { detail: PlayerPrivateView; room: PublicRoomView; title?: string; setup?: boolean }) {
@@ -147,13 +146,12 @@ export function PrivateDetail({ detail, room, title = 'Your objective', setup = 
   const canConcede = detail.capabilities?.includes('CONCEDE') ?? false;
   const waitingForNextTurn = state === 'EXIT_READY' && !canLeave;
   const lostRequirements = objective ? objectiveProgressItems(objective, room).filter(item => !item.complete).map(item => `${item.label}: ${item.value}`).join(' · ') : '';
-  return <section className={`panel private-info reference-contract ${fulfilled ? 'fulfilled' : ''} ${state === 'FAILED' ? 'failed' : ''} ${setup ? 'setup-contract-card' : ''}`} aria-label={title}><header><span>{setup ? 'CONTRACT' : 'CONTRACT · PRIVATE'}</span><span>{setup ? (fulfilled ? '✓ FULFILLED' : '◆ SEALED') : `OBJECTIVE STATE · ${state ? words(state) : 'ASSIGNING'}`}</span></header><ObjectiveDetail objective={objective} room={room} />{!setup && <RoleAbilityDetail detail={detail} room={room} />}
-    {setup ? <footer className="contract-privacy-band">PRIVATE — DO NOT REVEAL</footer>
-      : state === 'FAILED' ? <div className="contract-failure" role="status"><strong>CONTRACT FAILED</strong>{objective?.failureReason && <p>{objective.failureReason}</p>}<p>This objective can no longer be completed.</p><p>{canConcede ? 'You may continue playing or Concede for 0 points now.' : 'You may continue playing or Concede for 0 points on your next normal turn.'}</p></div>
-      : state === 'EXIT_READY' ? <><div className="contract-leave">{waitingForNextTurn ? 'OBJECTIVE COMPLETE' : 'EXIT READY'}</div><p className="contract-unlock-copy">{waitingForNextTurn ? 'Leave Table unlocks at the start of your next normal turn.' : 'You may leave now or stay.'}</p><div className="contract-stamp">FULFILLED</div></>
-      : state === 'BANKED' ? <><div className="contract-leave">OBJECTIVE BANKED</div><div className="contract-stamp">BANKED</div></>
-      : objective?.rewardGranted ? <><div className="contract-leave">EXIT LOCKED</div><p className="contract-unlock-copy">Requirement lost: {lostRequirements || 'required possessions'}. Restore it to become Exit Ready again.</p></>
-      : <footer><span>LEAVE TABLE</span><span className="contract-locked">LOCKED</span></footer>}
+  return <section className={`panel private-info reference-contract ${fulfilled ? 'fulfilled' : ''} ${state === 'FAILED' ? 'failed' : ''} ${setup ? 'setup-contract-card' : ''}`} aria-label={title}><header><span>PRIVATE OBJECTIVE</span></header><ObjectiveDetail objective={objective} room={room} />{!setup && <RoleAbilityDetail detail={detail} room={room} />}
+    {!setup && (state === 'FAILED' ? <div className="contract-failure" role="status"><strong>CONTRACT FAILED</strong>{objective?.failureReason && <p>{objective.failureReason}</p>}<p>{canConcede ? 'CONCEDE AVAILABLE' : 'CONCEDE NEXT TURN'}</p></div>
+      : state === 'EXIT_READY' ? <><div className="contract-leave">{waitingForNextTurn ? 'OBJECTIVE COMPLETE' : 'EXIT READY'}</div>{waitingForNextTurn && <p className="contract-unlock-copy">LEAVE TABLE UNLOCKS NEXT TURN</p>}</>
+      : state === 'BANKED' ? <div className="contract-leave">OBJECTIVE BANKED</div>
+      : objective?.rewardGranted ? <><div className="contract-leave">EXIT LOCKED</div><p className="contract-unlock-copy">{lostRequirements || 'REQUIREMENTS LOST'}</p></>
+      : null)}
   </section>;
 }
 
@@ -182,7 +180,7 @@ export function PendingInteraction({ room, send, busy }: { room: AnyRoomView; se
   const assets = (ids: string[], coins: number) => [...assetNames(room.public, ids), `${coins} Gold`].join(', ');
   const visualAssets = (ids: string[], amount: number) => <><div className="response-asset-art">{ids.map(id => { const item = room.public.players.flatMap(player => presentItems(player.visibleInventory)).find(item => item.instanceId === id); return item ? <ReferenceItemArt key={id} itemId={item.itemId} size={72} /> : null; })}{amount > 0 && <span className="response-coins"><ReferenceItemArt itemId="coin" size={28} />{amount}</span>}</div><span>{assets(ids, amount)}</span></>;
   return <section ref={focus} className={`decision-panel reference-response ${trade ? 'trade-response' : 'threat-response'}`} aria-label={trade ? 'Pending Trade' : 'Pending Threat'}>
-    <header><div><p>{trade ? '⇄ OFFER' : '⚠ THREAT'} {actorView ? `TO ${playerName(room.public, proposal.targetId).toUpperCase()}` : `FROM ${playerName(room.public, proposal.actorId).toUpperCase()}`}</p><h2 tabIndex={-1}>{trade ? 'Trade offer' : 'Threat'}</h2></div><div className="response-clock"><Countdown deadline={proposal.deadlineAt} label="Response remaining" format="seconds" /><span>SEC · {responseAllowed ? 'YOU' : playerName(room.public, proposal.targetId).toUpperCase()}</span></div></header>
+    <header><div><h2 tabIndex={-1}>{trade ? '⇄ OFFER' : '⚠ THREAT'} {actorView ? `TO ${playerName(room.public, proposal.targetId).toUpperCase()}` : `FROM ${playerName(room.public, proposal.actorId).toUpperCase()}`}</h2></div><div className="response-clock"><Countdown deadline={proposal.deadlineAt} label="Response remaining" format="seconds" /></div></header>
     <ResponseProgress deadline={proposal.deadlineAt} duration={room.public.mode === 'tutorial' ? TUTORIAL_DEALER_REACTION_MS : GAME_CONSTANTS.interactionResponseMs} />
     {trade ? <div className="response-trade-assets"><div><h3>{actorView ? 'YOU GIVE' : 'YOU GET'}</h3>{visualAssets(trade.offeredItems, trade.offeredCoins)}</div><span className="exchange-arrow">⇄</span><div><h3>{actorView ? 'YOU GET' : 'YOU GIVE'}</h3>{visualAssets(trade.requestedItems, trade.requestedCoins)}</div></div> : <><div className="response-demand">{threat!.demandedItems.map(id => { const item = room.public.players.flatMap(player => presentItems(player.visibleInventory)).find(item => item.instanceId === id); return item ? <div key={id}><ReferenceItemArt itemId={item.itemId} size={56} /><span>{stackName(item).toUpperCase()}</span></div> : null; })}{threat!.demandedCoins > 0 && <div><ReferenceItemArt itemId="coin" size={48} /><span>{threat!.demandedCoins} GOLD</span></div>}{!threat!.demandedItems.length && !threat!.demandedCoins && <div>NO ASSETS DEMANDED</div>}</div><div className="response-backing"><ReferenceItemArt itemId={threat!.committedItemType ?? 'cloth'} size={64} /><div><strong>{threat!.committedItemType ? `BACKED BY ${itemName(threat!.committedItemType).toUpperCase()}` : 'BACKED BY A COVERED ITEM'}</strong></div></div></>}
     {responseAllowed && <div className="button-row">
@@ -224,7 +222,7 @@ export function OfferList({ offers }: { offers: ShopOffer[] }) {
   return <ul className="compact-list">{offers.map(offer => <li key={offer.id}>{itemName(offer.itemId)} · {offer.price} Gold{offer.purchasedBy ? ' · Purchased' : ''}</li>)}</ul>;
 }
 export function SpectatorDetails({ room }: { room: SpectatorRoomView }) {
-  return <section className="panel reference-spectator" aria-label="Spectator god view"><header><h2>◎ SPECTATING · GOD VIEW</h2><p>ALL INPUT DISABLED · CHAT READ-ONLY</p></header>
+  return <section className="panel reference-spectator" aria-label="Spectator god view"><header><h2>◎ SPECTATING · GOD VIEW</h2></header>
     {room.public.turn && <div className="spectator-clock">R{room.public.round?.number ?? 1} · <Countdown deadline={room.public.turn.deadlineAt} label="Turn remaining" format="clock" /></div>}
     <div className="spectator-cards" style={{ '--spectator-count': room.players.length } as React.CSSProperties}>{room.players.map(player => <article key={player.public.id} aria-label={`${player.public.name}’s private information`}>
       <header><h3>{player.public.name.toUpperCase()}</h3><span>{player.public.roleId ? ROLE_COPY[player.public.roleId].name.toUpperCase() : '—'}</span></header>

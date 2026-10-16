@@ -17,7 +17,7 @@ function TaskIcon({ id }: { id: TaskId }) {
 export const TASK_COMPLETION_HOLD_MS = 1500;
 export const TASK_FOLD_MS = 200;
 export function TaskList({ tasks, completionStage }: { tasks: RoundTasks; completionStage?: number }) {
-  return <><header><span>{completionStage !== undefined ? 'TASK COMPLETE' : `ROUND ${tasks.round} · TASKS`}</span><small>PRIVATE</small></header><p>{tasks.completed ? 'One Task completed this round.' : 'Complete either one.'}</p>
+  return <><header><span>{completionStage !== undefined ? 'TASK COMPLETE' : `ROUND ${tasks.round} · TASKS`}</span></header>
     <ul>{tasks.jobs.map(task => {
       const definition = TASKS.find(value => value.id === task.id)!;
       const status = task.status === 'CANCELLED' && completionStage !== undefined && completionStage < 2 ? 'ACTIVE' : task.status;

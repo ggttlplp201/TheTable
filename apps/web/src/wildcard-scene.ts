@@ -65,7 +65,7 @@ export function canInteractWithWildcardDeck(room: PublicRoomView, viewerId: stri
 export function wildcardDeckTooltip(room: PublicRoomView, viewerId: string | undefined, hasDrawCapability: boolean): string {
   if (viewerId && room.wildcard?.drawUsedByPlayer[viewerId]) return 'WILDCARD SPENT';
   if (!canInteractWithWildcardDeck(room, viewerId, hasDrawCapability)) return 'WILDCARD DECK';
-  return 'DRAW WILDCARD\nOnce per match\nCosts your Primary Action';
+  return 'DRAW WILDCARD\nPRIMARY ACTION';
 }
 
 /** Never parse public prose or private payloads. Draws and burns expose only their public actor. */
