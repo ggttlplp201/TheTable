@@ -19,8 +19,7 @@ COPY packages/content/package.json packages/content/package.json
 COPY packages/game/package.json packages/game/package.json
 COPY packages/visual/package.json packages/visual/package.json
 
-RUN --mount=type=cache,target=/pnpm/store \
-    pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 COPY apps ./apps
 COPY packages ./packages
