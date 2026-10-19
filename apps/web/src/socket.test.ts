@@ -13,7 +13,25 @@ const transport = vi.hoisted(() => {
 
 vi.mock('socket.io-client', () => ({ io: transport.io }));
 
-import { TableClient } from './socket';
+import { resolveServerUrl, TableClient } from './socket';
+
+describe('resolveServerUrl', () => {
+  it('prefers an explicit deployment setting', () => {
+    expect(resolveServerUrl('https://custom-realtime.example', 'https://the-table-sooty.vercel.app')).toBe('https://custom-realtime.example');
+  });
+
+  it('routes the production Vercel client to the single Railway room owner', () => {
+    expect(resolveServerUrl(undefined, 'https://the-table-sooty.vercel.app')).toBe('https://realtime-production-4b8d.up.railway.app');
+  });
+
+  it('keeps local Vite development pointed at the local server', () => {
+    expect(resolveServerUrl(undefined, 'http://localhost:5173')).toBe('http://localhost:3001');
+  });
+
+  it('keeps a same-origin deployment on its own server', () => {
+    expect(resolveServerUrl(undefined, 'https://realtime-production-4b8d.up.railway.app')).toBe('https://realtime-production-4b8d.up.railway.app');
+  });
+});
 
 describe('TableClient', () => {
   beforeEach(() => {

@@ -5,13 +5,25 @@ import type { AnyRoomView, CommandPayload, Result, RevisionAck, RoomView, Sessio
 type Acknowledgement<T> = (result: Result<T>) => void;
 
 const ACK_TIMEOUT_MS = 10_000;
+const PRODUCTION_REALTIME_URLS: Readonly<Record<string, string>> = {
+  'the-table-sooty.vercel.app': 'https://realtime-production-4b8d.up.railway.app',
+};
+
+export function resolveServerUrl(configuredUrl: string | undefined, currentOrigin: string): string {
+  if (configuredUrl) return configuredUrl;
+
+  const deployedUrl = PRODUCTION_REALTIME_URLS[new URL(currentOrigin).hostname];
+  if (deployedUrl) return deployedUrl;
+
+  return currentOrigin.replace(/:5173$/, ':3001');
+}
 
 export class TableClient {
   private readonly socket: Socket;
   private reconnectInFlight: { key: string; promise: Promise<Result<SessionPayload>> } | undefined;
   private readonly reconnectAttempts = new Map<string, string>();
 
-  constructor(serverUrl = import.meta.env.VITE_SERVER_URL ?? window.location.origin.replace(/:5173$/, ':3001')) {
+  constructor(serverUrl = resolveServerUrl(import.meta.env.VITE_SERVER_URL, window.location.origin)) {
     this.socket = io(serverUrl, { autoConnect: false, transports: ['websocket', 'polling'], reconnection: true, reconnectionAttempts: Infinity, reconnectionDelay: 500, reconnectionDelayMax: 5_000, timeout: 20_000 });
   }
 
